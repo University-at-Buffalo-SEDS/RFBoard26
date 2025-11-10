@@ -1,0 +1,9 @@
+build/
+/.vscode
+.github/.DS_Store
+cmake_install.cmake
+CMakeCache.txt
+build.ninja
+/CMakeFiles
+compile_commands.json
+.DS_Store
