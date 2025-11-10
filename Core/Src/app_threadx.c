@@ -23,7 +23,11 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "main.h"
+#include "sedsprintf.h"
+#include "telemetry.h"
+#include "RF-Threads.h"
+#include "tx_api.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -59,11 +63,21 @@
 UINT App_ThreadX_Init(VOID *memory_ptr)
 {
   UINT ret = TX_SUCCESS;
+
   /* USER CODE BEGIN App_ThreadX_MEM_POOL */
+  if (init_telemetry_router() != SEDS_OK) {
+    Error_Handler();
+  }
+  /* Log after router is initialized, before threads start */
+
+  char started_txt[] = "Starting Threadx Scheduler";
+  log_telemetry_synchronous(SEDS_DT_MESSAGE_DATA, started_txt,
+                                  sizeof(started_txt), 1);
 
   /* USER CODE END App_ThreadX_MEM_POOL */
 
   /* USER CODE BEGIN App_ThreadX_Init */
+  create_telemetry_thread();
 
   /* USER CODE END App_ThreadX_Init */
 

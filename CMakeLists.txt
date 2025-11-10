@@ -66,3 +66,20 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 
     # Add user defined libraries
 )
+
+# Telemetry Library
+add_subdirectory(${CMAKE_SOURCE_DIR}/sedsprintf_rs)
+target_link_libraries(${CMAKE_PROJECT_NAME} sedsprintf_rs)
+
+# Option defaults to ON
+option(ENABLE_TELEMETRY "Enable the telemetry subsystem" ON)
+
+# Print its state for debugging
+message(STATUS "Telemetry enabled: ${ENABLE_TELEMETRY}")
+
+# Define or undefine the macro globally
+if(ENABLE_TELEMETRY)
+    add_compile_definitions(TELEMETRY_ENABLED)
+else()
+    # Not defined → disabled
+endif()
