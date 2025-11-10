@@ -31,7 +31,7 @@ def main():
     import_and_run_build()
 
     # 2) Flash binary
-    bin_path = Path("build/Debug/PowerBoard26.bin")
+    bin_path = Path("build/Debug/RFBoard26.bin")
     if not bin_path.exists():
         sys.exit(f"Error: binary not found at {bin_path}")
 

@@ -56,6 +56,7 @@
 /* Determine if the optional USBX user define file should be used.  */
 
 #ifdef UX_INCLUDE_USER_DEFINE_FILE
+#pragma GCC diagnostic ignored "-Warray-bounds"
 
 
 /* Yes, include the user defines in ux_user.h. The defines in this file may 
