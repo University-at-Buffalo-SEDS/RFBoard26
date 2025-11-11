@@ -8,7 +8,7 @@
  *
  *   void *telemetryMalloc(size_t);
  *   void telemetryFree(void *);
- *   void seds_println(const char *str, size_t len);
+ *   void seds_error_msg(const char *str, size_t len);
  *
  */
 
@@ -61,7 +61,7 @@ void telemetryFree(void *pv)
     (void)tx_byte_release(pv);
 }
 
-void seds_println(const char *str, size_t len)
+void seds_error_msg(const char *str, size_t len)
 {
     (void)len;
     printf("%s\n", str);
