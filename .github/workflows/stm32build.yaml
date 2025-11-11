@@ -1,0 +1,180 @@
+name: Build and Release STM32 (cube-cmake)
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*.*.*'     # tag like v1.2.3 to trigger a Release
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      BUILD_TYPE: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'debug' }}
+      BUILD_DIR: ${{ startsWith(github.ref, 'refs/tags/v') && 'build/Release' || 'build/Debug' }}
+      CUBE_VER: "1.19.0"
+      CUBE_BUILD: "25876_20250729_1159"
+      CUBE_FILE: "st-stm32cubeclt_1.19.0_25876_20250729_1159_amd64.deb_bundle.sh"
+      CUBE_URL: "https://files.rylanswebsite.com/publicdocuments/files/UBSEDS/st-stm32cubeclt_1.19.0_25876_20250729_1159_amd64.deb_bundle.sh"
+      CUBE_CACHE_DIR: ".cache/cubeclt"
+      CUBE_TAR: ".cache/cubeclt/opt-stm32cubeclt.tar.zst"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ---------- Restore caches (installer + full install + ccache + Rust) ----------
+      - name: Restore STM32CubeCLT caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/cubeclt
+          key: cubeclt-${{ env.CUBE_VER }}-${{ env.CUBE_BUILD }}
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt', '**/*.cmake', '**/*.c', '**/*.cpp', '**/*.h', '**/*.hpp') }}
+          restore-keys: |
+            ccache-${{ runner.os }}-
+
+      - name: Restore Rust caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      # ---------- System deps (still needed, but quick) ----------
+      - name: Setup the environment (install deps)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg expect git-lfs zstd ccache
+          sudo apt-get remove -y cmake || true
+          rustup target add thumbv7em-none-eabihf
+
+      # ---------- Get installer (from cache or download once) ----------
+      - name: Ensure CubeCLT installer present (cached or download)
+        run: |
+          mkdir -p "${CUBE_CACHE_DIR}"
+          if [ ! -f "${CUBE_CACHE_DIR}/${CUBE_FILE}" ]; then
+            echo "Installer not cached, downloading…"
+            wget -O "${CUBE_CACHE_DIR}/${CUBE_FILE}" "${CUBE_URL}"
+          else
+            echo "Using cached installer ${CUBE_CACHE_DIR}/${CUBE_FILE}"
+          fi
+          ls -l "${CUBE_CACHE_DIR}/${CUBE_FILE}"
+
+      # ---------- Install CubeCLT only if not already there ----------
+      - name: Install STM32CubeCLT (skip if restored)
+        run: |
+          if sudo find /opt/st -type f -name arm-none-eabi-gcc -print -quit | grep -q .; then
+            echo "CubeCLT already present, skipping installer."
+            exit 0
+          fi
+
+          export DEBIAN_FRONTEND=noninteractive
+          chmod +x "${CUBE_CACHE_DIR}/${CUBE_FILE}"
+
+          export LC_ALL=C PAGER=cat LESS='-F -X -R' MORE='-f' TERM=xterm
+          stty rows 200 columns 200 2>/dev/null || true
+
+          expect <<'EOF'
+          set timeout 600
+          spawn sudo -E ${env(CUBE_CACHE_DIR)}/${env(CUBE_FILE)} --nox11 -- -y
+          expect {
+            -re {--More--|Press (ENTER|Enter|Return) to continue|Press any key to continue} { send -- " "; exp_continue }
+            -re {I ACCEPT.*\[N\/y\]} { send -- "y\r"; exp_continue }
+            -re {Please type y to accept.*} { send -- "y\r"; exp_continue }
+            -re {\((?:y/N|Y/n)\)} { send -- "y\r"; exp_continue }
+            -re {Do you accept.*\?} { send -- "y\r"; exp_continue }
+            -re {Press (Enter|RETURN) to continue} { send -- "\r"; exp_continue }
+            -re {Continue\? \[Y/n\]} { send -- "y\r"; exp_continue }
+            eof
+          }
+          EOF
+
+      - name: Expose toolchain on PATH (now + later)
+        run: |
+          BIN_DIRS=$(sudo find /opt/st -maxdepth 5 -type d -path "/opt/st/stm32cubeclt_*/*/bin" -o -path "/opt/st/stm32cubeclt_*/bin" 2>/dev/null)
+          for d in $BIN_DIRS; do export PATH="$d:$PATH"; done
+          for d in $BIN_DIRS; do echo "$d"; done | sudo tee -a "$GITHUB_PATH" >/dev/null
+
+      - name: Verify toolchain
+        run: |
+          echo "Discovered CubeCLT bin dirs:"
+          printf '%s\n' $BIN_DIRS || true
+
+          which cmake || true
+          cmake --version || true
+
+          if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
+            echo "arm-none-eabi-gcc not on PATH; scanning filesystem..."
+            sudo find /opt/st -maxdepth 6 -name arm-none-eabi-gcc -print
+            exit 1
+          fi
+
+          which arm-none-eabi-gcc
+          arm-none-eabi-gcc --version
+
+      # ---------- Enable ccache for build scripts ----------
+      - name: Prime ccache wrappers (optional)
+        run: |
+          echo "CC='ccache gcc'" >> $GITHUB_ENV
+          echo "CXX='ccache g++'" >> $GITHUB_ENV
+          ccache --zero-stats || true
+          ccache --show-config || true
+
+      - name: Build (Build the project)
+        run: ./build_"$BUILD_TYPE".py
+
+      - name: Show ccache stats (optional)
+        run: ccache --show-stats || true
+
+      - name: Package firmware (ELF → BIN/HEX/LST/SIZE)
+        run: |
+          mkdir -p "${BUILD_DIR}/out"
+          mapfile -t ELFS < <(find "${BUILD_DIR}" -type f -name '*.elf')
+          if [ ${#ELFS[@]} -eq 0 ]; then
+            echo "No .elf files found in ${BUILD_DIR}"; exit 1
+          fi
+          for ELF in "${ELFS[@]}"; do
+            base="$(basename "${ELF%.elf}")"
+            arm-none-eabi-objcopy -O binary "${ELF}" "${BUILD_DIR}/out/${base}.bin"
+            arm-none-eabi-objcopy -O ihex   "${ELF}" "${BUILD_DIR}/out/${base}.hex"
+            arm-none-eabi-objdump -h -S "${ELF}" > "${BUILD_DIR}/out/${base}.lst" || true
+            arm-none-eabi-size --format=berkeley "${ELF}" > "${BUILD_DIR}/out/${base}.size" || true
+            cp "${ELF}" "${BUILD_DIR}/out/${base}.elf"
+          done
+          ls -lah "${BUILD_DIR}/out"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ env.BUILD_TYPE }}
+          path: ${{ env.BUILD_DIR }}/out/*
+
+      - name: Create GitHub Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Firmware ${{ github.ref_name }}
+          files: |
+            ${{ env.BUILD_DIR }}/out/*.bin
+            ${{ env.BUILD_DIR }}/out/*.hex
+            ${{ env.BUILD_DIR }}/out/*.elf
+            ${{ env.BUILD_DIR }}/out/*.lst
+            ${{ env.BUILD_DIR }}/out/*.size
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
