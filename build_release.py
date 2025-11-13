@@ -11,7 +11,7 @@ def run(cmd: list[str]) -> None:
 
 def main() -> None:
     project_dir = Path.cwd()
-    build_dir = project_dir / "build" / "Release"
+    build_dir = project_dir / "build" / "Release_Script"
 
     # Telemetry flag: ON by default, OFF if "no-telemetry" is passed
     telemetry_flag = "-DENABLE_TELEMETRY=ON"
