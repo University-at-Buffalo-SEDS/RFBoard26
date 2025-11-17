@@ -29,17 +29,20 @@ extern crate alloc;
 extern crate core;
 #[cfg(feature = "std")]
 extern crate std;
-
-
-use core::mem::size_of;
-use core::ops::Mul;
-use strum::EnumCount;
+#[cfg(feature = "std")]
+use std::io::Error;
 
 use crate::config::{
     get_message_data_type, get_message_info_types, get_message_meta, DataEndpoint, DataType,
     MAX_STATIC_HEX_LENGTH, MAX_STATIC_STRING_LENGTH,
 };
 use crate::macros::{ReprI32Enum, ReprU32Enum};
+use alloc::string::ToString;
+use alloc::sync::Arc;
+use core::fmt::Formatter;
+use core::mem::size_of;
+use core::ops::Mul;
+use strum::EnumCount;
 
 // ============================================================================
 //  Test / Python FFI modules (std-only)
@@ -69,7 +72,6 @@ unsafe extern "C" {
 mod embedded_alloc {
     use core::alloc::{GlobalAlloc, Layout};
 
-
     unsafe extern "C" {
         fn telemetryMalloc(size: usize) -> *mut core::ffi::c_void;
         fn telemetryFree(ptr: *mut core::ffi::c_void);
@@ -94,10 +96,8 @@ mod embedded_alloc {
     #[global_allocator]
     static A: TelemetryAlloc = TelemetryAlloc;
 
-
     // Panic handler for embedded
     use core::panic::PanicInfo;
-
 
     #[panic_handler]
     fn panic(_info: &PanicInfo) -> ! {
@@ -315,8 +315,11 @@ pub enum MessageType {
 ///
 /// Most public APIs expose a `TelemetryResult<T>` alias for
 /// `Result<T, TelemetryError>`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TelemetryError {
+    /// Generic / unspecified error.
+    GenericError(Option<Arc<str>>),
+
     /// Logical type ID is not a valid [`DataType`].
     InvalidType,
 
@@ -359,6 +362,7 @@ impl TelemetryError {
     /// used by the FFI layers.
     pub const fn to_error_code(&self) -> TelemetryErrorCode {
         match self {
+            TelemetryError::GenericError(_) => TelemetryErrorCode::GenericError,
             TelemetryError::InvalidType => TelemetryErrorCode::InvalidType,
             TelemetryError::SizeMismatch { .. } => TelemetryErrorCode::SizeMismatch,
             TelemetryError::SizeMismatchError => TelemetryErrorCode::SizeMismatchError,
@@ -375,6 +379,40 @@ impl TelemetryError {
     }
 }
 
+/// Allow conversion of `TelemetryError` to human-readable string.
+impl core::fmt::Display for TelemetryError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.write_str(&TelemetryError::to_string(self))
+    }
+}
+
+/// Implement `std::error::Error` for `TelemetryError` when `std` is enabled.
+#[cfg(feature = "std")]
+impl std::error::Error for TelemetryError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+}
+
+/// Allow the conversion from std error to telemetry error
+#[cfg(feature = "std")]
+impl From<Error> for TelemetryError {
+    fn from(error: Error) -> Self {
+        let str = error.to_string();
+        let astr: Arc<str> = Arc::from(str.as_str());
+        TelemetryError::GenericError(Some(astr))
+    }
+}
+
+#[cfg(feature = "std")]
+impl From<Box<dyn std::error::Error>> for TelemetryError {
+    fn from(err: Box<dyn std::error::Error>) -> Self {
+        let str = err.to_string();
+        let astr: Arc<str> = Arc::from(str.as_str());
+        TelemetryError::GenericError(Some(astr))
+    }
+}
+
 /// Numeric error codes used on the C/Python FFI boundary.
 ///
 /// Negative values are used to avoid collisions with success codes
@@ -382,18 +420,19 @@ impl TelemetryError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]
 pub enum TelemetryErrorCode {
-    InvalidType = -2,
-    SizeMismatch = -3,
-    SizeMismatchError = -4,
-    EmptyEndpoints = -5,
-    TimestampInvalid = -6,
-    MissingPayload = -7,
-    HandlerError = -8,
-    BadArg = -9,
-    Serialize = -10,
-    Deserialize = -11,
-    Io = -12,
-    InvalidUtf8 = -13,
+    GenericError = -2,
+    InvalidType = -3,
+    SizeMismatch = -4,
+    SizeMismatchError = -5,
+    EmptyEndpoints = -6,
+    TimestampInvalid = -7,
+    MissingPayload = -8,
+    HandlerError = -9,
+    BadArg = -10,
+    Serialize = -11,
+    Deserialize = -12,
+    Io = -13,
+    InvalidUtf8 = -14,
 }
 
 // Generate ReprI32Enum helpers for TelemetryErrorCode
@@ -416,6 +455,7 @@ impl TelemetryErrorCode {
     #[inline]
     pub fn as_str(&self) -> &'static str {
         match self {
+            TelemetryErrorCode::GenericError => "GenericError",
             TelemetryErrorCode::InvalidType => "{Invalid Type}",
             TelemetryErrorCode::SizeMismatch => "{Size Mismatch}",
             TelemetryErrorCode::SizeMismatchError => "{Size Mismatch Error}",
