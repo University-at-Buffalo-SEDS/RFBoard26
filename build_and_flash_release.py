@@ -3,6 +3,7 @@ from pathlib import Path
 import subprocess
 import importlib.util
 import sys
+import os
 
 
 def run(cmd: list[str]) -> None:
@@ -27,6 +28,8 @@ def import_and_run_build():
 
 
 def main():
+    repo_root = Path(__file__).parent.resolve()
+    os.chdir(repo_root)
     # 1) Run build_release.main()
     import_and_run_build()
 
