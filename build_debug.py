@@ -2,6 +2,7 @@
 import subprocess
 from pathlib import Path
 import sys
+import os
 
 
 def run(cmd: list[str]) -> None:
@@ -10,6 +11,8 @@ def run(cmd: list[str]) -> None:
 
 
 def main() -> None:
+    repo_root = Path(__file__).parent.resolve()
+    os.chdir(repo_root)
     project_dir = Path.cwd()
     build_dir = project_dir / "build" / "Debug_Script"
 
