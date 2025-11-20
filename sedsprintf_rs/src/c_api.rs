@@ -19,7 +19,8 @@ use crate::{
 };
 use alloc::{boxed::Box, string::String, sync::Arc, vec, vec::Vec};
 use core::{ffi::c_char, ffi::c_void, mem::size_of, ptr, slice, str::from_utf8};
-
+use crate::config::get_message_data_type;
+use crate::MessageDataType::NoData;
 // ============================================================================
 //  Constants / basic types shared with the C side
 // ============================================================================
@@ -242,7 +243,7 @@ unsafe fn write_str_to_buf(s: &str, buf: *mut c_char, buf_len: usize) -> i32 {
 /// Used in FFI logging helpers.
 #[inline]
 fn width_is_valid(width: usize) -> bool {
-    matches!(width, 1 | 2 | 4 | 8 | 16)
+    matches!(width, 0| 1 | 2 | 4 | 8 | 16)
 }
 
 /// FFI-facing clock adapter that calls back into C when present.
@@ -593,6 +594,22 @@ fn finish_with<T: LeBytes + Copy>(
     required_elems: usize,
     elem_size: usize,
 ) -> i32 {
+    if get_message_data_type(ty) == NoData{
+        return ok_or_status(unsafe {
+            let router = &(*r).inner; // shared borrow
+            if queue {
+                match ts {
+                    Some(t) => router.log_queue_ts::<T>(ty, t, &[]),
+                    None => router.log_queue::<T>(ty, &[]),
+                }
+            } else {
+                match ts {
+                    Some(t) => router.log_ts::<T>(ty, t, &[]),
+                    None => router.log::<T>(ty, &[]),
+                }
+            }
+        });
+    }
     let mut tmp: Vec<T> = Vec::with_capacity(required_elems);
     // vectorize_data reads unaligned little-endian elements into tmp
     if let Err(_) = vectorize_data::<T>(padded.as_ptr(), required_elems, elem_size, &mut tmp) {
@@ -1136,7 +1153,6 @@ pub extern "C" fn seds_pkt_data_ptr(
     view.payload as *const c_void
 }
 
-
 macro_rules! impl_seds_pkt_get_typed_from_packet {
     ($fname:ident, $method:ident, $ty:ty) => {
         #[unsafe(no_mangle)]
@@ -1182,7 +1198,6 @@ macro_rules! impl_seds_pkt_get_typed_from_packet {
     };
 }
 
-
 // Typed getters using TelemetryPacket's data_as_* helpers.
 // All use "query" semantics like seds_pkt_copy_data:
 //   - If out is NULL or out_elems < needed, return needed (element count) and do not copy.
@@ -1191,12 +1206,12 @@ macro_rules! impl_seds_pkt_get_typed_from_packet {
 impl_seds_pkt_get_typed_from_packet!(seds_pkt_get_f32, data_as_f32, f32);
 impl_seds_pkt_get_typed_from_packet!(seds_pkt_get_f64, data_as_f64, f64);
 
-impl_seds_pkt_get_typed_from_packet!(seds_pkt_get_u8,  data_as_u8,  u8);
+impl_seds_pkt_get_typed_from_packet!(seds_pkt_get_u8, data_as_u8, u8);
 impl_seds_pkt_get_typed_from_packet!(seds_pkt_get_u16, data_as_u16, u16);
 impl_seds_pkt_get_typed_from_packet!(seds_pkt_get_u32, data_as_u32, u32);
 impl_seds_pkt_get_typed_from_packet!(seds_pkt_get_u64, data_as_u64, u64);
 
-impl_seds_pkt_get_typed_from_packet!(seds_pkt_get_i8,  data_as_i8,  i8);
+impl_seds_pkt_get_typed_from_packet!(seds_pkt_get_i8, data_as_i8, i8);
 impl_seds_pkt_get_typed_from_packet!(seds_pkt_get_i16, data_as_i16, i16);
 impl_seds_pkt_get_typed_from_packet!(seds_pkt_get_i32, data_as_i32, i32);
 impl_seds_pkt_get_typed_from_packet!(seds_pkt_get_i64, data_as_i64, i64);
@@ -1232,9 +1247,7 @@ pub extern "C" fn seds_pkt_get_string(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn seds_pkt_get_string_len(
-    pkt: *const SedsPacketView,
-) -> i32 {
+pub extern "C" fn seds_pkt_get_string_len(pkt: *const SedsPacketView) -> i32 {
     if pkt.is_null() {
         return status_from_err(TelemetryError::BadArg);
     }
