@@ -114,6 +114,8 @@ pub enum DataType {
     Abort,
     FuelFlow,
     FuelTankPressure,
+    FlightState,
+    Heartbeat,
     /// Generic string message payload.
     MessageData,
 }
@@ -137,6 +139,8 @@ impl DataType {
             DataType::Abort => "ABORT",
             DataType::FuelFlow => "FUEL_FLOW",
             DataType::FuelTankPressure => "FUEL_TANK_PRESSURE",
+            DataType::FlightState => "FLIGHT_STATE",
+            DataType::Heartbeat => "HEARTBEAT",
             DataType::MessageData => "MESSAGE_DATA",
         }
     }
@@ -166,10 +170,12 @@ pub const fn get_message_data_type(data_type: DataType) -> MessageDataType {
         DataType::GyroData => MessageDataType::Float32,
         DataType::AccelData => MessageDataType::Float32,
         DataType::BarometerData => MessageDataType::Float32,
-        DataType::Abort => MessageDataType::Bool,
+        DataType::Abort => MessageDataType::NoData,
         DataType::FuelFlow => MessageDataType::Float32,
         DataType::FuelTankPressure => MessageDataType::Float32,
+        DataType::FlightState => MessageDataType::UInt8,
         DataType::MessageData => MessageDataType::String,
+        DataType::Heartbeat => MessageDataType::NoData,
     }
 }
 
@@ -191,7 +197,9 @@ pub const fn get_message_info_types(message_type: DataType) -> MessageType {
         DataType::Abort => MessageType::Error,
         DataType::FuelFlow => MessageType::Info,
         DataType::FuelTankPressure => MessageType::Info,
+        DataType::FlightState => MessageType::Info,
         DataType::MessageData => MessageType::Info,
+        DataType::Heartbeat => MessageType::Info,
     }
 }
 
@@ -276,7 +284,7 @@ pub const fn get_message_meta(data_type: DataType) -> MessageMeta {
         DataType::Abort => {
             MessageMeta {
                 // Abort Command
-                element_count: MessageElementCount::Static(1), // Abort messages carry 1 boolean element
+                element_count: MessageElementCount::Static(0), // Abort messages carry 1 boolean element
                 endpoints: &[
                     DataEndpoint::Abort,
                 ],
@@ -293,6 +301,20 @@ pub const fn get_message_meta(data_type: DataType) -> MessageMeta {
             MessageMeta {
                 // Fuel Tank Pressure Data
                 element_count: MessageElementCount::Static(1), // Fuel Tank Pressure messages carry 1 float32 element
+                endpoints: &[DataEndpoint::GroundStation, DataEndpoint::SdCard],
+            }
+        }
+        DataType::FlightState => {
+            MessageMeta {
+                // Flight State Data
+                element_count: MessageElementCount::Static(1), // Flight State messages carry 1 uint8 element
+                endpoints: &[DataEndpoint::GroundStation, DataEndpoint::SdCard],
+            }
+        }
+        DataType::Heartbeat => {
+            MessageMeta {
+                // Heartbeat Data
+                element_count: MessageElementCount::Static(0), // Heartbeat messages carry 1 binary element
                 endpoints: &[DataEndpoint::GroundStation, DataEndpoint::SdCard],
             }
         }
