@@ -1,0 +1,4 @@
+[submodule "sedsprintf_rs"]
+	path = sedsprintf_rs
+	url = https://github.com/University-at-Buffalo-SEDS/sedsprintf_2026
+	branch = main

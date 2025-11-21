@@ -68,6 +68,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 )
 
 # Telemetry Library
+set(SEDSPRINTF_RS_DEVICE_IDENTIFIER "RF" CACHE STRING "" FORCE)
 add_subdirectory(${CMAKE_SOURCE_DIR}/sedsprintf_rs)
 target_link_libraries(${CMAKE_PROJECT_NAME} sedsprintf_rs)
 
