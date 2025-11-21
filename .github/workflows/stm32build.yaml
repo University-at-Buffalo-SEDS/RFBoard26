@@ -60,6 +60,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y dpkg expect git-lfs zstd ccache
           sudo apt-get remove -y cmake || true
+          git submodule update --init --recursive
 
       # ---------- Get installer (from cache or download once) ----------
       - name: Ensure CubeCLT installer present (cached or download)
