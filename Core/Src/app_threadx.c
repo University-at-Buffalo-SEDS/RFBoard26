@@ -63,7 +63,6 @@
 UINT App_ThreadX_Init(VOID *memory_ptr)
 {
   UINT ret = TX_SUCCESS;
-
   /* USER CODE BEGIN App_ThreadX_MEM_POOL */
   if (init_telemetry_router() != SEDS_OK) {
     Error_Handler();

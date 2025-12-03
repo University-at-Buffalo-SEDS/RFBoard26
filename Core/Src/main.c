@@ -316,7 +316,14 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GREEN_LED_Pin|BLUE_LEDS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPS_CS_Pin|GREEN_LED_Pin|BLUE_LEDS_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : GPS_CS_Pin */
+  GPIO_InitStruct.Pin = GPS_CS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPS_CS_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : GREEN_LED_Pin BLUE_LEDS_Pin */
   GPIO_InitStruct.Pin = GREEN_LED_Pin|BLUE_LEDS_Pin;
