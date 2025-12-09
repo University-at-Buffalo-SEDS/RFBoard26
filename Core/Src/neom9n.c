@@ -107,7 +107,12 @@ void read_nmea_lat_and_long(NEOM9N_t *config, uint32_t max_wait) {
 	//receive the NS indicator and comma after
 	uint8_t ns_indicator;
 	if (receive_nmea_payload(config->hspi, GLOBAL_HIGH_TX, &ns_indicator, NMEA_NS_SIZE, max_wait) == true) {
-		config->latitude_deg = (ns_indicator == 'N' ? recv_lat : -recv_lat);
+		if (ns_indicator == 'N') {
+			config->latitude_deg = recv_lat;
+		} else {
+			config->latitude_deg = -recv_lat;
+		}
+		
 	}
 
 	//receive the longitude(dddmm.mmmmm)+ comma after (one more d than latitude)
@@ -119,7 +124,12 @@ void read_nmea_lat_and_long(NEOM9N_t *config, uint32_t max_wait) {
 	//receive the EW indicator and comma after
 	uint8_t ew_indicator;
 	if (receive_nmea_payload(config->hspi, GLOBAL_HIGH_TX, &ew_indicator, NMEA_EW_SIZE, max_wait) == true) {
-		config->longitude_deg = (ew_indicator == 'E' ? recv_long : -recv_long);
+		if (ew_indicator == 'E') {
+			config->longitude_deg = recv_long;
+		} else {
+			config->longitude_deg = -recv_long;
+		}
+		
 	}
 }
 
@@ -191,26 +201,26 @@ void read_nmea_rmc(NEOM9N_t *config, uint32_t max_wait) {
  * Ignores messages that are not alligned.
  */
 bool receive_nmea(NEOM9N_t *config, uint32_t max_wait, uint32_t max_ignores) {
-	uint8_t *pRx[NMEA_PAYLOAD_RX_SIZE];
+	uint8_t *rx[NMEA_PAYLOAD_RX_SIZE];
 	
 	NEOGPS_CS_LOW(); // start transation, set cs pin to LOW
 	uint32_t ignores = 0; 
 
 	while(ignores < max_ignores) {  // ignore until we find the start of nmea message denoted by '$'
-		HAL_SPI_TransmitReceive(config->hspi, GLOBAL_HIGH_TX, pRx, 1, max_wait);
-		if ((char)*pRx[0] == '$') {
+		HAL_SPI_TransmitReceive(config->hspi, GLOBAL_HIGH_TX, *rx, 1, max_wait);
+		if ((char)*rx[0] == '$') {
 			break; //exit loop, start found
 		}
 		ignores ++; //start not found, continue search
 	}
-	if ((char)*pRx[0] != '$') {
+	if ((char)*rx[0] != '$') {
 		NEOGPS_CS_HIGH();
 		return false; //start not found after max ignores 
 	}
 
-	HAL_SPI_TransmitReceive(config->hspi, GLOBAL_HIGH_TX, pRx, NMEA_TALKERID_SIZE, max_wait); //pull talkerID from response 
+	HAL_SPI_TransmitReceive(config->hspi, GLOBAL_HIGH_TX, *rx, NMEA_TALKERID_SIZE, max_wait); //pull talkerID from response 
 
-	char *pSent = (char*)pRx + 2;
+	char *pSent = (char*)rx + 2;
 	uint32_t tag = TAG(pSent[0], pSent[1], pSent[2]); // contruct tag
 
 	switch(tag) {
