@@ -53,8 +53,8 @@ int char_to_int(uint8_t c) {
 // NEOM9N Configuration Structure
 typedef struct {
     SPI_HandleTypeDef *hspi;
-	float latDeg;
-	float lonDeg;
+	float lat;
+	float lon;
 } NEOM9N_t;
 
 
