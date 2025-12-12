@@ -105,7 +105,7 @@ SedsResult init_telemetry_router(void) {
   };
 
   SedsRouter *r =
-      seds_router_new(Seds_RM_Sink,
+      seds_router_new(Seds_RM_Relay,
                       tx_send,           /* tx callback */
                       NULL,              /* tx_user */
                       node_now_since_ms, /* clock */
