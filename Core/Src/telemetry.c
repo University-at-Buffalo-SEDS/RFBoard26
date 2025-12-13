@@ -36,10 +36,26 @@ uint64_t node_now_since_ms(void *user) {
 RouterState g_router = {.r = NULL, .created = 0, .start_time = 0};
 
 /* ---------------- TX path (CANSEND) ---------------- */
-SedsResult tx_send(const uint8_t *bytes, size_t len, void *user) {
+SedsResult tx_send(const uint8_t *bytes, size_t len, const struct SedsLinkId *link_id, void *user) {
   (void)user;
   (void)bytes;
   (void)len;
+
+  //can bus send
+  if (!link_id) {
+    return SEDS_ERR;
+  }
+
+  switch (link_id->raw) {
+    case can_id: // CAN
+      // Implement CAN send logic here
+      break;
+    case radio_id: // Radio
+      // Implement Radio send logic here
+      break;
+    default:
+      return SEDS_ERR;
+  }
 
   /*TODO: Implement the cansend function*/
 
@@ -47,7 +63,7 @@ SedsResult tx_send(const uint8_t *bytes, size_t len, void *user) {
 }
 
 /* ---------------- RX helpers ---------------- */
-void rx_synchronous(const uint8_t *bytes, size_t len) {
+void rx_synchronous(const uint8_t *bytes, size_t len, const SedsLinkId *link_id) {
   if (!bytes || !len)
     return;
   if (!g_router.r) {
@@ -55,10 +71,10 @@ void rx_synchronous(const uint8_t *bytes, size_t len) {
       return;
   }
 
-  seds_router_receive_serialized(g_router.r, bytes, len);
+  seds_router_receive_serialized_v2(g_router.r,link_id, bytes, len);
 }
 
-void rx_asynchronous(const uint8_t *bytes, size_t len) {
+void rx_asynchronous(const uint8_t *bytes, size_t len, const SedsLinkId *link_id) {
   if (!bytes || !len)
     return;
   if (!g_router.r) {
@@ -66,23 +82,9 @@ void rx_asynchronous(const uint8_t *bytes, size_t len) {
       return;
   }
 
-  seds_router_rx_serialized_packet_to_queue(g_router.r, bytes, len);
+  seds_router_rx_serialized_packet_to_queue_v2(g_router.r, link_id, bytes, len);
 }
 
-/* ---------------- Local endpoint handler (SD_CARD) ---------------- */
-SedsResult on_sd_packet(const SedsPacketView *pkt, void *user) {
-  (void)user;
-
-  /* TODO: Implement the saving to SD logic*/
-  char buf[seds_pkt_to_string_len(pkt)];
-  SedsResult s = seds_pkt_to_string(pkt, buf, sizeof(buf));
-  if (s == SEDS_OK) {
-    printf("on_sd_packet: %s\r\n", buf);
-  } else {
-    printf("on_sd_packet: seds_pkt_to_string failed (%d)\r\n", s);
-  }
-  return s;
-}
 
 /* ---------------- Router init (idempotent) ---------------- */
 SedsResult init_telemetry_router(void) {
@@ -98,18 +100,14 @@ SedsResult init_telemetry_router(void) {
     return SEDS_OK;
   }
 
-  const SedsLocalEndpointDesc locals[] = {
-      {.endpoint = SEDS_EP_SD_CARD,
-       .packet_handler = on_sd_packet,
-       .user = NULL},
-  };
-
+  
   SedsRouter *r =
-      seds_router_new(Seds_RM_Relay,
+      seds_router_new_v2(Seds_RM_Relay,
                       tx_send,           /* tx callback */
                       NULL,              /* tx_user */
                       node_now_since_ms, /* clock */
-                      locals, (uint32_t)(sizeof(locals) / sizeof(locals[0])));
+                      NULL,
+                      0);
 
   if (!r) {
     printf("Error: failed to create router\r\n");
