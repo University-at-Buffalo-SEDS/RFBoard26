@@ -9,8 +9,8 @@ extern "C" {
 
 #endif
 
-#define can_id 0x01
-#define radio_id 0x02
+#define can_id 0x02
+#define radio_id 0x03
 
 static const SedsLinkId can_link_id = { 
   .raw = can_id
@@ -61,6 +61,8 @@ SedsResult process_all_queues_timeout(uint32_t timeout_ms);
 SedsResult print_telemetry_error(int32_t error_code);
 SedsResult log_error_asyncronous(const char* fmt, ...);
 SedsResult log_error_syncronous(const char* fmt, ...);
+
+void telemetry_radio_rx_start(void);
 void die(const char *fmt, ...);
 
 #ifdef __cplusplus
