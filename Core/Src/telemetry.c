@@ -101,8 +101,6 @@ static inline size_t fdcan_dlc_to_len(uint32_t dlc)
 /* ---------------- TX path (CANSEND) ---------------- */
 SedsResult tx_send(const uint8_t *bytes, size_t len, const struct SedsLinkId *link_id, void *user) {
   (void)user;
-  (void)bytes;
-  (void)len;
 
   //can bus send
   if (!link_id) {
