@@ -72,7 +72,6 @@ static inline void radio_notify_rx(const uint8_t *data, size_t len) {
 
 /*
   Own the HAL callback here.
-  IMPORTANT: delete any other definition in your project.
 */
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
   if (!g_huart) return;

@@ -38,8 +38,6 @@ HAL_StatusTypeDef can_bus_send_bytes(const uint8_t *bytes, size_t len, uint32_t 
   txHeader.IdType = FDCAN_STANDARD_ID;
   txHeader.TxFrameType = FDCAN_DATA_FRAME;
 
-  /* Preserving your current behavior; if your HAL expects DLC constants,
-     we can adjust later. */
   txHeader.DataLength = (uint32_t)len;
 
   txHeader.ErrorStateIndicator = 0;
