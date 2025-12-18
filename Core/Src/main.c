@@ -28,6 +28,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "telemetry.h"
+#include "can_bus.h"
+#include "radio.h"
 
 extern UX_SLAVE_CLASS_CDC_ACM *cdc_acm;
 
@@ -59,7 +61,6 @@ UART_HandleTypeDef huart1;
 PCD_HandleTypeDef hpcd_USB_FS;
 
 /* USER CODE BEGIN PV */
-uint8_t radio_rx_buf[256]; // Buffer for receiving radio data
 
 /* USER CODE END PV */
 
@@ -110,8 +111,9 @@ int main(void) {
   MX_USART1_UART_Init();
   MX_USB_PCD_Init();
   /* USER CODE BEGIN 2 */
-
-  telemetry_radio_rx_start();
+  can_bus_init(&hfdcan2);
+  radio_uart_init(&huart1);
+  radio_uart_start_rx();   /* after UART is initialized */
 
 
   FDCAN_FilterTypeDef sFilter = {0};

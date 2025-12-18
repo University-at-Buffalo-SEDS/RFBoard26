@@ -1,33 +1,25 @@
 #include "telemetry.h"
 #include "app_threadx.h" // should bring in tx_api.h; if not, include tx_api.h directly
+#include "main.h"
 #include "sedsprintf.h"
 #include "stm32g4xx_hal.h"
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <string.h>
 #include <stm32g4xx_hal_fdcan.h>
 #include <stm32g4xx_hal_uart.h>
-#include "main.h"
+#include <string.h>
+#include "can_bus.h"
+#include "radio.h"
+
 #ifndef TELEMETRY_ENABLED
 static void print_data_no_telem(void *data, size_t len) {
   // Implementation for debugging telemetry data
 }
 #endif
 
-extern FDCAN_HandleTypeDef hfdcan2; // FDCAN handle defined in main.c
-
-extern UART_HandleTypeDef huart1; // UART handle defined in main.c
-
-static uint8_t radio_rx_buf[256];
-
-
-inline void telemetry_radio_rx_start(void)
-{
-    // Start interrupt-driven reception; callback fires on IDLE or buffer full.
-    // Requires: UART interrupt enabled (CubeMX usually does this).
-    (void)HAL_UARTEx_ReceiveToIdle_IT(&huart1, radio_rx_buf, sizeof(radio_rx_buf));
-}
+static uint8_t g_can_rx_subscribed = 0;
+static uint8_t g_radio_rx_subscribed = 0;
 
 /* ---------------- Time helpers: 32->64 extender ---------------- */
 static uint64_t stm_now_ms(void *user) {
@@ -53,120 +45,56 @@ uint64_t node_now_since_ms(void *user) {
 RouterState g_router = {.r = NULL, .created = 0, .start_time = 0};
 
 /* ---------------- TX helpers ---------------- */
-SedsResult send_can_bus(const uint8_t *bytes, size_t len){
-  FDCAN2->TXBAR |= (1 << 0); // Set the corresponding bit to request transmission
-      //transmit CAN frame
-      FDCAN_TxHeaderTypeDef txHeader;
-      txHeader.Identifier = 0x03; // Example CAN ID
-      txHeader.IdType = FDCAN_STANDARD_ID;
-      txHeader.TxFrameType = FDCAN_DATA_FRAME;
-      txHeader.DataLength = len;
-      txHeader.ErrorStateIndicator = 0;
-      txHeader.BitRateSwitch = FDCAN_BRS_OFF;
-      txHeader.FDFormat = FDCAN_FD_CAN;
-      txHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS; 
-      txHeader.MessageMarker = 0;
-      uint8_t txData[64] = {0}; // Max 64 bytes for CAN FD
-      memcpy(txData, bytes, len > 64 ? 64 : len);
-      if (HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan2, &txHeader, txData) != HAL_OK) {
-        return SEDS_ERR;
-      }
-      return SEDS_OK;
+
+SedsResult send_radio(const uint8_t *bytes, size_t len) {
+  return (radio_uart_send_bytes(bytes, len) == HAL_OK) ? SEDS_OK : SEDS_ERR;
 }
-
-
-
-SedsResult send_radio(const uint8_t *bytes, size_t len){
-  //build uart frame
-  if (HAL_UART_Transmit(&huart1, (uint8_t *)bytes, len, HAL_MAX_DELAY) != HAL_OK) {
-    return SEDS_ERR;
-  }
-  return SEDS_OK;
-}
-
-/* Config setup */
-static inline size_t fdcan_dlc_to_len(uint32_t dlc)
-{
-    // HAL stores DLC as enum values (0..15). This mapping is standard CAN FD.
-    static const uint8_t map[16] = {
-        0, 1, 2, 3, 4, 5, 6, 7,
-        8, 12, 16, 20, 24, 32, 48, 64
-    };
-    dlc &= 0xF;
-    return map[dlc];
-}
-
-
 
 /* ---------------- TX path (CANSEND) ---------------- */
-SedsResult tx_send(const uint8_t *bytes, size_t len, const struct SedsLinkId *link_id, void *user) {
+SedsResult tx_send(const uint8_t *bytes, size_t len,
+                   const struct SedsLinkId *link_id, void *user) {
   (void)user;
 
-  //can bus send
+  // can bus send
   if (!link_id) {
     return SEDS_ERR;
   }
 
   switch (link_id->raw) {
-    case can_id: // recieved from the CAN bus, send to radio
-      return send_radio(bytes, len);
+  case can_id: // recieved from the CAN bus, send to radio
+    return send_radio(bytes, len);
 
-      break;
-    case radio_id: // recieved from the radio, send to CAN bus
-      return send_can_bus(bytes, len);
-      break;
-    default: // received from elsewhere (internal or default), send to both
-      if (send_can_bus(bytes, len) != SEDS_OK) {
-        return SEDS_ERR;
-      }
-      return send_radio(bytes, len);
-      break;
+    break;
+  case radio_id: // recieved from the radio, send to CAN bus
+     if (can_bus_send_bytes(bytes, len, 0x03) != HAL_OK) {
+      return SEDS_ERR;
+    }
+    return SEDS_OK;
+    break;
+  default: // received from elsewhere (internal or default), send to both
+    if (can_bus_send_bytes(bytes, len, 0x03) != HAL_OK) {
+      return SEDS_ERR;
+    }
+    return send_radio(bytes, len);
+    break;
   }
 }
 
-/* ---------------------------- Handlers for the interrupts of receiving from uart and can bus ---------------- */
-
-void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo1ITs)
-{
-    if ((RxFifo1ITs & FDCAN_IT_RX_FIFO1_NEW_MESSAGE) == 0) {
-        return;
-    }
-
-    FDCAN_RxHeaderTypeDef hdr;
-    uint8_t data[64];
-
-    // Drain FIFO1 (could be multiple frames pending)
-    while (HAL_FDCAN_GetRxFifoFillLevel(hfdcan, FDCAN_RX_FIFO1) > 0) {
-        if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO1, &hdr, data) != HAL_OK) {
-            break;
-        }
-
-        size_t len = fdcan_dlc_to_len(hdr.DataLength);
-
-        rx_asynchronous(data, len, &can_link_id);
-    }
-}
-
-void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
-{
-    if (huart->Instance != USART1) {
-        return;
-    }
-
-    if (Size > 0) {
-        // IMPORTANT: radio_rx_buf is static, so it stays valid after return.
-        // BUT the next ReceiveToIdle will overwrite it, so rx_asynchronous must
-        // either copy immediately OR you should copy/queue before restarting.
-        rx_asynchronous(radio_rx_buf, (size_t)Size, &radio_link_id);
-    }
-
-    // Re-arm reception for the next chunk
-    telemetry_radio_rx_start();
-}
-
-
 /* ---------------- RX helpers ---------------- */
-void rx_synchronous(const uint8_t *bytes, size_t len, const SedsLinkId *link_id) {
+// Radio RX callback
+static void telemetry_radio_rx(const uint8_t *data, size_t len, void *user) {
+  (void)user;
+  rx_asynchronous(data, len, &radio_link_id);
+}
+
+// CAN bus RX callback
+static void telemetry_can_rx(const uint8_t *data, size_t len, void *user) {
+  (void)user;
+  rx_asynchronous(data, len, &can_link_id);
+}
+
+void rx_synchronous(const uint8_t *bytes, size_t len,
+                    const SedsLinkId *link_id) {
   if (!bytes || !len)
     return;
   if (!g_router.r) {
@@ -174,10 +102,11 @@ void rx_synchronous(const uint8_t *bytes, size_t len, const SedsLinkId *link_id)
       return;
   }
 
-  seds_router_receive_serialized_v2(g_router.r,link_id, bytes, len);
+  seds_router_receive_serialized_v2(g_router.r, link_id, bytes, len);
 }
 
-void rx_asynchronous(const uint8_t *bytes, size_t len, const SedsLinkId *link_id) {
+void rx_asynchronous(const uint8_t *bytes, size_t len,
+                     const SedsLinkId *link_id) {
   if (!bytes || !len)
     return;
   if (!g_router.r) {
@@ -188,7 +117,6 @@ void rx_asynchronous(const uint8_t *bytes, size_t len, const SedsLinkId *link_id
   seds_router_rx_serialized_packet_to_queue_v2(g_router.r, link_id, bytes, len);
 }
 
-
 /* ---------------- Router init (idempotent) ---------------- */
 SedsResult init_telemetry_router(void) {
 #ifndef TELEMETRY_ENABLED
@@ -198,19 +126,29 @@ SedsResult init_telemetry_router(void) {
   if (g_router.created && g_router.r)
     return SEDS_OK;
 
-  if (g_router.created && g_router.r) {
-
-    return SEDS_OK;
+  /* Subscribe exactly once */
+  if (!g_can_rx_subscribed) {
+    if (can_bus_subscribe_rx(telemetry_can_rx, NULL) == HAL_OK) {
+      g_can_rx_subscribed = 1;
+    } else {
+      /* Not fatal to router creation, but you'll miss RX */
+      /* You could return SEDS_ERR here if you want hard-fail. */
+      printf("Error: can_bus_subscribe_rx failed\r\n");
+    }
   }
+  if (!g_radio_rx_subscribed) {
+  if (radio_uart_subscribe_rx(telemetry_radio_rx, NULL) == HAL_OK) {
+    g_radio_rx_subscribed = 1;
+  } else {
+    printf("Error: radio_uart_subscribe_rx failed\r\n");
+  }
+}
 
-  
-  SedsRouter *r =
-      seds_router_new_v2(Seds_RM_Relay,
-                      tx_send,           /* tx callback */
-                      NULL,              /* tx_user */
-                      node_now_since_ms, /* clock */
-                      NULL,
-                      0);
+
+  SedsRouter *r = seds_router_new_v2(Seds_RM_Relay, tx_send, /* tx callback */
+                                     NULL,                   /* tx_user */
+                                     node_now_since_ms,      /* clock */
+                                     NULL, 0);
 
   if (!r) {
     printf("Error: failed to create router\r\n");
