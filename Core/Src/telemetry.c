@@ -50,6 +50,10 @@ SedsResult send_radio(const uint8_t *bytes, size_t len) {
   return (radio_uart_send_bytes(bytes, len) == HAL_OK) ? SEDS_OK : SEDS_ERR;
 }
 
+SedsResult send_can(const uint8_t *bytes, size_t len) {
+  return (can_bus_send_large(bytes, len, 0x03) == HAL_OK) ? SEDS_OK : SEDS_ERR;
+}
+
 /* ---------------- TX path (CANSEND) ---------------- */
 SedsResult tx_send(const uint8_t *bytes, size_t len,
                    const struct SedsLinkId *link_id, void *user) {
@@ -63,16 +67,12 @@ SedsResult tx_send(const uint8_t *bytes, size_t len,
   switch (link_id->raw) {
   case can_id: // recieved from the CAN bus, send to radio
     return send_radio(bytes, len);
-
     break;
   case radio_id: // recieved from the radio, send to CAN bus
-     if (can_bus_send_bytes(bytes, len, 0x03) != HAL_OK) {
-      return SEDS_ERR;
-    }
-    return SEDS_OK;
+    return send_can(bytes, len);
     break;
   default: // received from elsewhere (internal or default), send to both
-    if (can_bus_send_bytes(bytes, len, 0x03) != HAL_OK) {
+    if (send_can(bytes, len) != SEDS_OK) {
       return SEDS_ERR;
     }
     return send_radio(bytes, len);
