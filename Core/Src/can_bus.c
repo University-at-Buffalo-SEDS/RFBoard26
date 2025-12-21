@@ -1,12 +1,12 @@
 // can_bus.c
 //
 // CAN / CAN-FD helper with:
-//  - Subscriber fanout (like you already had)
+//  - Subscriber fanout
 //  - Correct HAL DLC handling (DataLength is a DLC code, not byte count)
 //  - Optional fragmentation/reassembly layer so you can send >64B buffers
 //  - ISR does *minimal work*: drains HW FIFO into a lock-free ring buffer
 //  - Thread/main-loop calls can_bus_process_rx() to reassemble + notify
-//  subscribers
+//    subscribers
 //
 // Notes / Assumptions:
 //  - Uses CAN FD frames for fragmentation (default payload 64 bytes).
@@ -18,14 +18,23 @@
 //  - You can call can_bus_process_rx() from a ThreadX thread, or main
 //  superloop.
 //
-// You need can_bus.h to define can_bus_rx_cb_t and prototypes used below.
-// Example callback type expected:
-//   typedef void (*can_bus_rx_cb_t)(const uint8_t *data, size_t len, void
-//   *user);
+// IMPORTANT CONCURRENCY NOTE:
+//  `volatile` head/tail alone does NOT guarantee publish/consume ordering for
+//  the ring slot contents by the C language rules. We add `__DMB()` barriers to
+//  ensure the slot is fully written before publishing `head` (release), and
+//  ensure the consumer sees the slot contents after observing `head` (acquire).
 
 #include "can_bus.h"
 #include <stdint.h>
 #include <string.h>
+
+// CMSIS barrier intrinsics (for __DMB()).
+// On STM32 this is typically available via core_cm*.h brought in by
+// stm32xx_hal.h, but including CMSIS directly is safest if your build allows
+// it.
+#if defined(__ARMCC_VERSION) || defined(__GNUC__) || defined(__ICCARM__)
+#include "cmsis_compiler.h"
+#endif
 
 #ifndef CAN_BUS_MAX_SUBSCRIBERS
 #define CAN_BUS_MAX_SUBSCRIBERS 8
@@ -171,12 +180,18 @@ static inline uint16_t rb_next(uint16_t v) {
   return v;
 }
 
-static inline int rb_is_empty(void) { return g_rx_head == g_rx_tail; }
+static inline int __attribute__((unused)) rb_is_empty(void) {
+  return g_rx_head == g_rx_tail;
+}
 
 static inline int rb_is_full(void) { return rb_next(g_rx_head) == g_rx_tail; }
 
 // Push frame from ISR. Drop-oldest on overflow (hybrid “stay current”
 // behavior).
+//
+// Memory ordering:
+//  - We must ensure slot writes are visible before publishing head.
+//  - `__DMB()` acts as a release barrier here.
 static inline void rb_push_drop_oldest(uint32_t std_id, const uint8_t *data,
                                        uint8_t len) {
   if (len > 64)
@@ -188,20 +203,34 @@ static inline void rb_push_drop_oldest(uint32_t std_id, const uint8_t *data,
   }
 
   uint16_t h = g_rx_head;
+
   g_rx_ring[h].std_id = std_id;
   g_rx_ring[h].len = len;
   memcpy(g_rx_ring[h].data, data, len);
 
+  __DMB(); // publish slot before updating head (release)
   g_rx_head = rb_next(h);
 }
 
 // Pop frame in thread context
+//
+// Memory ordering:
+//  - After observing head != tail, we must ensure subsequent reads of the slot
+//    see the writes that happened-before the producer published head.
+//  - `__DMB()` acts as an acquire barrier here.
 static inline int rb_pop(can_bus_rx_frame_t *out) {
-  if (rb_is_empty())
+  uint16_t t = g_rx_tail;
+  uint16_t h = g_rx_head;
+
+  if (h == t)
     return 0;
 
-  uint16_t t = g_rx_tail;
+  __DMB(); // ensure slot contents are visible after seeing head advance
+           // (acquire)
+
   *out = g_rx_ring[t];
+
+  __DMB(); // ensure slot read completes before we advance tail (conservative)
   g_rx_tail = rb_next(t);
   return 1;
 }
@@ -347,8 +376,8 @@ static void handle_rx_frame(const can_bus_rx_frame_t *f, uint32_t now_ms) {
       if (s->frag_cnt == 0) {
         s->frag_cnt = hdr.frag_cnt;
         s->total_len = hdr.total_len;
-        s->data_cap = payload_len; // data bytes available in each fragment
-                                   // frame (can vary, but we assume consistent)
+        s->data_cap =
+            payload_len; // data bytes available in each fragment frame
         s->got_count = 0;
         memset(s->got_mask, 0, sizeof(s->got_mask));
       } else {
@@ -361,15 +390,11 @@ static void handle_rx_frame(const can_bus_rx_frame_t *f, uint32_t now_ms) {
           reasm_reset(s);
           return;
         }
-        // If payload_len changed drastically, you can either accept it or
-        // reset. We'll accept smaller payload_len for last fragment frames, but
-        // we still use s->data_cap for offset math. If the sender always uses
-        // fixed wire frames, this stays consistent.
+        // If payload_len changes, we tolerate it (often last frame is shorter),
+        // but offset math uses s->data_cap established at first fragment.
       }
 
       // Compute where this fragment’s payload should land
-      // Offset = frag_idx * s->data_cap (based on initial observed payload
-      // capacity)
       uint32_t off = (uint32_t)hdr.frag_idx * (uint32_t)s->data_cap;
       if (off >= s->total_len)
         return;
@@ -389,7 +414,6 @@ static void handle_rx_frame(const can_bus_rx_frame_t *f, uint32_t now_ms) {
 
       // Complete?
       if (s->got_count == s->frag_cnt) {
-        // Deliver reassembled payload to subscribers
         can_bus_notify_rx(s->buf, s->total_len);
         reasm_reset(s);
       }
@@ -411,6 +435,7 @@ void can_bus_init(FDCAN_HandleTypeDef *hfdcan) {
   // subscribers static-zeroed
   HAL_FDCAN_ActivateNotification(hfdcan, FDCAN_IT_RX_FIFO1_NEW_MESSAGE, 0);
   HAL_FDCAN_Start(hfdcan);
+
   // reset rings + reasm
   g_rx_head = 0;
   g_rx_tail = 0;
