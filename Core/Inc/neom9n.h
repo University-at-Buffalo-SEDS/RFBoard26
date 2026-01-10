@@ -27,6 +27,9 @@
 #define NMEA_TMSTP_SIZE 0xA			// Size of nmea timestamp word 
 #define NMEA_TALKERID_SIZE 0x6		// Size of nmea talkerID word
 
+#define TAG(a,b,c) ((a << 16) | (b << 8) | (c))  //Packs size 3 str for state
+uint8_t GLOBAL_HIGH_TX[SPI_RX_BUFFER_SIZE] = {[0 ... SPI_RX_BUFFER_SIZE-1] = 0xFF}; // Global TX buffer filled with 0xFF for SPI reads
+
 // GPIO defs 
 #define GPS_GPIO_PIN GPS_CS_Pin
 #define GPS_GPIO_PORT GPS_CS_GPIO_Port
@@ -48,6 +51,14 @@
 int char_to_int(uint8_t c) {
 	return ((char)c) - '0';
 }
+
+// NEOM9N State Definition 
+typedef enum {
+    NEOM9N_GGA = TAG('G','G','A'),
+    NEOM9N_GLL = TAG('G','L','L'),
+    NEOM9N_GNS = TAG('G','N','S'),
+    NEOM9N_RMC = TAG('R','M','C')
+} NEOM9N_state_t;
 
 
 // NEOM9N Configuration Structure

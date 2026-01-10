@@ -14,11 +14,6 @@
 #include <string.h>
 #include <stdatomic.h>
 
-// Globals 
-#define TAG(a,b,c) ((a << 16) | (b << 8) | (c))  //Packs size 3 str for swtich-case
-uint8_t GLOBAL_HIGH_TX[SPI_RX_BUFFER_SIZE] = {[0 ... SPI_RX_BUFFER_SIZE-1] = 0xFF}; // Global TX buffer filled with 0xFF for SPI reads
-
-
 /**
  * @brief Parse Coord from NMEA payload
  * @param payload Pointer to NMEA payload containing latitude
@@ -189,42 +184,41 @@ void read_nmea_rmc(NEOM9N_t *config, uint32_t max_wait) {
  * Ignores messages that are not alligned.
  */
 bool receive_nmea(NEOM9N_t *config, uint32_t max_wait, uint32_t max_ignores) {
-	uint8_t *rx[NMEA_PAYLOAD_RX_SIZE];
+	uint8_t rx[NMEA_PAYLOAD_RX_SIZE];
 	
 	NEOGPS_CS_LOW(); // start transation, set cs pin to LOW
 	uint32_t ignores = 0; 
 
 	while(ignores < max_ignores) {  // ignore until we find the start of nmea message denoted by '$'
-		HAL_SPI_TransmitReceive(config->hspi, GLOBAL_HIGH_TX, *rx, 1, max_wait);
-		if ((char)*rx[0] == '$') {
+		HAL_SPI_TransmitReceive(config->hspi, GLOBAL_HIGH_TX, rx, 1, max_wait);
+		if ((char)rx[0] == '$') {
 			break; //exit loop, start found
 		}
 		ignores ++; //start not found, continue search
 	}
-	if ((char)*rx[0] != '$') {
+	if ((char)rx[0] != '$') {
 		NEOGPS_CS_HIGH();
 		return false; //start not found after max ignores 
 	}
 
-	HAL_SPI_TransmitReceive(config->hspi, GLOBAL_HIGH_TX, *rx, NMEA_TALKERID_SIZE, max_wait); //pull talkerID from response 
+	HAL_SPI_TransmitReceive(config->hspi, GLOBAL_HIGH_TX, rx, NMEA_TALKERID_SIZE, max_wait); //pull talkerID from response 
 
-	char *pSent = (char*)rx + 2;
-	uint32_t tag = TAG(pSent[0], pSent[1], pSent[2]); // contruct tag
+	NEOM9N_state_t state = TAG(rx[2], rx[3], rx[4]); // pull states
 
-	switch(tag) {
-		case TAG('G','G','A'):
+	switch (state){
+		case NEOM9N_GGA:
 			read_nmea_gga(config, max_wait);
 			//print statement
 			break;
-		case TAG('G','L','L'):
+		case NEOM9N_GLL:
 			read_nmea_gll(config, max_wait);
 			//print statement 
 			break;
-		case TAG('G','N','S'):
+		case NEOM9N_GNS:
 			read_nmea_gns(config, max_wait);
 			//print statement
 			break;
-		case TAG('R','M','C'):
+		case NEOM9N_RMC:
 			read_nmea_rmc(config, max_wait);
 			//print statement 
 			break;
