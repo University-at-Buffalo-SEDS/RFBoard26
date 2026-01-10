@@ -13,6 +13,7 @@
 #include <math.h>
 #include <string.h>
 #include <stdatomic.h>
+#include <ctype.h>
 
 /**
  * @brief Parse Coord from NMEA payload
@@ -25,6 +26,10 @@
 float parseCoord(uint8_t *payload, int degDigits) {
     int deg = 0;
     for (int i = 0; i < degDigits; i++) {
+		if (!isdigit(payload[i])) {
+			return NEOM9N_PARSE_ERR;
+		}
+
         deg = deg * 10 + char_to_int(payload[i]);
     }
 
@@ -32,6 +37,10 @@ float parseCoord(uint8_t *payload, int degDigits) {
     float pos = 10;
     for (int i = 0; i < 8; i++) {
         if (i != 2) {
+			if (!isdigit(payload[degDigits + i])) {
+				return NEOM9N_PARSE_ERR;
+			}
+
             min += pos * char_to_int(payload[degDigits + i]);
             pos /= 10;
         }
@@ -47,22 +56,22 @@ float parseCoord(uint8_t *payload, int degDigits) {
  * @param rx Pointer to RX buffer
  * @param size Maximum number of bytes to read
  * @param max_wait Maximum wait time for SPI operations
- * @return true if data was read, false if a comma was encountered first
+ * @return NEOM9N_OK if data was read, NEOM9N_PARSE_ERR if a comma was encountered first
  * 
  * Reads bytes into rx until a comma is encountered or size bytes have been read.
  * The first byte is checked to see if it's a comma; if so, no further bytes are read.
  */
-bool receive_nmea_payload(SPI_HandleTypeDef *hspi, uint8_t *tx, uint8_t *rx, uint16_t size, uint32_t max_wait) { 
+NEOM9N_status_t receive_nmea_payload(SPI_HandleTypeDef *hspi, uint8_t *tx, uint8_t *rx, uint16_t size, uint32_t max_wait) { 
 	//stop at ',' or size bytes
 	HAL_SPI_TransmitReceive(hspi, tx, rx, 1, max_wait);  //read first byte 
 	
 	if (rx[0] == ',') {
-		return false;   //if first byte is comma, stop reading
+		return NEOM9N_PARSE_ERR;   //if first byte is comma, stop reading
 	}
 
 	HAL_SPI_TransmitReceive(hspi, tx, rx+1, size-1, max_wait); 	//otherwise continue to read the rest into rx
 
-	return true;
+	return NEOM9N_OK;
 }
 
 
@@ -78,13 +87,13 @@ void read_nmea_lat_and_long(NEOM9N_t *config, uint32_t max_wait) {
 
 	//receive the latitude(ddmm.mmmmm)+ comma after
 	float recv_lat = config->lat;
-	if (receive_nmea_payload(config->hspi, GLOBAL_HIGH_TX, rx, NMEA_LATT_SIZE, max_wait) == true) {
+	if (receive_nmea_payload(config->hspi, GLOBAL_HIGH_TX, rx, NMEA_LATT_SIZE, max_wait) == NEOM9N_OK) {
 		recv_lat = parseCoord(rx,NMEA_LATT_SIZE);
 	}
 
 	//receive the NS indicator and comma after
 	uint8_t ns_indicator;
-	if (receive_nmea_payload(config->hspi, GLOBAL_HIGH_TX, &ns_indicator, NMEA_NS_SIZE, max_wait) == true) {
+	if (receive_nmea_payload(config->hspi, GLOBAL_HIGH_TX, &ns_indicator, NMEA_NS_SIZE, max_wait) == NEOM9N_OK) {
 		if (ns_indicator == 'N') {
 			config->lat = recv_lat;
 		} else {
@@ -95,13 +104,13 @@ void read_nmea_lat_and_long(NEOM9N_t *config, uint32_t max_wait) {
 
 	//receive the longitude(dddmm.mmmmm)+ comma after (one more d than latitude)
 	float recv_long = config->lon;
-	if (receive_nmea_payload(config->hspi, GLOBAL_HIGH_TX, rx, NMEA_LONG_SIZE, max_wait) == true) {
+	if (receive_nmea_payload(config->hspi, GLOBAL_HIGH_TX, rx, NMEA_LONG_SIZE, max_wait) == NEOM9N_OK) {
 		recv_long = parseCoord(rx,NMEA_LONG_SIZE);
 	}
 
 	//receive the EW indicator and comma after
 	uint8_t ew_indicator;
-	if (receive_nmea_payload(config->hspi, GLOBAL_HIGH_TX, &ew_indicator, NMEA_EW_SIZE, max_wait) == true) {
+	if (receive_nmea_payload(config->hspi, GLOBAL_HIGH_TX, &ew_indicator, NMEA_EW_SIZE, max_wait) == NEOM9N_OK) {
 		if (ew_indicator == 'E') {
 			config->lon = recv_long;
 		} else {
@@ -178,12 +187,12 @@ void read_nmea_rmc(NEOM9N_t *config, uint32_t max_wait) {
  * @param config Pointer to NeoGPS configuration structure
  * @param max_wait Maximum wait time for SPI operations
  * @param max_ignores Maximum number of messages to ignore
- * @return true if a message was processed, false if a message was ignored
+ * @return NEOM9N_OK if a message was processed, NEOM9N_TIMEOUT if a message was ignored
  * 
  * Receives NMEA messages over SPI and processes them based on their type.
  * Ignores messages that are not alligned.
  */
-bool receive_nmea(NEOM9N_t *config, uint32_t max_wait, uint32_t max_ignores) {
+NEOM9N_status_t receive_nmea(NEOM9N_t *config, uint32_t max_wait, uint32_t max_ignores) {
 	uint8_t rx[NMEA_PAYLOAD_RX_SIZE];
 	
 	NEOGPS_CS_LOW(); // start transation, set cs pin to LOW
@@ -198,7 +207,7 @@ bool receive_nmea(NEOM9N_t *config, uint32_t max_wait, uint32_t max_ignores) {
 	}
 	if ((char)rx[0] != '$') {
 		NEOGPS_CS_HIGH();
-		return false; //start not found after max ignores 
+		return NEOM9N_TIMEOUT; //start not found after max ignores 
 	}
 
 	HAL_SPI_TransmitReceive(config->hspi, GLOBAL_HIGH_TX, rx, NMEA_TALKERID_SIZE, max_wait); //pull talkerID from response 
@@ -225,9 +234,9 @@ bool receive_nmea(NEOM9N_t *config, uint32_t max_wait, uint32_t max_ignores) {
 		default:
 			NEOGPS_CS_HIGH();
 			//print statement
-			return false;
+			return NEOM9N_SPI_ERR;
 	}
 
 	NEOGPS_CS_HIGH();
-	return true;
+	return NEOM9N_OK;
 }

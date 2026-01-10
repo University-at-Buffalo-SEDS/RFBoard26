@@ -61,6 +61,17 @@ typedef enum {
 } NEOM9N_state_t;
 
 
+// NEOM9N status definition
+typedef enum {
+    NEOM9N_OK = 0,
+    NEOM9N_TIMEOUT,
+    NEOM9N_SPI_ERR,
+    NEOM9N_CRC_ERR,
+    NEOM9N_PARSE_ERR,
+    NEOM9N_NO_FIX
+} NEOM9N_status_t;
+
+
 // NEOM9N Configuration Structure
 typedef struct {
     SPI_HandleTypeDef *hspi;
@@ -70,13 +81,13 @@ typedef struct {
 
 
 // Function Prototypes
-bool receive_nmea_payload(SPI_HandleTypeDef *hspi, uint8_t *tx, uint8_t *rx, uint16_t size, uint32_t max_wait);
+NEOM9N_status_t receive_nmea_payload(SPI_HandleTypeDef *hspi, uint8_t *tx, uint8_t *rx, uint16_t size, uint32_t max_wait);
 void read_nmea_lat_and_long(NEOM9N_t *config, uint32_t max_wait);
 void read_nmea_gga(NEOM9N_t *config, uint32_t max_wait);
 void read_nmea_gll(NEOM9N_t *config, uint32_t max_wait);
 void read_nmea_gns(NEOM9N_t *config, uint32_t max_wait);
 void read_nmea_rmc(NEOM9N_t *config, uint32_t max_wait);
-bool receive_nmea(NEOM9N_t *config, uint32_t max_wait, uint32_t max_ignores);
+NEOM9N_status_t receive_nmea(NEOM9N_t *config, uint32_t max_wait, uint32_t max_ignores);
 
 
 
