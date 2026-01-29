@@ -9,17 +9,6 @@ extern "C" {
 
 #endif
 
-#define can_id 0x02
-#define radio_id 0x03
-
-static const SedsLinkId can_link_id = { 
-  .raw = can_id
-};
-
-static const SedsLinkId radio_link_id = { 
-  .raw = radio_id
-};
-
 // Router state type
 typedef struct {
   SedsRouter *r;
@@ -31,9 +20,7 @@ typedef struct {
 extern RouterState g_router;
 
 // Transmit and radio handlers implemented in telemetry.c
-SedsResult tx_send(const uint8_t *bytes, size_t len, const struct SedsLinkId *link_id, void *user);
-
-SedsResult router_handler(const SedsPacketView *pkt, SedsLinkId link_id, void *user);
+SedsResult tx_send(const uint8_t *bytes, size_t len, void *user);
 
 // Initialize router once; safe to call multiple times.
 SedsResult init_telemetry_router(void);
@@ -48,7 +35,7 @@ SedsResult log_telemetry_asynchronous(SedsDataType data_type, const void *data,
 
 SedsResult dispatch_tx_queue(void);
 
-void rx_asynchronous(const uint8_t *bytes, size_t len, const SedsLinkId *link_id);
+void rx_asynchronous(const uint8_t *bytes, size_t len);
 
 SedsResult process_rx_queue(void);
 
