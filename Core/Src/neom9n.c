@@ -161,7 +161,7 @@ void read_nmea_gll(NEOM9N_t *config, uint32_t max_wait) {
  * @format: time,lat,NS,lon,EW,mode,numSV,HDOP,alt,sep,diffAge,diffStation*cs\r\n
  */
 void read_nmea_gns(NEOM9N_t *config, uint32_t max_wait) {
-	read_nmea_gga(config, max_wait);
+	read_nmea_gga(config, max_wait); //pass gns data to gga handler for now
 }
 
 
@@ -217,26 +217,27 @@ NEOM9N_status_t receive_nmea(NEOM9N_t *config, uint32_t max_wait, uint32_t max_i
 	switch (state){
 		case NEOM9N_GGA:
 			read_nmea_gga(config, max_wait);
-			//print statement
+			//log statement
 			break;
 		case NEOM9N_GLL:
 			read_nmea_gll(config, max_wait);
-			//print statement 
+			//log statement 
 			break;
 		case NEOM9N_GNS:
 			read_nmea_gns(config, max_wait);
-			//print statement
+			//log statement
 			break;
 		case NEOM9N_RMC:
 			read_nmea_rmc(config, max_wait);
-			//print statement 
+			//log statement 
 			break;
 		default:
 			NEOGPS_CS_HIGH();
-			//print statement
+			//log statement
 			return NEOM9N_SPI_ERR;
 	}
 
 	NEOGPS_CS_HIGH();
+	//log statement
 	return NEOM9N_OK;
 }
