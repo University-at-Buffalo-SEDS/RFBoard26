@@ -5,15 +5,8 @@
  */
 
 #include "neom9n.h"
-#include "stm32g4xx_hal_def.h"
-#include "stm32g4xx_hal_spi.h"
 #include "telemetry.h"
-#include <stdint.h>
-#include <stdbool.h>
-#include <math.h>
-#include <string.h>
-#include <stdatomic.h>
-#include <ctype.h>
+#include "main.h"
 
 /**
  * @brief Parse Coord from NMEA payload
@@ -217,27 +210,21 @@ NEOM9N_status_t receive_nmea(NEOM9N_t *config, uint32_t max_wait, uint32_t max_i
 	switch (state){
 		case NEOM9N_GGA:
 			read_nmea_gga(config, max_wait);
-			//log statement
 			break;
 		case NEOM9N_GLL:
 			read_nmea_gll(config, max_wait);
-			//log statement 
 			break;
 		case NEOM9N_GNS:
 			read_nmea_gns(config, max_wait);
-			//log statement
 			break;
 		case NEOM9N_RMC:
 			read_nmea_rmc(config, max_wait);
-			//log statement 
 			break;
 		default:
 			NEOGPS_CS_HIGH();
-			//log statement
 			return NEOM9N_SPI_ERR;
 	}
 
 	NEOGPS_CS_HIGH();
-	//log statement
 	return NEOM9N_OK;
 }

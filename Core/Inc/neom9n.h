@@ -8,11 +8,15 @@
 #ifndef __CORE_INC_DRIVERS_NEOM9N_H 
 #define __CORE_INC_DRIVERS_NEOM9N_H  
 
-#include <stdint.h>  
-#include <stdbool.h>
 #include "stm32g4xx_hal.h"
 #include "stm32g4xx_hal_def.h"
 #include "stm32g4xx_hal_spi.h"
+#include <stdint.h>
+#include <stdbool.h>
+#include <math.h>
+#include <string.h>
+#include <stdatomic.h>
+#include <ctype.h>
 #include "main.h"
 
 // Globals
@@ -26,6 +30,7 @@
 #define NMEA_STATUS_SIZE 0x2		// Size of nmea status word
 #define NMEA_TMSTP_SIZE 0xA			// Size of nmea timestamp word 
 #define NMEA_TALKERID_SIZE 0x6		// Size of nmea talkerID word
+#define NEOM9N_ELEMENTS 0x3         // Number of elements in NEOM9N_t struct
 
 #define TAG(a,b,c) ((a << 16) | (b << 8) | (c))  //Packs size 3 str for state
 uint8_t GLOBAL_HIGH_TX[SPI_RX_BUFFER_SIZE] = {[0 ... SPI_RX_BUFFER_SIZE-1] = 0xFF}; // Global TX buffer filled with 0xFF for SPI reads
@@ -34,10 +39,8 @@ uint8_t GLOBAL_HIGH_TX[SPI_RX_BUFFER_SIZE] = {[0 ... SPI_RX_BUFFER_SIZE-1] = 0xF
 #define GPS_GPIO_PIN GPS_CS_Pin
 #define GPS_GPIO_PORT GPS_CS_GPIO_Port
 
-#define NEOGPS_CS_LOW() 											\
-	HAL_GPIO_WritePin(GPS_GPIO_PORT, GPS_GPIO_PIN, GPIO_PIN_RESET)
-#define NEOGPS_CS_HIGH() 											\
-	HAL_GPIO_WritePin(GPS_GPIO_PORT, GPS_GPIO_PIN, GPIO_PIN_SET)
+#define NEOGPS_CS_LOW() HAL_GPIO_WritePin(GPS_GPIO_PORT, GPS_GPIO_PIN, GPIO_PIN_RESET)
+#define NEOGPS_CS_HIGH() HAL_GPIO_WritePin(GPS_GPIO_PORT, GPS_GPIO_PIN, GPIO_PIN_SET)
 
 // Helper Functions
 
@@ -62,6 +65,7 @@ typedef enum {
 
 
 // NEOM9N status definition
+
 typedef enum {
     NEOM9N_OK = 0,
     NEOM9N_TIMEOUT,
@@ -69,7 +73,7 @@ typedef enum {
     NEOM9N_CRC_ERR,
     NEOM9N_PARSE_ERR,
     NEOM9N_NO_FIX
-} NEOM9N_status_t;
+} NEOM9N_status_t; 
 
 
 // NEOM9N Configuration Structure
