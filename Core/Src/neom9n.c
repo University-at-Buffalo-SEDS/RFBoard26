@@ -70,44 +70,44 @@ NEOM9N_status_t receive_nmea_payload(SPI_HandleTypeDef *hspi, uint8_t *tx, uint8
 
 /**
  * @brief Read latitude and longitude from NMEA payload
- * @param config Pointer to NeoGPS configuration structure
+ * @param packet Pointer to NeoGPS packet structure
  * @param max_wait Maximum wait time for SPI operations
  * 
- * Reads latitude and longitude from the NMEA payload and updates the config struct.
+ * Reads latitude and longitude from the NMEA payload and updates the packet struct.
  */
-void read_nmea_lat_and_long(NEOM9N_t *config, uint32_t max_wait) {
+void read_nmea_lat_and_long(NEOM9N_t *packet, uint32_t max_wait) {
 	uint8_t rx[NMEA_PAYLOAD_RX_SIZE]; //buffer for receiving nmea payload sections
 
 	//receive the latitude(ddmm.mmmmm)+ comma after
-	float recv_lat = config->lat;
-	if (receive_nmea_payload(config->hspi, GLOBAL_HIGH_TX, rx, NMEA_LATT_SIZE, max_wait) == NEOM9N_OK) {
+	float recv_lat = packet->lat;
+	if (receive_nmea_payload(packet->hspi, GLOBAL_HIGH_TX, rx, NMEA_LATT_SIZE, max_wait) == NEOM9N_OK) {
 		recv_lat = parseCoord(rx,NMEA_LATT_SIZE);
 	}
 
 	//receive the NS indicator and comma after
 	uint8_t ns_indicator;
-	if (receive_nmea_payload(config->hspi, GLOBAL_HIGH_TX, &ns_indicator, NMEA_NS_SIZE, max_wait) == NEOM9N_OK) {
+	if (receive_nmea_payload(packet->hspi, GLOBAL_HIGH_TX, &ns_indicator, NMEA_NS_SIZE, max_wait) == NEOM9N_OK) {
 		if (ns_indicator == 'N') {
-			config->lat = recv_lat;
+			packet->lat = recv_lat;
 		} else {
-			config->lat = -recv_lat;
+			packet->lat = -recv_lat;
 		}
 		
 	}
 
 	//receive the longitude(dddmm.mmmmm)+ comma after (one more d than latitude)
-	float recv_long = config->lon;
-	if (receive_nmea_payload(config->hspi, GLOBAL_HIGH_TX, rx, NMEA_LONG_SIZE, max_wait) == NEOM9N_OK) {
+	float recv_long = packet->lon;
+	if (receive_nmea_payload(packet->hspi, GLOBAL_HIGH_TX, rx, NMEA_LONG_SIZE, max_wait) == NEOM9N_OK) {
 		recv_long = parseCoord(rx,NMEA_LONG_SIZE);
 	}
 
 	//receive the EW indicator and comma after
 	uint8_t ew_indicator;
-	if (receive_nmea_payload(config->hspi, GLOBAL_HIGH_TX, &ew_indicator, NMEA_EW_SIZE, max_wait) == NEOM9N_OK) {
+	if (receive_nmea_payload(packet->hspi, GLOBAL_HIGH_TX, &ew_indicator, NMEA_EW_SIZE, max_wait) == NEOM9N_OK) {
 		if (ew_indicator == 'E') {
-			config->lon = recv_long;
+			packet->lon = recv_long;
 		} else {
-			config->lon = -recv_long;
+			packet->lon = -recv_long;
 		}
 		
 	}
@@ -116,68 +116,68 @@ void read_nmea_lat_and_long(NEOM9N_t *config, uint32_t max_wait) {
 
 /**
  * @brief Read NMEA GGA sentence, and NMEA GNS sentence
- * @param config Pointer to NeoGPS configuration structure
+ * @param packet Pointer to NeoGPS packet structure
  * @param max_wait Maximum wait time for SPI operations
  * 
  * Reads the GGA NMEA sentence and extracts latitude and longitude.
  * @format: time,lat,NS,lon,EW,fixQuality,numSV,HDOP,alt,sep,diffAge,diffStation,navStatus*cs\r\n
  */
-void read_nmea_gga(NEOM9N_t *config, uint32_t max_wait) {
+void read_nmea_gga(NEOM9N_t *packet, uint32_t max_wait) {
 	uint8_t rx[NMEA_PAYLOAD_RX_SIZE];
 
 	//receive the time ( hhmmss.ss) + comma after
-	receive_nmea_payload(config->hspi, GLOBAL_HIGH_TX, rx, NMEA_TMSTP_SIZE, max_wait);
+	receive_nmea_payload(packet->hspi, GLOBAL_HIGH_TX, rx, NMEA_TMSTP_SIZE, max_wait);
 
-	read_nmea_lat_and_long(config, max_wait);
+	read_nmea_lat_and_long(packet, max_wait);
 }
 
 
 /**
  * @brief Read NMEA GLL sentence
- * @param config Pointer to NeoGPS configuration structure
+ * @param packet Pointer to NeoGPS packet structure
  * @param max_wait Maximum wait time for SPI operations
  * 
  * Reads the GLL NMEA sentence and extracts latitude and longitude.
  * @format: lat,NS,lon,EW,time,status,posMode*cs\r\n
  */
-void read_nmea_gll(NEOM9N_t *config, uint32_t max_wait) {
-	read_nmea_lat_and_long(config, max_wait);
+void read_nmea_gll(NEOM9N_t *packet, uint32_t max_wait) {
+	read_nmea_lat_and_long(packet, max_wait);
 }
 
 
 /**
  * @brief Read NMEA GNS sentence
- * @param config Pointer to NeoGPS configuration structure
+ * @param packet Pointer to NeoGPS packet structure
  * @param max_wait Maximum wait time for SPI operations
  * 
  * Reads the GNS NMEA sentence and extracts latitude and longitude.
  * @format: time,lat,NS,lon,EW,mode,numSV,HDOP,alt,sep,diffAge,diffStation*cs\r\n
  */
-void read_nmea_gns(NEOM9N_t *config, uint32_t max_wait) {
-	read_nmea_gga(config, max_wait); //pass gns data to gga handler for now
+void read_nmea_gns(NEOM9N_t *packet, uint32_t max_wait) {
+	read_nmea_gga(packet, max_wait); //pass gns data to gga handler for now
 }
 
 
 /**
  * @brief Read NMEA RMC sentence
- * @param config Pointer to NeoGPS configuration structure
+ * @param packet Pointer to NeoGPS packet structure
  * @param max_wait Maximum wait time for SPI operations
  * 
  * Reads the RMC NMEA sentence and extracts latitude and longitude.
  * @format: time,status,lat,NS,lon,EW,sog,cog,date,magVar,magVarDir,posMode*cs\r\n
  */
-void read_nmea_rmc(NEOM9N_t *config, uint32_t max_wait) {
+void read_nmea_rmc(NEOM9N_t *packet, uint32_t max_wait) {
 	uint8_t rx[NMEA_PAYLOAD_RX_SIZE];
 
-	receive_nmea_payload(config->hspi, GLOBAL_HIGH_TX, rx, NMEA_TMSTP_SIZE, max_wait);  //receive the time ( hhmmss.ss) + comma after
-	receive_nmea_payload(config->hspi, GLOBAL_HIGH_TX, rx, NMEA_STATUS_SIZE, max_wait);  //receive the status
-	read_nmea_lat_and_long(config, max_wait);   //parse the lat and long
+	receive_nmea_payload(packet->hspi, GLOBAL_HIGH_TX, rx, NMEA_TMSTP_SIZE, max_wait);  //receive the time ( hhmmss.ss) + comma after
+	receive_nmea_payload(packet->hspi, GLOBAL_HIGH_TX, rx, NMEA_STATUS_SIZE, max_wait);  //receive the status
+	read_nmea_lat_and_long(packet, max_wait);   //parse the lat and long
 }
 
 
 /**
  * @brief Receive and process a single NMEA message over SPI
- * @param config Pointer to NeoGPS configuration structure
+ * @param packet Pointer to NeoGPS packet structure
  * @param max_wait Maximum wait time for SPI operations
  * @param max_ignores Maximum number of messages to ignore
  * @return NEOM9N_OK if a message was processed, NEOM9N_TIMEOUT if a message was ignored
@@ -185,14 +185,14 @@ void read_nmea_rmc(NEOM9N_t *config, uint32_t max_wait) {
  * Receives NMEA messages over SPI and processes them based on their type.
  * Ignores messages that are not alligned.
  */
-NEOM9N_status_t receive_nmea(NEOM9N_t *config, uint32_t max_wait, uint32_t max_ignores) {
+NEOM9N_status_t receive_nmea(NEOM9N_t *packet, uint32_t max_wait, uint32_t max_ignores) {
 	uint8_t rx[NMEA_PAYLOAD_RX_SIZE];
 	
 	NEOGPS_CS_LOW(); // start transation, set cs pin to LOW
 	uint32_t ignores = 0; 
 
 	while(ignores < max_ignores) {  // ignore until we find the start of nmea message denoted by '$'
-		HAL_SPI_TransmitReceive(config->hspi, GLOBAL_HIGH_TX, rx, 1, max_wait);
+		HAL_SPI_TransmitReceive(packet->hspi, GLOBAL_HIGH_TX, rx, 1, max_wait);
 		if ((char)rx[0] == '$') {
 			break; //exit loop, start found
 		}
@@ -203,22 +203,22 @@ NEOM9N_status_t receive_nmea(NEOM9N_t *config, uint32_t max_wait, uint32_t max_i
 		return NEOM9N_TIMEOUT; //start not found after max ignores 
 	}
 
-	HAL_SPI_TransmitReceive(config->hspi, GLOBAL_HIGH_TX, rx, NMEA_TALKERID_SIZE, max_wait); //pull talkerID from response 
+	HAL_SPI_TransmitReceive(packet->hspi, GLOBAL_HIGH_TX, rx, NMEA_TALKERID_SIZE, max_wait); //pull talkerID from response 
 
 	NEOM9N_state_t state = TAG(rx[2], rx[3], rx[4]); // pull states
 
 	switch (state){
 		case NEOM9N_GGA:
-			read_nmea_gga(config, max_wait);
+			read_nmea_gga(packet, max_wait);
 			break;
 		case NEOM9N_GLL:
-			read_nmea_gll(config, max_wait);
+			read_nmea_gll(packet, max_wait);
 			break;
 		case NEOM9N_GNS:
-			read_nmea_gns(config, max_wait);
+			read_nmea_gns(packet, max_wait);
 			break;
 		case NEOM9N_RMC:
-			read_nmea_rmc(config, max_wait);
+			read_nmea_rmc(packet, max_wait);
 			break;
 		default:
 			NEOGPS_CS_HIGH();

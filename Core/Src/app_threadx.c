@@ -28,6 +28,7 @@
 #include "telemetry.h"
 #include "RF-Threads.h"
 #include "tx_api.h"
+#include "neom9n.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
