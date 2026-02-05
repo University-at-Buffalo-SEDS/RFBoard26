@@ -7,11 +7,12 @@
 #include "neom9n.h"
 #include "telemetry.h"
 #include "main.h"
+#include <stdio.h>
 
 uint8_t GLOBAL_HIGH_TX[SPI_RX_BUFFER_SIZE] = {[0 ... SPI_RX_BUFFER_SIZE-1] = 0xFF}; // Global TX buffer filled with 0xFF for SPI reads
 
 /**
- * @note Helper function to convert char to int (for cleaner code)
+ * @note Helper function to convert char to int
  * 
  * @brief Convert a character digit to its decimal integer value
  * @param c Character digit
@@ -19,6 +20,35 @@ uint8_t GLOBAL_HIGH_TX[SPI_RX_BUFFER_SIZE] = {[0 ... SPI_RX_BUFFER_SIZE-1] = 0xF
  */
 int char_to_uint(uint8_t c) {
 	return ((char)c) - '0';
+}
+
+
+/**
+ * @note Helper function to convert float to str
+ * 
+ * @brief Convert a float into a char[] of its ascii chars
+ * @param value float to be converted
+ * @param buffer buffer to store result
+ * @param precision location of decimal point 
+ */
+void float_to_str(float value, char* buffer, int precision) {
+	int int_part = (int)value;
+    
+    int multiplier = 1;
+    for (int i = 0; i < precision; i++) {
+        multiplier *= 10;
+    }   // Calculate 10^precision
+    
+    int frac_part = (int)((value - int_part) * multiplier);
+    if (frac_part < 0) {
+		frac_part = -frac_part;
+	}
+    
+    // Build format string dynamically (e.g., "%d.%04d" for precision=4)
+    char format[16];
+    sprintf(format, "%%d.%%0%dd", precision);
+    
+    sprintf(buffer, format, int_part, frac_part);
 }
 
 
@@ -109,7 +139,7 @@ void read_nmea_lat_and_long(NEOM9N_t *packet, uint32_t max_wait) {
 		
 	}
 
-	//receive the longitude(dddmm.mmmmm)+ comma after (one more d than latitude)
+	//receive the longitude(ddmm.mmmmm)+ comma after
 	float recv_long = packet->lon;
 	if (receive_nmea_payload(packet->hspi, GLOBAL_HIGH_TX, rx, NMEA_LONG_SIZE, max_wait) == NEOM9N_OK) {
 		recv_long = parseCoord(rx,NMEA_LONG_SIZE);

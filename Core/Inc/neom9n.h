@@ -13,25 +13,24 @@
 #include "stm32g4xx_hal_spi.h"
 #include <stdint.h>
 #include <stdbool.h>
-#include <math.h>
 #include <string.h>
-#include <stdatomic.h>
 #include <ctype.h>
 #include "main.h"
 
 // Globals
-#define SPI_RX_BUFFER_SIZE 0x80    	// Size of SPI RX buffer in bytes
-#define NMEA_PAYLOAD_RX_SIZE 0x20   // Size of NMEA payload RX buffer in bytes
-#define MAX_NMEA_IGNORES 0x1F4      // Maximum number of NMEA sentences to ignore when searching for a valid one
-#define MAX_NMEA_WAIT 0x14          // Maximun timout for SPI transmition 
-#define NMEA_LATT_SIZE 0xB   		// Size of nmea lattitude word
-#define NMEA_LONG_SIZE 0xC	 		// Size of nmea longitude word
-#define NMEA_NS_SIZE 0x2   			// Size of nmea ns word
-#define NMEA_EW_SIZE 0x2   			// Size of nmea ew word 
-#define NMEA_STATUS_SIZE 0x2		// Size of nmea status word
-#define NMEA_TMSTP_SIZE 0xA			// Size of nmea timestamp word 
-#define NMEA_TALKERID_SIZE 0x6		// Size of nmea talkerID word
-#define NEOM9N_ELEMENTS 0x3         // Number of elements in NEOM9N_t struct
+#define SPI_RX_BUFFER_SIZE      0x80    // Size of SPI RX buffer in bytes
+#define NMEA_PAYLOAD_RX_SIZE    0x20    // Size of NMEA payload RX buffer in bytes
+#define NMEA_MAX_IGNORES        0x1F4   // Maximum number of NMEA sentences to ignore when searching for a valid one
+#define NMEA_MAX_WAIT           0x14    // Maximun timout for SPI transmition 
+#define NMEA_LATT_SIZE          0xB     // Size of nmea lattitude word
+#define NMEA_LONG_SIZE          0xB	 	// Size of nmea longitude word
+#define NMEA_NS_SIZE            0x2     // Size of nmea ns word
+#define NMEA_EW_SIZE            0x2   	// Size of nmea ew word 
+#define NMEA_STATUS_SIZE        0x2		// Size of nmea status word
+#define NMEA_TMSTP_SIZE         0xA		// Size of nmea timestamp word 
+#define NMEA_TALKERID_SIZE      0x6		// Size of nmea talkerID word
+#define NEOM9N_ELEMENTS         0x3     // Number of elements in NEOM9N_t struct
+#define NEOM9N_PRECISION        0x4     // Number of decimal places to pull lat/lon data
 
 #define TAG(a,b,c) ((a << 16) | (b << 8) | (c))  //Packs size 3 str for state
 extern uint8_t GLOBAL_HIGH_TX[SPI_RX_BUFFER_SIZE]; // Global TX buffer 
@@ -70,9 +69,11 @@ typedef struct {
 	float lon;
 } NEOM9N_t;
 
+// Helper Functions
+int char_to_uint(uint8_t c);
+void float_to_str(float value, char* buffer, int precision);
 
 // Function Prototypes
-int char_to_uint(uint8_t c);
 NEOM9N_status_t receive_nmea_payload(SPI_HandleTypeDef *hspi, uint8_t *tx, uint8_t *rx, uint16_t size, uint32_t max_wait);
 void read_nmea_lat_and_long(NEOM9N_t *packet, uint32_t max_wait);
 void read_nmea_gga(NEOM9N_t *packet, uint32_t max_wait);
