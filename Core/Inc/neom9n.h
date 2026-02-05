@@ -33,7 +33,6 @@
 #define NEOM9N_ELEMENTS 0x3         // Number of elements in NEOM9N_t struct
 
 #define TAG(a,b,c) ((a << 16) | (b << 8) | (c))  //Packs size 3 str for state
-uint8_t GLOBAL_HIGH_TX[SPI_RX_BUFFER_SIZE] = {[0 ... SPI_RX_BUFFER_SIZE-1] = 0xFF}; // Global TX buffer filled with 0xFF for SPI reads
 
 // GPIO defs 
 #define GPS_GPIO_PIN GPS_CS_Pin
@@ -41,19 +40,6 @@ uint8_t GLOBAL_HIGH_TX[SPI_RX_BUFFER_SIZE] = {[0 ... SPI_RX_BUFFER_SIZE-1] = 0xF
 
 #define NEOGPS_CS_LOW() HAL_GPIO_WritePin(GPS_GPIO_PORT, GPS_GPIO_PIN, GPIO_PIN_RESET)
 #define NEOGPS_CS_HIGH() HAL_GPIO_WritePin(GPS_GPIO_PORT, GPS_GPIO_PIN, GPIO_PIN_SET)
-
-// Helper Functions
-
-/**
- * @note Helper function to convert char to int (for cleaner code)
- * 
- * @brief Convert a character digit to its decimal integer value
- * @param c Character digit
- * @return Decimal integer value
- */
-int char_to_int(uint8_t c) {
-	return ((char)c) - '0';
-}
 
 // NEOM9N State Definition 
 typedef enum {
@@ -84,6 +70,7 @@ typedef struct {
 
 
 // Function Prototypes
+int char_to_uint(uint8_t c);
 NEOM9N_status_t receive_nmea_payload(SPI_HandleTypeDef *hspi, uint8_t *tx, uint8_t *rx, uint16_t size, uint32_t max_wait);
 void read_nmea_lat_and_long(NEOM9N_t *packet, uint32_t max_wait);
 void read_nmea_gga(NEOM9N_t *packet, uint32_t max_wait);

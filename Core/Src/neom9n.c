@@ -8,6 +8,21 @@
 #include "telemetry.h"
 #include "main.h"
 
+
+uint8_t GLOBAL_HIGH_TX[SPI_RX_BUFFER_SIZE] = {[0 ... SPI_RX_BUFFER_SIZE-1] = 0xFF}; // Global TX buffer filled with 0xFF for SPI reads
+
+/**
+ * @note Helper function to convert char to int (for cleaner code)
+ * 
+ * @brief Convert a character digit to its decimal integer value
+ * @param c Character digit
+ * @return Decimal integer value
+ */
+int char_to_uint(uint8_t c) {
+	return ((char)c) - '0';
+}
+
+
 /**
  * @brief Parse Coord from NMEA payload
  * @param payload Pointer to NMEA payload containing latitude
@@ -23,7 +38,7 @@ float parseCoord(uint8_t *payload, int degDigits) {
 			return NEOM9N_PARSE_ERR;
 		}
 
-        deg = deg * 10 + char_to_int(payload[i]);
+        deg = deg * 10 + char_to_uint(payload[i]);
     }
 
     float min = 0;
@@ -34,7 +49,7 @@ float parseCoord(uint8_t *payload, int degDigits) {
 				return NEOM9N_PARSE_ERR;
 			}
 
-            min += pos * char_to_int(payload[degDigits + i]);
+            min += pos * char_to_uint(payload[degDigits + i]);
             pos /= 10;
         }
     }
