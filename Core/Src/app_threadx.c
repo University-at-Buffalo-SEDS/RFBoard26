@@ -78,7 +78,7 @@ UINT App_ThreadX_Init(VOID *memory_ptr)
 
   /* USER CODE BEGIN App_ThreadX_Init */
   create_telemetry_thread();
-
+  create_neom9n_thread();
   /* USER CODE END App_ThreadX_Init */
 
   return ret;

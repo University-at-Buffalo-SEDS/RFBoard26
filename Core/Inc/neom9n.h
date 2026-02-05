@@ -23,6 +23,7 @@
 #define SPI_RX_BUFFER_SIZE 0x80    	// Size of SPI RX buffer in bytes
 #define NMEA_PAYLOAD_RX_SIZE 0x20   // Size of NMEA payload RX buffer in bytes
 #define MAX_NMEA_IGNORES 0x1F4      // Maximum number of NMEA sentences to ignore when searching for a valid one
+#define MAX_NMEA_WAIT 0x14          // Maximun timout for SPI transmition 
 #define NMEA_LATT_SIZE 0xB   		// Size of nmea lattitude word
 #define NMEA_LONG_SIZE 0xC	 		// Size of nmea longitude word
 #define NMEA_NS_SIZE 0x2   			// Size of nmea ns word
@@ -33,6 +34,7 @@
 #define NEOM9N_ELEMENTS 0x3         // Number of elements in NEOM9N_t struct
 
 #define TAG(a,b,c) ((a << 16) | (b << 8) | (c))  //Packs size 3 str for state
+extern uint8_t GLOBAL_HIGH_TX[SPI_RX_BUFFER_SIZE]; // Global TX buffer 
 
 // GPIO defs 
 #define GPS_GPIO_PIN GPS_CS_Pin

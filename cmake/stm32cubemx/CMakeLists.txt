@@ -46,6 +46,7 @@ set(MX_Application_Src
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/telemetry.c 
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/telemetry_hooks.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/telemetry_thread.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/neom9n_thread.c
 )
 
 # STM32 HAL/LL Drivers

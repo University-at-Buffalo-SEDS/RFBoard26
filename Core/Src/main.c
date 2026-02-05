@@ -22,6 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "stm32g4xx_hal_spi.h"
 #include "ux_api.h"
 #include "ux_device_class_cdc_acm.h"
 #include <stdint.h>
@@ -55,6 +56,8 @@ FDCAN_HandleTypeDef hfdcan2;
 UART_HandleTypeDef huart1;
 
 PCD_HandleTypeDef hpcd_USB_FS;
+
+SPI_HandleTypeDef hspi;
 
 /* USER CODE BEGIN PV */
 

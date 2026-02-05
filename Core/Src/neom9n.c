@@ -8,7 +8,6 @@
 #include "telemetry.h"
 #include "main.h"
 
-
 uint8_t GLOBAL_HIGH_TX[SPI_RX_BUFFER_SIZE] = {[0 ... SPI_RX_BUFFER_SIZE-1] = 0xFF}; // Global TX buffer filled with 0xFF for SPI reads
 
 /**
