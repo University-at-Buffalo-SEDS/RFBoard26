@@ -1,16 +1,32 @@
+// telemetry.c  (side-aware routing via 2 router sides)
+
 #include "telemetry.h"
-#include "app_threadx.h" // should bring in tx_api.h; if not, include tx_api.h directly
+#include "app_threadx.h"
+#include "main.h"
 #include "sedsprintf.h"
 #include "stm32g4xx_hal.h"
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stm32g4xx_hal_fdcan.h>
+#include <stm32g4xx_hal_uart.h>
 #include <string.h>
+#include "can_bus.h"
+#include "radio.h"
+
 #ifndef TELEMETRY_ENABLED
 static void print_data_no_telem(void *data, size_t len) {
-  // Implementation for debugging telemetry data
+  (void)data;
+  (void)len;
 }
 #endif
+
+static uint8_t g_can_rx_subscribed = 0;
+static uint8_t g_radio_rx_subscribed = 0;
+
+/* Side IDs assigned by seds_router_add_side_* */
+static int32_t g_side_can = -1;
+static int32_t g_side_radio = -1;
 
 /* ---------------- Time helpers: 32->64 extender ---------------- */
 static uint64_t stm_now_ms(void *user) {
@@ -19,7 +35,7 @@ static uint64_t stm_now_ms(void *user) {
   static uint64_t high = 0;
   uint32_t cur32 = HAL_GetTick();
   if (cur32 < last32) {
-    high += (1ULL << 32); /* 32-bit wrap (~49.7 days) */
+    high += (1ULL << 32);
   }
   last32 = cur32;
   return high | (uint64_t)cur32;
@@ -28,60 +44,78 @@ static uint64_t stm_now_ms(void *user) {
 uint64_t node_now_since_ms(void *user) {
   (void)user;
   const uint64_t now = stm_now_ms(NULL);
-  const RouterState s = g_router; /* snapshot */
+  const RouterState s = g_router;
   return s.r ? (now - s.start_time) : 0;
 }
 
 /* ---------------- Global router state ---------------- */
 RouterState g_router = {.r = NULL, .created = 0, .start_time = 0};
 
-/* ---------------- TX path (CANSEND) ---------------- */
+/* ---------------- TX helpers ---------------- */
+
+static SedsResult send_radio_bytes(const uint8_t *bytes, size_t len) {
+  return (radio_uart_send_bytes(bytes, len) == HAL_OK) ? SEDS_OK : SEDS_ERR;
+}
+
+static SedsResult send_can_bytes(const uint8_t *bytes, size_t len) {
+  return (can_bus_send_large(bytes, len, 0x03) == HAL_OK) ? SEDS_OK : SEDS_ERR;
+}
+
+/* NEW API TX callbacks per-side */
+static SedsResult tx_send_can(const uint8_t *bytes, size_t len, void *user) {
+  (void)user;
+  return send_can_bytes(bytes, len);
+}
+
+static SedsResult tx_send_radio(const uint8_t *bytes, size_t len, void *user) {
+  (void)user;
+  return send_radio_bytes(bytes, len);
+}
+
+/* telemetry.h still declares tx_send(); keep it for compatibility.
+   With side-aware routing it’s not used by the router anymore. */
 SedsResult tx_send(const uint8_t *bytes, size_t len, void *user) {
   (void)user;
-  (void)bytes;
-  (void)len;
-
-  /*TODO: Implement the cansend function*/
-
+  /* Safe fallback: broadcast to both */
+  if (send_can_bytes(bytes, len) != SEDS_OK) return SEDS_ERR;
+  if (send_radio_bytes(bytes, len) != SEDS_OK) return SEDS_ERR;
   return SEDS_OK;
 }
 
 /* ---------------- RX helpers ---------------- */
-void rx_synchronous(const uint8_t *bytes, size_t len) {
-  if (!bytes || !len)
-    return;
-  if (!g_router.r) {
-    if (init_telemetry_router() != SEDS_OK)
-      return;
-  }
 
-  seds_router_receive_serialized(g_router.r, bytes, len);
-}
-
-void rx_asynchronous(const uint8_t *bytes, size_t len) {
-  if (!bytes || !len)
-    return;
-  if (!g_router.r) {
-    if (init_telemetry_router() != SEDS_OK)
-      return;
-  }
-
-  seds_router_rx_serialized_packet_to_queue(g_router.r, bytes, len);
-}
-
-/* ---------------- Local endpoint handler (SD_CARD) ---------------- */
-SedsResult on_sd_packet(const SedsPacketView *pkt, void *user) {
+static void telemetry_radio_rx(const uint8_t *data, size_t len, void *user) {
   (void)user;
-
-  /* TODO: Implement the saving to SD logic*/
-  char buf[seds_pkt_to_string_len(pkt)];
-  SedsResult s = seds_pkt_to_string(pkt, buf, sizeof(buf));
-  if (s == SEDS_OK) {
-    printf("on_sd_packet: %s\r\n", buf);
-  } else {
-    printf("on_sd_packet: seds_pkt_to_string failed (%d)\r\n", s);
+  if (!data || !len) return;
+  if (!g_router.r) {
+    if (init_telemetry_router() != SEDS_OK) return;
   }
-  return s;
+  if (g_side_radio < 0) return;
+
+  (void)seds_router_rx_serialized_packet_to_queue_from_side(
+      g_router.r, (uint32_t)g_side_radio, data, len);
+}
+
+static void telemetry_can_rx(const uint8_t *data, size_t len, void *user) {
+  (void)user;
+  if (!data || !len) return;
+  if (!g_router.r) {
+    if (init_telemetry_router() != SEDS_OK) return;
+  }
+  if (g_side_can < 0) return;
+
+  (void)seds_router_rx_serialized_packet_to_queue_from_side(
+      g_router.r, (uint32_t)g_side_can, data, len);
+}
+
+/* telemetry.h API: generic async RX (no side info available here)
+   -> treat as "internal/unknown": enqueue without side tagging. */
+void rx_asynchronous(const uint8_t *bytes, size_t len) {
+  if (!bytes || !len) return;
+  if (!g_router.r) {
+    if (init_telemetry_router() != SEDS_OK) return;
+  }
+  (void)seds_router_rx_serialized_packet_to_queue(g_router.r, bytes, len);
 }
 
 /* ---------------- Router init (idempotent) ---------------- */
@@ -89,33 +123,73 @@ SedsResult init_telemetry_router(void) {
 #ifndef TELEMETRY_ENABLED
   return SEDS_OK;
 #endif
-  /* Fast check without lock to avoid needless acquire in the common case. */
-  if (g_router.created && g_router.r)
-    return SEDS_OK;
 
-  if (g_router.created && g_router.r) {
+  if (g_router.created && g_router.r) return SEDS_OK;
 
-    return SEDS_OK;
+  /* Subscribe exactly once */
+  if (!g_can_rx_subscribed) {
+    if (can_bus_subscribe_rx(telemetry_can_rx, NULL) == HAL_OK) {
+      g_can_rx_subscribed = 1;
+    } else {
+      printf("Error: can_bus_subscribe_rx failed\r\n");
+    }
+  }
+  if (!g_radio_rx_subscribed) {
+    if (radio_uart_subscribe_rx(telemetry_radio_rx, NULL) == HAL_OK) {
+      g_radio_rx_subscribed = 1;
+    } else {
+      printf("Error: radio_uart_subscribe_rx failed\r\n");
+    }
   }
 
+  /* Local endpoints (optional). Keep your handler wiring. */
   const SedsLocalEndpointDesc locals[] = {
-      {.endpoint = SEDS_EP_SD_CARD,
-       .packet_handler = on_sd_packet,
-       .user = NULL},
   };
 
-  SedsRouter *r =
-      seds_router_new(tx_send,           /* tx callback */
-                      NULL,              /* tx_user */
-                      node_now_since_ms, /* clock */
-                      locals, (uint32_t)(sizeof(locals) / sizeof(locals[0])));
+  SedsRouter *r = seds_router_new(
+      Seds_RM_Relay,
+      node_now_since_ms,
+      NULL,
+      locals,
+      (size_t)(sizeof(locals) / sizeof(locals[0])));
 
   if (!r) {
     printf("Error: failed to create router\r\n");
     g_router.r = NULL;
     g_router.created = 0;
-
     return SEDS_ERR;
+  }
+
+  /* Add two sides: CAN and RADIO */
+  g_side_can = seds_router_add_side_serialized(
+      r,
+      "can", 3,
+      tx_send_can,
+      NULL,
+      false);
+
+  if (g_side_can < 0) {
+    printf("Error: add CAN side failed (%d)\r\n", (int)g_side_can);
+    seds_router_free(r);
+    g_router.r = NULL;
+    g_router.created = 0;
+    return (SedsResult)g_side_can;
+  }
+
+  g_side_radio = seds_router_add_side_serialized(
+      r,
+      "radio", 5,
+      tx_send_radio,
+      NULL,
+      false);
+
+  if (g_side_radio < 0) {
+    printf("Error: add RADIO side failed (%d)\r\n", (int)g_side_radio);
+    seds_router_free(r);
+    g_router.r = NULL;
+    g_router.created = 0;
+    g_side_can = -1;
+    return (SedsResult)g_side_radio;
   }
 
   g_router.r = r;
@@ -125,71 +199,81 @@ SedsResult init_telemetry_router(void) {
   return SEDS_OK;
 }
 
-/* ---------------- Logging APIs ---------------- */
+/* ---------------- Logging (unchanged API) ---------------- */
+
+static SedsElemKind infer_kind_from_elem_size(size_t elem_size) {
+  if (elem_size == 4 || elem_size == 8) return SEDS_EK_FLOAT;
+  return SEDS_EK_UNSIGNED;
+}
+
 SedsResult log_telemetry_synchronous(SedsDataType data_type, const void *data,
-                                     size_t element_count,
-                                     size_t element_size) {
+                                     size_t element_count, size_t element_size) {
 #ifdef TELEMETRY_ENABLED
-
   if (!g_router.r) {
-    if (init_telemetry_router() != SEDS_OK)
-      return SEDS_ERR;
+    if (init_telemetry_router() != SEDS_OK) return SEDS_ERR;
   }
-  if (!data || element_count == 0 || element_size == 0)
-    return SEDS_ERR;
+  if (!data || element_count == 0 || element_size == 0) return SEDS_BAD_ARG;
 
-  const size_t total_bytes = element_count * element_size;
+  int32_t expected = seds_dtype_expected_size(data_type);
+  if (expected < 0) return (SedsResult)expected;
 
-  SedsResult res = seds_router_log(g_router.r, data_type, data, total_bytes);
+  size_t total_bytes = element_count * element_size;
+  if ((int32_t)total_bytes != expected) return SEDS_SIZE_MISMATCH;
 
-  return res;
-
+  return seds_router_log_typed_ex(g_router.r,
+                                 data_type,
+                                 data,
+                                 element_count,
+                                 element_size,
+                                 infer_kind_from_elem_size(element_size),
+                                 NULL,
+                                 0);
 #else
   (void)data_type;
-
   print_data_no_telem((void *)data, element_count * element_size);
   return SEDS_OK;
 #endif
 }
 
 SedsResult log_telemetry_asynchronous(SedsDataType data_type, const void *data,
-                                      size_t element_count,
-                                      size_t element_size) {
+                                      size_t element_count, size_t element_size) {
 #ifdef TELEMETRY_ENABLED
   if (!g_router.r) {
-    if (init_telemetry_router() != SEDS_OK)
-      return SEDS_ERR;
+    if (init_telemetry_router() != SEDS_OK) return SEDS_ERR;
   }
-  if (!data || element_count == 0 || element_size == 0)
-    return SEDS_ERR;
+  if (!data || element_count == 0 || element_size == 0) return SEDS_BAD_ARG;
 
-  const size_t total_bytes = element_count * element_size;
+  int32_t expected = seds_dtype_expected_size(data_type);
+  if (expected < 0) return (SedsResult)expected;
 
-  SedsResult res =
-      seds_router_log_queue(g_router.r, data_type, data, total_bytes);
+  size_t total_bytes = element_count * element_size;
+  if ((int32_t)total_bytes != expected) return SEDS_SIZE_MISMATCH;
 
-  return res;
+  return seds_router_log_typed_ex(g_router.r,
+                                 data_type,
+                                 data,
+                                 element_count,
+                                 element_size,
+                                 infer_kind_from_elem_size(element_size),
+                                 NULL,
+                                 1);
 #else
   (void)data_type;
-
   print_data_no_telem((void *)data, element_count * element_size);
   return SEDS_OK;
 #endif
 }
 
-/* ---------------- Queue processing ---------------- */
+/* ---------------- Queue processing (unchanged) ---------------- */
+
 SedsResult dispatch_tx_queue(void) {
 #ifndef TELEMETRY_ENABLED
   return SEDS_OK;
 #endif
   if (!g_router.r) {
-    if (init_telemetry_router() != SEDS_OK)
-      return SEDS_ERR;
+    if (init_telemetry_router() != SEDS_OK) return SEDS_ERR;
   }
-
-  SedsResult res = seds_router_process_tx_queue(g_router.r);
-
-  return res;
+  return seds_router_process_tx_queue(g_router.r);
 }
 
 SedsResult process_rx_queue(void) {
@@ -197,13 +281,9 @@ SedsResult process_rx_queue(void) {
   return SEDS_OK;
 #endif
   if (!g_router.r) {
-    if (init_telemetry_router() != SEDS_OK)
-      return SEDS_ERR;
+    if (init_telemetry_router() != SEDS_OK) return SEDS_ERR;
   }
-
-  SedsResult res = seds_router_process_rx_queue(g_router.r);
-
-  return res;
+  return seds_router_process_rx_queue(g_router.r);
 }
 
 SedsResult dispatch_tx_queue_timeout(uint32_t timeout_ms) {
@@ -211,14 +291,9 @@ SedsResult dispatch_tx_queue_timeout(uint32_t timeout_ms) {
   return SEDS_OK;
 #endif
   if (!g_router.r) {
-    if (init_telemetry_router() != SEDS_OK)
-      return SEDS_ERR;
+    if (init_telemetry_router() != SEDS_OK) return SEDS_ERR;
   }
-
-  SedsResult res =
-      seds_router_process_tx_queue_with_timeout(g_router.r, timeout_ms);
-
-  return res;
+  return seds_router_process_tx_queue_with_timeout(g_router.r, timeout_ms);
 }
 
 SedsResult process_rx_queue_timeout(uint32_t timeout_ms) {
@@ -226,14 +301,9 @@ SedsResult process_rx_queue_timeout(uint32_t timeout_ms) {
   return SEDS_OK;
 #endif
   if (!g_router.r) {
-    if (init_telemetry_router() != SEDS_OK)
-      return SEDS_ERR;
+    if (init_telemetry_router() != SEDS_OK) return SEDS_ERR;
   }
-
-  SedsResult res =
-      seds_router_process_rx_queue_with_timeout(g_router.r, timeout_ms);
-
-  return res;
+  return seds_router_process_rx_queue_with_timeout(g_router.r, timeout_ms);
 }
 
 SedsResult process_all_queues_timeout(uint32_t timeout_ms) {
@@ -241,115 +311,102 @@ SedsResult process_all_queues_timeout(uint32_t timeout_ms) {
   return SEDS_OK;
 #endif
   if (!g_router.r) {
-    if (init_telemetry_router() != SEDS_OK)
-      return SEDS_ERR;
+    if (init_telemetry_router() != SEDS_OK) return SEDS_ERR;
   }
-
-  SedsResult res =
-      seds_router_process_all_queues_with_timeout(g_router.r, timeout_ms);
-
-  return res;
+  return seds_router_process_all_queues_with_timeout(g_router.r, timeout_ms);
 }
+
+/* ---------------- Error logging (string-safe) ---------------- */
 
 SedsResult log_error_asyncronous(const char *fmt, ...) {
 #ifndef TELEMETRY_ENABLED
   return SEDS_OK;
 #endif
+  if (!g_router.r) {
+    if (init_telemetry_router() != SEDS_OK) return SEDS_ERR;
+  }
+
   va_list args;
   va_start(args, fmt);
 
-  // First pass: figure out how long the formatted string will be
   va_list args_copy;
   va_copy(args_copy, args);
-  int len = vsnprintf(NULL, 0, fmt, args_copy); // returns length excluding '\0'
+  int len = vsnprintf(NULL, 0, fmt, args_copy);
   va_end(args_copy);
 
   if (len < 0) {
-    // Formatting failed; handle however makes sense.
     va_end(args);
-    const char empty = '\0';
-    return log_telemetry_asynchronous(SEDS_DT_GENERIC_ERROR, &empty, 0, 0);
+    return SEDS_ERR;
   }
 
-  // Optional safety cap to avoid huge stack allocations:
-  if (len > 512)
-    len = 512;
+  if (len > 512) len = 512;
 
-  // Second pass: allocate exactly len+1 bytes on the stack (C99 VLA)
-  char data[(size_t)len + 1];
-
-  int written = vsnprintf(data, (size_t)len + 1, fmt, args);
+  char msg[(size_t)len + 1];
+  int written = vsnprintf(msg, (size_t)len + 1, fmt, args);
   va_end(args);
 
-  if (written < 0) {
-    const char empty = '\0';
-    return log_telemetry_asynchronous(SEDS_DT_GENERIC_ERROR, &empty, 0, 0);
-  }
+  if (written < 0) return SEDS_ERR;
 
-  // `written` should equal `len`, but we clamp just in case
-  size_t used = (size_t)written;
-
-  return log_telemetry_asynchronous(SEDS_DT_GENERIC_ERROR, data,
-                                    used, // number of bytes actually used
-                                    used  // number of elements (chars)
-  );
+  return seds_router_log_string_ex(g_router.r,
+                                  SEDS_DT_GENERIC_ERROR,
+                                  msg,
+                                  (size_t)written,
+                                  NULL,
+                                  1);
 }
+
 SedsResult log_error_syncronous(const char *fmt, ...) {
 #ifndef TELEMETRY_ENABLED
   return SEDS_OK;
 #endif
+  if (!g_router.r) {
+    if (init_telemetry_router() != SEDS_OK) return SEDS_ERR;
+  }
+
   va_list args;
   va_start(args, fmt);
 
-  // First pass: figure out how long the formatted string will be
   va_list args_copy;
   va_copy(args_copy, args);
-  int len = vsnprintf(NULL, 0, fmt, args_copy); // returns length excluding '\0'
+  int len = vsnprintf(NULL, 0, fmt, args_copy);
   va_end(args_copy);
 
   if (len < 0) {
-    // Formatting failed; handle however makes sense.
     va_end(args);
-    const char empty = '\0';
-    return log_telemetry_synchronous(SEDS_DT_GENERIC_ERROR, &empty, 0, 0);
+    return SEDS_ERR;
   }
 
-  // Optional safety cap to avoid huge stack allocations:
-  if (len > 512)
-    len = 512;
+  if (len > 512) len = 512;
 
-  // Second pass: allocate exactly len+1 bytes on the stack (C99 VLA)
-  char data[(size_t)len + 1];
-
-  int written = vsnprintf(data, (size_t)len + 1, fmt, args);
+  char msg[(size_t)len + 1];
+  int written = vsnprintf(msg, (size_t)len + 1, fmt, args);
   va_end(args);
 
-  if (written < 0) {
-    const char empty = '\0';
-    return log_telemetry_synchronous(SEDS_DT_GENERIC_ERROR, &empty, 0, 0);
-  }
+  if (written < 0) return SEDS_ERR;
 
-  // `written` should equal `len`, but we clamp just in case
-  size_t used = (size_t)written;
-
-  return log_telemetry_synchronous(SEDS_DT_GENERIC_ERROR, data,
-                                   used, // number of bytes actually used
-                                   used  // number of elements (chars)
-  );
+  return seds_router_log_string_ex(g_router.r,
+                                  SEDS_DT_GENERIC_ERROR,
+                                  msg,
+                                  (size_t)written,
+                                  NULL,
+                                  0);
 }
 
 /* ---------------- Error printing ---------------- */
+
 SedsResult print_telemetry_error(const int32_t error_code) {
 #ifndef TELEMETRY_ENABLED
   return SEDS_OK;
 #endif
-  /* Use a small fixed buffer to avoid big stack frames. */
-  char buf[seds_error_to_string_len(error_code)];
+  int32_t need = seds_error_to_string_len(error_code);
+  if (need <= 0) return (SedsResult)need;
+
+  char buf[(size_t)need];
   SedsResult res = seds_error_to_string(error_code, buf, sizeof(buf));
   if (res == SEDS_OK) {
     printf("Error: %s\r\n", buf);
   } else {
-    log_error_asyncronous("Error: seds_error_to_string failed: %d\r\n", res);
+    (void)log_error_asyncronous("Error: seds_error_to_string failed: %d\r\n", (int)res);
   }
   return res;
 }
