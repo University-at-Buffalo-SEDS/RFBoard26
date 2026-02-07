@@ -18,22 +18,12 @@
 #include "main.h"
 
 // Globals
-#define SPI_RX_BUFFER_SIZE      0x80    // Size of SPI RX buffer in bytes
-#define NMEA_PAYLOAD_RX_SIZE    0x20    // Size of NMEA payload RX buffer in bytes
-#define NMEA_MAX_IGNORES        0x1F4   // Maximum number of NMEA sentences to ignore when searching for a valid one
-#define NMEA_MAX_WAIT           0x14    // Maximun timout for SPI transmition 
-#define NMEA_LATT_SIZE          0xB     // Size of nmea lattitude word
-#define NMEA_LONG_SIZE          0xB	 	// Size of nmea longitude word
-#define NMEA_NS_SIZE            0x2     // Size of nmea ns word
-#define NMEA_EW_SIZE            0x2   	// Size of nmea ew word 
-#define NMEA_STATUS_SIZE        0x2		// Size of nmea status word
-#define NMEA_TMSTP_SIZE         0xA		// Size of nmea timestamp word 
-#define NMEA_TALKERID_SIZE      0x6		// Size of nmea talkerID word
-#define NEOM9N_ELEMENTS         0x3     // Number of elements in NEOM9N_t struct
-#define NEOM9N_PRECISION        0x4     // Number of decimal places to pull lat/lon data
+#define NMEA_MAX_SENTENCE_LENGTH    0x52    // NMEA standard max length
+#define NMEA_MAX_FIELD_LENGTH       0x10    // Max length of any single field
+#define NMEA_MAX_IGNORES            0x1F4   // Max number of NMEA sentences to ignore when searching for a valid one
+#define NMEA_MAX_WAIT               0x14    // Max timout for SPI transmition 
+#define NEOM9N_PRECISION            0x4     // Decimal places for lat/lon
 
-#define TAG(a,b,c) ((a << 16) | (b << 8) | (c))  //Packs size 3 str for state
-extern uint8_t GLOBAL_HIGH_TX[SPI_RX_BUFFER_SIZE]; // Global TX buffer 
 
 // GPIO defs 
 #define GPS_GPIO_PIN GPS_CS_Pin
@@ -43,6 +33,8 @@ extern uint8_t GLOBAL_HIGH_TX[SPI_RX_BUFFER_SIZE]; // Global TX buffer
 #define NEOGPS_CS_HIGH() HAL_GPIO_WritePin(GPS_GPIO_PORT, GPS_GPIO_PIN, GPIO_PIN_SET)
 
 // NEOM9N State Definition 
+#define TAG(a,b,c) ((a << 16) | (b << 8) | (c))  //Packs size 3 str for state
+
 typedef enum {
     NEOM9N_GGA = TAG('G','G','A'),
     NEOM9N_GLL = TAG('G','L','L'),
@@ -56,32 +48,54 @@ typedef enum {
     NEOM9N_OK = 0,
     NEOM9N_TIMEOUT,
     NEOM9N_SPI_ERR,
-    NEOM9N_CRC_ERR,
     NEOM9N_PARSE_ERR,
-    NEOM9N_NO_FIX
+    NEOM9N_NO_FIX,
+    NEOM9N_BUFFER_OVERFLOW
 } NEOM9N_status_t; 
 
 
-// NEOM9N Packet Structure
+// Updated GPS data packet structure
 typedef struct {
-    SPI_HandleTypeDef *hspi;
-	float lat;
-	float lon;
+    SPI_HandleTypeDef *hspi;    // SPI Handler
+     
+    // Position data
+    float lat;              // Decimal degrees, positive = North -> (x)
+    float lon;              // Decimal degrees, positive = East  -> (y)
+    float altitude_msl;     // Alt above mean sea level (meters) -> (z)
+     
+    // Time (UTC)
+    uint8_t hours;
+    uint8_t minutes;
+    uint8_t seconds;
+    uint16_t milliseconds;
+     
+    // Status
+    bool valid_fix;             // True if GPS has valid fix
+    uint32_t last_update_tick;  // HAL tick of last successful update
+     
+    // Internal buffers for reduced stack usage
+    uint8_t field_buffer[NMEA_MAX_FIELD_LENGTH]; 
 } NEOM9N_t;
 
-// Helper Functions
-int char_to_uint(uint8_t c);
-void float_to_str(float value, char* buffer, int precision);
-
-// Function Prototypes
-NEOM9N_status_t receive_nmea_payload(SPI_HandleTypeDef *hspi, uint8_t *tx, uint8_t *rx, uint16_t size, uint32_t max_wait);
-void read_nmea_lat_and_long(NEOM9N_t *packet, uint32_t max_wait);
-void read_nmea_gga(NEOM9N_t *packet, uint32_t max_wait);
-void read_nmea_gll(NEOM9N_t *packet, uint32_t max_wait);
-void read_nmea_gns(NEOM9N_t *packet, uint32_t max_wait);
-void read_nmea_rmc(NEOM9N_t *packet, uint32_t max_wait);
+// Function prototypes
+void gps_init(NEOM9N_t *packet, SPI_HandleTypeDef *hspi);
+bool gps_has_fix(const NEOM9N_t *packet);
+void pack_gps_data(const NEOM9N_t *packet, uint8_t *buffer);
+void pack_time_data(const NEOM9N_t *packet, uint8_t *buffer);
+double time_to_seconds(const NEOM9N_t *packet);
+NEOM9N_status_t read_nmea_gga(NEOM9N_t *packet, uint32_t max_wait);
+NEOM9N_status_t read_nmea_gll(NEOM9N_t *packet, uint32_t max_wait);
+NEOM9N_status_t read_nmea_gns(NEOM9N_t *packet, uint32_t max_wait);
+NEOM9N_status_t read_nmea_rmc(NEOM9N_t *packet, uint32_t max_wait);
 NEOM9N_status_t receive_nmea(NEOM9N_t *packet, uint32_t max_wait, uint32_t max_ignores);
 
+
+// Helper Functions
+NEOM9N_status_t read_field(NEOM9N_t *packet, uint8_t *buffer, uint16_t max_len, uint32_t timeout);
+void skip_field(NEOM9N_t *packet, uint32_t timeout);
+float parse_coord(const uint8_t *field, uint8_t deg_digits);
+float parse_float(const uint8_t *field);
+void parse_time(const uint8_t *field, uint8_t *h, uint8_t *m, uint8_t *s, uint16_t *ms);
 
 
 #endif /* __CORE_INC_DRIVERS_NEOM9N_H */

@@ -5,270 +5,444 @@
  */
 
 #include "neom9n.h"
-#include "telemetry.h"
 #include "main.h"
 #include <stdio.h>
 
-uint8_t GLOBAL_HIGH_TX[SPI_RX_BUFFER_SIZE] = {[0 ... SPI_RX_BUFFER_SIZE-1] = 0xFF}; // Global TX buffer filled with 0xFF for SPI reads
+static uint8_t GLOBAL_HIGH_TX[NMEA_MAX_SENTENCE_LENGTH] = {
+    [0 ... NMEA_MAX_SENTENCE_LENGTH-1] = 0xFF
+};  // Static TX buffer filled with 0xFF for SPI reads
 
 /**
- * @note Helper function to convert char to int
- * 
- * @brief Convert a character digit to its decimal integer value
- * @param c Character digit
- * @return Decimal integer value
+ * @brief Initialize GPS packet structure
  */
-int char_to_uint(uint8_t c) {
-	return ((char)c) - '0';
+void gps_init(NEOM9N_t *packet, SPI_HandleTypeDef *hspi) {
+    memset(packet, 0, sizeof(NEOM9N_t));
+    packet->hspi = hspi;
 }
 
 
 /**
- * @note Helper function to convert float to str
- * 
- * @brief Convert a float into a char[] of its ascii chars
- * @param value float to be converted
- * @param buffer buffer to store result
- * @param precision location of decimal point 
+ * @brief Convert GPS time to seconds since midnight UTC
  */
-void float_to_str(float value, char* buffer, int precision) {
-	int int_part = (int)value;
-    
-    int multiplier = 1;
-    for (int i = 0; i < precision; i++) {
-        multiplier *= 10;
-    }   // Calculate 10^precision
-    
-    int frac_part = (int)((value - int_part) * multiplier);
-    if (frac_part < 0) {
-		frac_part = -frac_part;
-	}
-    
-    // Build format string dynamically (e.g., "%d.%04d" for precision=4)
-    char format[16];
-    sprintf(format, "%%d.%%0%dd", precision);
-    
-    sprintf(buffer, format, int_part, frac_part);
+double time_to_seconds(const NEOM9N_t *packet) {
+    return (double)packet->hours * 3600.0 + 
+           (double)packet->minutes * 60.0 + 
+           (double)packet->seconds + 
+           (double)packet->milliseconds / 1000.0;
 }
 
 
 /**
- * @brief Parse Coord from NMEA payload
- * @param payload Pointer to NMEA payload containing latitude
- * @param degDigits for n digits
- * @return Coord in decimal degrees
+ * @brief Pack GPS position data as binary
  * 
- * Format: ddmm.mmmmm
+ * Format: Pack as little-endian floats
+ * Total: 12 bytes
  */
-float parseCoord(uint8_t *payload, int degDigits) {
-    int deg = 0;
-    for (int i = 0; i < degDigits; i++) {
-		if (!isdigit(payload[i])) {
-			return NEOM9N_PARSE_ERR;
-		}
+void pack_gps_data(const NEOM9N_t *packet, uint8_t *buffer) {
+    float *float_ptr = (float *)buffer;
+    float_ptr[0] = packet->lat;
+    float_ptr[1] = packet->lon;
+    float_ptr[2] = packet->altitude_msl;
+}
 
-        deg = deg * 10 + char_to_uint(payload[i]);
+
+/**
+ * @brief Pack GPS time as binary
+ * 
+ * Format: Pack as little-endian double
+ * Total: 8 bytes
+ */
+void pack_time_data(const NEOM9N_t *packet, uint8_t *buffer) {
+    double *double_ptr = (double *)buffer;
+    *double_ptr = time_to_seconds(packet);
+}
+
+
+/**
+ * @brief Check if GPS has valid fix
+ */
+bool gps_has_fix(const NEOM9N_t *packet) {
+    return packet->valid_fix;
+}
+
+
+/**
+ * @brief Read one NMEA field 
+ * @return 
+ *      NEOM9N_OK -> if field read
+ *      NEOM9N_PARSE_ERR -> if empty field
+ *      NEOM9N_BUFFER_OVERFLOW -> if idx reaches max
+ */
+NEOM9N_status_t read_field(NEOM9N_t *packet, uint8_t *buffer, uint16_t max_len, uint32_t timeout) {
+    uint16_t idx = 0;
+    uint8_t byte;
+    
+    while (idx < max_len) {
+        if (HAL_SPI_TransmitReceive(packet->hspi, GLOBAL_HIGH_TX, &byte, 1, timeout) != HAL_OK) {
+            return NEOM9N_SPI_ERR;
+        }
+        
+        if (byte == ',' || byte == '*') {
+            buffer[idx] = '\0';
+            if (idx == 0) {
+                return NEOM9N_PARSE_ERR;
+            }
+            return NEOM9N_OK;
+        }
+        buffer[idx++] = byte;
     }
+    
+    return NEOM9N_BUFFER_OVERFLOW;
+}
 
-    float min = 0;
-    float pos = 10;
-    for (int i = 0; i < 8; i++) {
-        if (i != 2) {
-			if (!isdigit(payload[degDigits + i])) {
-				return NEOM9N_PARSE_ERR;
-			}
 
-            min += pos * char_to_uint(payload[degDigits + i]);
-            pos /= 10;
+/**
+ * @brief Skip to next comma or asterisk
+ */
+void skip_field(NEOM9N_t *packet, uint32_t timeout) {
+    uint8_t byte;
+
+    while (1) {
+        HAL_SPI_TransmitReceive(packet->hspi, GLOBAL_HIGH_TX, &byte, 1, timeout);
+        if (byte == ',' || byte == '*') {
+            break;
         }
     }
-    return (float)deg + min / 60;
 }
 
 
 /**
- * @brief Receive a section of NMEA payload until a comma or size bytes
- * @param hspi Pointer to SPI handle
- * @param tx Pointer to TX buffer
- * @param rx Pointer to RX buffer
- * @param size Maximum number of bytes to read
- * @param max_wait Maximum wait time for SPI operations
- * @return NEOM9N_OK if data was read, NEOM9N_PARSE_ERR if a comma was encountered first
- * 
- * Reads bytes into rx until a comma is encountered or size bytes have been read.
- * The first byte is checked to see if it's a comma; if so, no further bytes are read.
+ * @brief Parse coordinate from NMEA format (ddmm.mmmmm or dddmm.mmmmm)
+ * @param field Field containing coordinate string
+ * @param deg_digits Number of degree digits (2 for lat, 3 for lon)
+ * @return Coordinate in decimal degrees, or 0.0 on error
  */
-NEOM9N_status_t receive_nmea_payload(SPI_HandleTypeDef *hspi, uint8_t *tx, uint8_t *rx, uint16_t size, uint32_t max_wait) { 
-	//stop at ',' or size bytes
-	HAL_SPI_TransmitReceive(hspi, tx, rx, 1, max_wait);  //read first byte 
-	
-	if (rx[0] == ',') {
-		return NEOM9N_PARSE_ERR;   //if first byte is comma, stop reading
-	}
-
-	HAL_SPI_TransmitReceive(hspi, tx, rx+1, size-1, max_wait); 	//otherwise continue to read the rest into rx
-
-	return NEOM9N_OK;
+float parse_coord(const uint8_t *field, uint8_t deg_digits) {
+    // Parse degrees
+    int32_t degrees = 0;
+    for (uint8_t i = 0; i < deg_digits; i++) {
+        if (!isdigit(field[i])) return 0.0f;
+        degrees = degrees * 10 + (field[i] - '0');
+    }
+    
+    // Parse minutes (mm.mmmmm format)
+    float minutes = 0.0f;
+    float divisor = 10.0f;
+    bool past_decimal = false;
+    
+    for (uint8_t i = deg_digits; field[i] != '\0' && i < deg_digits + 9; i++) {
+        if (field[i] == '.') {
+            past_decimal = true;
+            continue;
+        }
+        if (!isdigit(field[i])) {
+            break;
+        }
+        if (!past_decimal) {
+            minutes = minutes * 10 + (field[i] - '0');
+        } 
+        else {
+            minutes += (field[i] - '0') / divisor;
+            divisor *= 10.0f;
+        }
+    }
+    return (float)degrees + (minutes / 60.0f);  // Convert to decimal degrees
 }
 
-
 /**
- * @brief Read latitude and longitude from NMEA payload
- * @param packet Pointer to NeoGPS packet structure
- * @param max_wait Maximum wait time for SPI operations
- * 
- * Reads latitude and longitude from the NMEA payload and updates the packet struct.
+ * @brief Parse floating point number from field
  */
-void read_nmea_lat_and_long(NEOM9N_t *packet, uint32_t max_wait) {
-	uint8_t rx[NMEA_PAYLOAD_RX_SIZE]; //buffer for receiving nmea payload sections
+float parse_float(const uint8_t *field) {
+    if (field[0] == '\0') {
+        return 0.0f;
+    }
 
-	//receive the latitude(ddmm.mmmmm)+ comma after
-	float recv_lat = packet->lat;
-	if (receive_nmea_payload(packet->hspi, GLOBAL_HIGH_TX, rx, NMEA_LATT_SIZE, max_wait) == NEOM9N_OK) {
-		recv_lat = parseCoord(rx,NMEA_LATT_SIZE);
-	}
-
-	//receive the NS indicator and comma after
-	uint8_t ns_indicator;
-	if (receive_nmea_payload(packet->hspi, GLOBAL_HIGH_TX, &ns_indicator, NMEA_NS_SIZE, max_wait) == NEOM9N_OK) {
-		if (ns_indicator == 'N') {
-			packet->lat = recv_lat;
-		} else {
-			packet->lat = -recv_lat;
-		}
-		
-	}
-
-	//receive the longitude(ddmm.mmmmm)+ comma after
-	float recv_long = packet->lon;
-	if (receive_nmea_payload(packet->hspi, GLOBAL_HIGH_TX, rx, NMEA_LONG_SIZE, max_wait) == NEOM9N_OK) {
-		recv_long = parseCoord(rx,NMEA_LONG_SIZE);
-	}
-
-	//receive the EW indicator and comma after
-	uint8_t ew_indicator;
-	if (receive_nmea_payload(packet->hspi, GLOBAL_HIGH_TX, &ew_indicator, NMEA_EW_SIZE, max_wait) == NEOM9N_OK) {
-		if (ew_indicator == 'E') {
-			packet->lon = recv_long;
-		} else {
-			packet->lon = -recv_long;
-		}
-		
-	}
+    float result = 0.0f;
+    int sign = 1;
+    int idx = 0;
+    
+    if (field[0] == '-') {
+        sign = -1;
+        idx = 1;
+    }
+    
+    // Integer part
+    while (isdigit(field[idx])) {
+        result = result * 10 + (field[idx] - '0');
+        idx++;
+    }
+    
+    // Decimal part
+    if (field[idx] == '.') {
+        idx++;
+        float divisor = 10.0f;
+        while (isdigit(field[idx])) {
+            result += (field[idx] - '0') / divisor;
+            divisor *= 10.0f;
+            idx++;
+        }
+    }
+    
+    return result * sign;
 }
 
-
 /**
- * @brief Read NMEA GGA sentence, and NMEA GNS sentence
- * @param packet Pointer to NeoGPS packet structure
- * @param max_wait Maximum wait time for SPI operations
- * 
- * Reads the GGA NMEA sentence and extracts latitude and longitude.
- * @format: time,lat,NS,lon,EW,fixQuality,numSV,HDOP,alt,sep,diffAge,diffStation,navStatus*cs\r\n
+ * @brief Parse UTC time field (hhmmss.sss)
  */
-void read_nmea_gga(NEOM9N_t *packet, uint32_t max_wait) {
-	uint8_t rx[NMEA_PAYLOAD_RX_SIZE];
+void parse_time(const uint8_t *field, uint8_t *h, uint8_t *m, uint8_t *s, uint16_t *ms) {
+    if (strlen((char*)field) < 6) {
+        *h = 0;
+        *m = 0;
+        *s = 0;
+        *ms = 0;
+        return;
+    }
+    
+    *h = (field[0] - '0') * 10 + (field[1] - '0');
+    *m = (field[2] - '0') * 10 + (field[3] - '0');
+    *s = (field[4] - '0') * 10 + (field[5] - '0');
+    *ms = 0;
 
-	//receive the time ( hhmmss.ss) + comma after
-	receive_nmea_payload(packet->hspi, GLOBAL_HIGH_TX, rx, NMEA_TMSTP_SIZE, max_wait);
-
-	read_nmea_lat_and_long(packet, max_wait);
+    if (field[6] == '.' && strlen((char*)field) > 7) {
+        uint16_t mult = 100;
+        for (int i = 7; field[i] != '\0' && i < 10; i++) {
+            if (isdigit(field[i])) {
+                *ms += (field[i] - '0') * mult;
+                mult /= 10;
+            }
+        }
+    }
 }
 
-
 /**
- * @brief Read NMEA GLL sentence
- * @param packet Pointer to NeoGPS packet structure
- * @param max_wait Maximum wait time for SPI operations
+ * @brief Parse GGA sentence: $GPGGA,time,lat,N/S,lon,E/W,quality,sats,hdop,alt,M,sep,...
  * 
- * Reads the GLL NMEA sentence and extracts latitude and longitude.
- * @format: lat,NS,lon,EW,time,status,posMode*cs\r\n
+ * Extract: lat, lon, alt, time 
  */
-void read_nmea_gll(NEOM9N_t *packet, uint32_t max_wait) {
-	read_nmea_lat_and_long(packet, max_wait);
+NEOM9N_status_t read_nmea_gga(NEOM9N_t *packet, uint32_t max_wait) {
+    NEOM9N_status_t status;
+    
+    // Time
+    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
+    if (status == NEOM9N_OK) {
+        parse_time(packet->field_buffer, &packet->hours, &packet->minutes, 
+                  &packet->seconds, &packet->milliseconds);
+    }
+    
+    // Latt
+    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
+    if (status != NEOM9N_OK) {
+        packet->valid_fix = false;
+        return status;
+    }
+    float lat = parse_coord(packet->field_buffer, 2);  // ddmm.mmmm
+    
+    // N/S
+    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
+    if (status == NEOM9N_OK) {
+        packet->lat = (packet->field_buffer[0] == 'N') ? lat : -lat;
+    }
+    
+    // Long
+    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
+    if (status != NEOM9N_OK) {
+        packet->valid_fix = false;
+        return status;
+    }
+    float lon = parse_coord(packet->field_buffer, 3);  // dddmm.mmmm
+    
+    // E/W
+    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
+    if (status == NEOM9N_OK) {
+        packet->lon = (packet->field_buffer[0] == 'E') ? lon : -lon;
+    }
+    
+    // Fix qual
+    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
+    if (status == NEOM9N_OK) {
+        uint8_t fix_quality = packet->field_buffer[0] - '0';
+        packet->valid_fix = (fix_quality > 0);
+    }
+    
+    skip_field(packet, max_wait);    // Number of satalites
+    skip_field(packet, max_wait);    // HDOP
+    
+    // Alt
+    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
+    if (status == NEOM9N_OK) {
+        packet->altitude_msl = parse_float(packet->field_buffer);
+    }
+    
+    return NEOM9N_OK;
 }
 
-
 /**
- * @brief Read NMEA GNS sentence
- * @param packet Pointer to NeoGPS packet structure
- * @param max_wait Maximum wait time for SPI operations
+ * @brief Parse GLL sentence: $GPGLL,lat,N/S,lon,E/W,time,status,mode
  * 
- * Reads the GNS NMEA sentence and extracts latitude and longitude.
- * @format: time,lat,NS,lon,EW,mode,numSV,HDOP,alt,sep,diffAge,diffStation*cs\r\n
+ * Extract: lat, lon, time
+ * @note: GLL doesn't have alt (gpsz)
  */
-void read_nmea_gns(NEOM9N_t *packet, uint32_t max_wait) {
-	read_nmea_gga(packet, max_wait); //pass gns data to gga handler for now
+NEOM9N_status_t read_nmea_gll(NEOM9N_t *packet, uint32_t max_wait) {
+    NEOM9N_status_t status;
+    
+    // Latt
+    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
+    if (status != NEOM9N_OK) return status;
+    float lat = parse_coord(packet->field_buffer, 2);
+    
+    // N/S
+    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
+    if (status == NEOM9N_OK) {
+        packet->lat = (packet->field_buffer[0] == 'N') ? lat : -lat;
+    }
+    
+    // Long
+    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
+    if (status != NEOM9N_OK) return status;
+    float lon = parse_coord(packet->field_buffer, 3);
+    
+    // E/W
+    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
+    if (status == NEOM9N_OK) {
+        packet->lon = (packet->field_buffer[0] == 'E') ? lon : -lon;
+    }
+    
+    // Time
+    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
+    if (status == NEOM9N_OK) {
+        parse_time(packet->field_buffer, &packet->hours, &packet->minutes,
+                  &packet->seconds, &packet->milliseconds);
+    }
+    
+    // Status
+    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
+    if (status == NEOM9N_OK) {
+        packet->valid_fix = (packet->field_buffer[0] == 'A');
+    }
+    
+    //GLL doesn't provide alt, do not change from last entry
+    
+    return NEOM9N_OK;
 }
 
-
 /**
- * @brief Read NMEA RMC sentence
- * @param packet Pointer to NeoGPS packet structure
- * @param max_wait Maximum wait time for SPI operations
+ * @brief Parse RMC sentence: $GPRMC,time,status,lat,N/S,lon,E/W,speed,course,date,...
  * 
- * Reads the RMC NMEA sentence and extracts latitude and longitude.
- * @format: time,status,lat,NS,lon,EW,sog,cog,date,magVar,magVarDir,posMode*cs\r\n
+ * Extract: lat, lon, time
+ * @note: RMC doesn't have alt (gpsz)
  */
-void read_nmea_rmc(NEOM9N_t *packet, uint32_t max_wait) {
-	uint8_t rx[NMEA_PAYLOAD_RX_SIZE];
+NEOM9N_status_t read_nmea_rmc(NEOM9N_t *packet, uint32_t max_wait) {
+    NEOM9N_status_t status;
+    
+    // Time
+    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
+    if (status == NEOM9N_OK) {
+        parse_time(packet->field_buffer, &packet->hours, &packet->minutes,
+                  &packet->seconds, &packet->milliseconds);
+    }
+    
+    // Status
+    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
+    if (status == NEOM9N_OK) {
+        packet->valid_fix = (packet->field_buffer[0] == 'A');
+    }
+    
+    // Latt
+    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
+    if (status != NEOM9N_OK) return status;
+    float lat = parse_coord(packet->field_buffer, 2);
+    
+    // N/S
+    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
+    if (status == NEOM9N_OK) {
+        packet->lat = (packet->field_buffer[0] == 'N') ? lat : -lat;
+    }
+    
+    // Long
+    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
+    if (status != NEOM9N_OK) return status;
+    float lon = parse_coord(packet->field_buffer, 3);
+    
+    // E/W
+    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
+    if (status == NEOM9N_OK) {
+        packet->lon = (packet->field_buffer[0] == 'E') ? lon : -lon;
+    }
+    
+    // Skip remaining fields
+    // RMC doesn't provide alt, do not change from last entry
 
-	receive_nmea_payload(packet->hspi, GLOBAL_HIGH_TX, rx, NMEA_TMSTP_SIZE, max_wait);  //receive the time ( hhmmss.ss) + comma after
-	receive_nmea_payload(packet->hspi, GLOBAL_HIGH_TX, rx, NMEA_STATUS_SIZE, max_wait);  //receive the status
-	read_nmea_lat_and_long(packet, max_wait);   //parse the lat and long
+    return NEOM9N_OK;
 }
 
+/**
+ * @brief Parse GNS sentence: $GPGNS,time,lat,N/S,lon,E/W,mode,numSV,HDOP,alt,sep,...
+ * 
+ * Extract: lat, lon, alt, time
+ * GNS is same as GGA for our current use case
+ */
+NEOM9N_status_t read_nmea_gns(NEOM9N_t *packet, uint32_t max_wait) {
+    return read_nmea_gga(packet, max_wait);
+}
 
 /**
- * @brief Receive and process a single NMEA message over SPI
- * @param packet Pointer to NeoGPS packet structure
- * @param max_wait Maximum wait time for SPI operations
- * @param max_ignores Maximum number of messages to ignore
- * @return NEOM9N_OK if a message was processed, NEOM9N_TIMEOUT if a message was ignored
- * 
- * Receives NMEA messages over SPI and processes them based on their type.
- * Ignores messages that are not alligned.
+ * @brief Main function to receive and parse NMEA sentence
  */
 NEOM9N_status_t receive_nmea(NEOM9N_t *packet, uint32_t max_wait, uint32_t max_ignores) {
-	uint8_t rx[NMEA_PAYLOAD_RX_SIZE];
-	
-	NEOGPS_CS_LOW(); // start transation, set cs pin to LOW
-	uint32_t ignores = 0; 
-
-	while(ignores < max_ignores) {  // ignore until we find the start of nmea message denoted by '$'
-		HAL_SPI_TransmitReceive(packet->hspi, GLOBAL_HIGH_TX, rx, 1, max_wait);
-		if ((char)rx[0] == '$') {
-			break; //exit loop, start found
-		}
-		ignores ++; //start not found, continue search
-	}
-	if ((char)rx[0] != '$') {
-		NEOGPS_CS_HIGH();
-		return NEOM9N_TIMEOUT; //start not found after max ignores 
-	}
-
-	HAL_SPI_TransmitReceive(packet->hspi, GLOBAL_HIGH_TX, rx, NMEA_TALKERID_SIZE, max_wait); //pull talkerID from response 
-
-	NEOM9N_state_t state = TAG(rx[2], rx[3], rx[4]); // pull states
-
-	switch (state){
-		case NEOM9N_GGA:
-			read_nmea_gga(packet, max_wait);
-			break;
-		case NEOM9N_GLL:
-			read_nmea_gll(packet, max_wait);
-			break;
-		case NEOM9N_GNS:
-			read_nmea_gns(packet, max_wait);
-			break;
-		case NEOM9N_RMC:
-			read_nmea_rmc(packet, max_wait);
-			break;
-		default:
-			NEOGPS_CS_HIGH();
-			return NEOM9N_SPI_ERR;
-	}
-
-	NEOGPS_CS_HIGH();
-	return NEOM9N_OK;
+    uint8_t byte;
+    uint32_t ignores = 0;
+    
+    NEOGPS_CS_LOW();  // Begin transaction
+    
+    // Find sentence start at '$'
+    while (ignores < max_ignores) {
+        if (HAL_SPI_TransmitReceive(packet->hspi, GLOBAL_HIGH_TX, &byte, 1, max_wait) != HAL_OK) {
+            NEOGPS_CS_HIGH();  // End transaction
+            return NEOM9N_SPI_ERR;
+        }
+        if (byte == '$') break;
+        ignores++;
+    }
+    
+    if (byte != '$') {
+        NEOGPS_CS_HIGH();  // End transaction
+        return NEOM9N_TIMEOUT;
+    }
+    
+    // Read talkerID + sentence type ("GPGGA", "GNGLL", ...)
+    uint8_t header[6];
+    if (HAL_SPI_TransmitReceive(packet->hspi, GLOBAL_HIGH_TX, header, 6, max_wait) != HAL_OK) {
+        NEOGPS_CS_HIGH();  // End transaction
+        return NEOM9N_SPI_ERR;
+    }
+    
+    NEOM9N_state_t sentence_type = (header[2] << 16) | (header[3] << 8) | header[4];  // Extract sentence type (last 3 characters)
+    HAL_SPI_TransmitReceive(packet->hspi, GLOBAL_HIGH_TX, &byte, 1, max_wait);  // Read comma after header
+    
+    // Parse based on sentence type
+    NEOM9N_status_t result;
+    switch (sentence_type) {
+        case NEOM9N_GGA:
+            result = read_nmea_gga(packet, max_wait);
+            break;
+        case NEOM9N_GLL:
+            result = read_nmea_gll(packet, max_wait);
+            break;
+        case NEOM9N_RMC:
+            result = read_nmea_rmc(packet, max_wait);
+            break;
+        case NEOM9N_GNS:
+            result = read_nmea_gns(packet, max_wait);
+            break;
+        default:
+            NEOGPS_CS_HIGH();  // End transaction
+            return NEOM9N_PARSE_ERR;
+    }
+    
+    if (result == NEOM9N_OK) {
+        packet->last_update_tick = HAL_GetTick();
+    }
+    
+    NEOGPS_CS_HIGH();   // End transaction
+    return result;
 }
