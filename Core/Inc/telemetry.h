@@ -49,6 +49,8 @@ SedsResult print_telemetry_error(int32_t error_code);
 SedsResult log_error_asyncronous(const char* fmt, ...);
 SedsResult log_error_syncronous(const char* fmt, ...);
 
+SedsResult telemetry_timesync_announce(uint64_t priority);
+
 void telemetry_radio_rx_start(void);
 void die(const char *fmt, ...);
 
