@@ -79,23 +79,25 @@ void telemetry_thread_entry(ULONG initial_input)
                                     sizeof(started_txt),
                                     1);
 
-    uint64_t last_announce_ms = 0;
+    uint64_t last_announce_mono = 0;
 
     for (;;) {
         can_bus_process_rx();
         (void)process_all_queues_timeout(5);
         can_bus_process_rx();
 
-        // Use GPS-synced time-of-day for scheduling announce as well.
-        // This keeps the announce "based off GPS time" once it becomes valid,
-        // but still works before GPS lock.
-        const uint64_t now_ms = telemetry_gps_tod_ms();
+        // Use synced monotonic for scheduling (no wrap-at-midnight problems)
+        const uint64_t mono_now = telemetry_now_ms();
 
-        if ((uint64_t)(now_ms - last_announce_ms) >= (uint64_t)TIMESYNC_ANNOUNCE_PERIOD_MS) {
-            // Announce as master (priority lower = preferred).
-            // If this node is NOT the master in your topology, you should NOT call this.
-            (void)telemetry_timesync_announce(10ULL);
-            last_announce_ms = now_ms;
+        if ((mono_now - last_announce_mono) >= (uint64_t)TIMESYNC_ANNOUNCE_PERIOD_MS) {
+#if TELEMETRY_TIME_MASTER
+            // Only announce if we actually have a unix base
+            if (telemetry_unix_is_valid()) {
+                const uint64_t unix_ms = telemetry_unix_ms();
+                (void)telemetry_timesync_announce(10ULL, unix_ms);
+            }
+#endif
+            last_announce_mono = mono_now;
         }
 
         tx_thread_sleep(1);
