@@ -37,8 +37,6 @@
 
 typedef enum {
     NEOM9N_GGA = TAG('G','G','A'),
-    NEOM9N_GLL = TAG('G','L','L'),
-    NEOM9N_GNS = TAG('G','N','S'),
     NEOM9N_RMC = TAG('R','M','C')
 } NEOM9N_state_t;
 
@@ -63,6 +61,11 @@ typedef struct {
     float lon;              // Decimal degrees, positive = East  -> (y)
     float altitude_msl;     // Alt above mean sea level (meters) -> (z)
      
+    // Date (UTC)
+    uint8_t day;
+    uint8_t month;
+    uint8_t year;
+
     // Time (UTC)
     uint8_t hours;
     uint8_t minutes;
@@ -81,11 +84,9 @@ typedef struct {
 void gps_init(NEOM9N_t *packet, SPI_HandleTypeDef *hspi);
 bool gps_has_fix(const NEOM9N_t *packet);
 void pack_gps_data(const NEOM9N_t *packet, uint8_t *buffer);
-void pack_time_data(const NEOM9N_t *packet, uint8_t *buffer);
-double time_to_seconds(const NEOM9N_t *packet);
+void pack_datetime_data(const NEOM9N_t *packet, uint8_t *buffer);
+double datetime_to_seconds(const NEOM9N_t *packet);
 NEOM9N_status_t read_nmea_gga(NEOM9N_t *packet, uint32_t max_wait);
-NEOM9N_status_t read_nmea_gll(NEOM9N_t *packet, uint32_t max_wait);
-NEOM9N_status_t read_nmea_gns(NEOM9N_t *packet, uint32_t max_wait);
 NEOM9N_status_t read_nmea_rmc(NEOM9N_t *packet, uint32_t max_wait);
 NEOM9N_status_t receive_nmea(NEOM9N_t *packet, uint32_t max_wait, uint32_t max_ignores);
 
@@ -95,6 +96,7 @@ NEOM9N_status_t read_field(NEOM9N_t *packet, uint8_t *buffer, uint16_t max_len, 
 void skip_field(NEOM9N_t *packet, uint32_t timeout);
 float parse_coord(const uint8_t *field, uint8_t deg_digits);
 float parse_float(const uint8_t *field);
+void parse_date(const uint8_t *field, uint8_t *d, uint8_t *m, uint8_t *y);
 void parse_time(const uint8_t *field, uint8_t *h, uint8_t *m, uint8_t *s, uint16_t *ms);
 
 

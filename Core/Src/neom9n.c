@@ -5,6 +5,7 @@
  */
 
 #include "neom9n.h"
+#include "gps_time.h"
 #include "main.h"
 #include <stdio.h>
 
@@ -22,13 +23,24 @@ void gps_init(NEOM9N_t *packet, SPI_HandleTypeDef *hspi) {
 
 
 /**
- * @brief Convert GPS time to seconds since midnight UTC
+ * @brief Convert GPS datetime to milliseconds since UTC Epoch
+ * 
+ * Assumptions: 
+ *  -year is yy (00–99) and full year is 2000 + yy
+ *  -Gregorian calendar
+ *  -UTC (no timezone offsets) 
+ *  -Leap years handled correctly
  */
-double time_to_seconds(const NEOM9N_t *packet) {
-    return (double)packet->hours * 3600.0 + 
-           (double)packet->minutes * 60.0 + 
-           (double)packet->seconds + 
-           (double)packet->milliseconds / 1000.0;
+double datetime_to_milliseconds(const NEOM9N_t *packet) {
+    return utc_to_epoch_ms(
+        packet->day,
+        packet->month,
+        packet->year,
+        packet->hours,
+        packet->minutes,
+        packet->seconds,
+        packet->milliseconds
+    );
 }
 
 
@@ -52,9 +64,9 @@ void pack_gps_data(const NEOM9N_t *packet, uint8_t *buffer) {
  * Format: Pack as little-endian double
  * Total: 8 bytes
  */
-void pack_time_data(const NEOM9N_t *packet, uint8_t *buffer) {
+void pack_datetime_data(const NEOM9N_t *packet, uint8_t *buffer) {
     double *double_ptr = (double *)buffer;
-    *double_ptr = time_to_seconds(packet);
+    *double_ptr = datetime_to_milliseconds(packet);
 }
 
 
@@ -186,6 +198,24 @@ float parse_float(const uint8_t *field) {
     return result * sign;
 }
 
+
+/**
+ * @brief Parse UTC date field (ddmmyy)
+ */
+void parse_date(const uint8_t *field, uint8_t *d, uint8_t *m, uint8_t *y) {
+    if (strlen((char*)field) < 6) {
+        *d = 0;
+        *m = 0;
+        *y = 0;
+        return;
+    }
+
+    *d = (field[0] - '0') * 10 + (field[1] - '0');
+    *m = (field[2] - '0') * 10 + (field[3] - '0');
+    *y = (field[4] - '0') * 10 + (field[5] - '0');
+}
+
+
 /**
  * @brief Parse UTC time field (hhmmss.sss)
  */
@@ -277,58 +307,9 @@ NEOM9N_status_t read_nmea_gga(NEOM9N_t *packet, uint32_t max_wait) {
 }
 
 /**
- * @brief Parse GLL sentence: $GPGLL,lat,N/S,lon,E/W,time,status,mode
- * 
- * Extract: lat, lon, time
- * @note: GLL doesn't have alt (gpsz)
- */
-NEOM9N_status_t read_nmea_gll(NEOM9N_t *packet, uint32_t max_wait) {
-    NEOM9N_status_t status;
-    
-    // Latt
-    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
-    if (status != NEOM9N_OK) return status;
-    float lat = parse_coord(packet->field_buffer, 2);
-    
-    // N/S
-    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
-    if (status == NEOM9N_OK) {
-        packet->lat = (packet->field_buffer[0] == 'N') ? lat : -lat;
-    }
-    
-    // Long
-    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
-    if (status != NEOM9N_OK) return status;
-    float lon = parse_coord(packet->field_buffer, 3);
-    
-    // E/W
-    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
-    if (status == NEOM9N_OK) {
-        packet->lon = (packet->field_buffer[0] == 'E') ? lon : -lon;
-    }
-    
-    // Time
-    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
-    if (status == NEOM9N_OK) {
-        parse_time(packet->field_buffer, &packet->hours, &packet->minutes,
-                  &packet->seconds, &packet->milliseconds);
-    }
-    
-    // Status
-    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
-    if (status == NEOM9N_OK) {
-        packet->valid_fix = (packet->field_buffer[0] == 'A');
-    }
-    
-    //GLL doesn't provide alt, do not change from last entry
-    
-    return NEOM9N_OK;
-}
-
-/**
  * @brief Parse RMC sentence: $GPRMC,time,status,lat,N/S,lon,E/W,speed,course,date,...
  * 
- * Extract: lat, lon, time
+ * Extract: date, time
  * @note: RMC doesn't have alt (gpsz)
  */
 NEOM9N_status_t read_nmea_rmc(NEOM9N_t *packet, uint32_t max_wait) {
@@ -368,21 +349,21 @@ NEOM9N_status_t read_nmea_rmc(NEOM9N_t *packet, uint32_t max_wait) {
     if (status == NEOM9N_OK) {
         packet->lon = (packet->field_buffer[0] == 'E') ? lon : -lon;
     }
+
+    skip_field(packet, max_wait);   // Speed
+    skip_field(packet, max_wait);   // Course
+
+    // Date
+    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
+    if (status == NEOM9N_OK) {
+        parse_date(packet->field_buffer, &packet->day, &packet->month,&packet->year);
+    }
+
     
     // Skip remaining fields
     // RMC doesn't provide alt, do not change from last entry
 
     return NEOM9N_OK;
-}
-
-/**
- * @brief Parse GNS sentence: $GPGNS,time,lat,N/S,lon,E/W,mode,numSV,HDOP,alt,sep,...
- * 
- * Extract: lat, lon, alt, time
- * GNS is same as GGA for our current use case
- */
-NEOM9N_status_t read_nmea_gns(NEOM9N_t *packet, uint32_t max_wait) {
-    return read_nmea_gga(packet, max_wait);
 }
 
 /**
@@ -409,7 +390,7 @@ NEOM9N_status_t receive_nmea(NEOM9N_t *packet, uint32_t max_wait, uint32_t max_i
         return NEOM9N_TIMEOUT;
     }
     
-    // Read talkerID + sentence type ("GPGGA", "GNGLL", ...)
+    // Read talkerID + sentence type ("GPGGA" or "GPRMC")
     uint8_t header[6];
     if (HAL_SPI_TransmitReceive(packet->hspi, GLOBAL_HIGH_TX, header, 6, max_wait) != HAL_OK) {
         NEOGPS_CS_HIGH();  // End transaction
@@ -425,14 +406,8 @@ NEOM9N_status_t receive_nmea(NEOM9N_t *packet, uint32_t max_wait, uint32_t max_i
         case NEOM9N_GGA:
             result = read_nmea_gga(packet, max_wait);
             break;
-        case NEOM9N_GLL:
-            result = read_nmea_gll(packet, max_wait);
-            break;
         case NEOM9N_RMC:
             result = read_nmea_rmc(packet, max_wait);
-            break;
-        case NEOM9N_GNS:
-            result = read_nmea_gns(packet, max_wait);
             break;
         default:
             NEOGPS_CS_HIGH();  // End transaction

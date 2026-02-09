@@ -61,7 +61,7 @@ void neom9n_thread_entry(ULONG initial_input)
                                             sizeof(float));
                 
                 // Pack and send GPS time data (seconds since midnight UTC)
-                pack_time_data(&gps_packet, gps_time_buffer);
+                pack_datetime_data(&gps_packet, gps_time_buffer);
                 log_telemetry_asynchronous(SEDS_DT_GPS_TIME,
                                             gps_time_buffer,
                                             1,   
