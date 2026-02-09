@@ -3,6 +3,7 @@
 #include "tx_api.h"
 #include "telemetry.h"
 #include "neom9n.h"
+#include "neom9n_config.h"
 
 // External SPI handle
 extern SPI_HandleTypeDef hspi1;
@@ -15,6 +16,34 @@ ULONG neom9n_thread_stack[NEOM9N_THREAD_STACK_SIZE / sizeof(ULONG)];
 void neom9n_thread_entry(ULONG initial_input) 
 {
     (void)initial_input;
+    
+    tx_thread_sleep(2000);  // Wait 2 seconds for GPS to boot (recommended datasheet)
+
+    /** 
+     * Configure for rocket flight
+     * @note: Check with datasheet, after first config this block is likely reducdent 
+     */
+    if (NEOM9N_ConfigureForRocket(&hspi1, 5000)) {
+        const char success[] = "NEOM9N config set successful";
+        log_telemetry_asynchronous(SEDS_DT_MESSAGE_DATA, 
+                                    success, 
+                                    1, 
+                                    sizeof(success)); //Log config success
+    } else {
+        /**  
+         * Factory settings are fine, so no need to terminate if config fails
+         * Config method greatly reduces overhead, but failure is not critical
+         * Data rate unaffected by config success or failure 
+         */
+        const char failure[] = "NEOM9N config set failed";  
+        log_telemetry_asynchronous(SEDS_DT_MESSAGE_DATA, 
+                                    failure, 
+                                    1, 
+                                    sizeof(failure)); //Log config failure
+    }
+
+    tx_thread_sleep(1000); // Wait for config to settle
+
     const char started_txt[] = "NEOM9N thread starting";
     log_telemetry_asynchronous(SEDS_DT_MESSAGE_DATA, 
                                 started_txt, 

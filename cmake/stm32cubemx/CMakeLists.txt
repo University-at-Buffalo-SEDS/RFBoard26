@@ -50,6 +50,7 @@ set(MX_Application_Src
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/telemetry_thread.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/telemetry.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/neom9n.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/neom9n_config.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/neom9n_thread.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/gps_time.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../startup_stm32g491xx.s
