@@ -59,14 +59,21 @@ void pack_gps_data(const NEOM9N_t *packet, uint8_t *buffer) {
 
 
 /**
- * @brief Pack GPS time as binary
+ * @brief Pack GPS time as u64
  * 
  * Format: Pack as little-endian double
  * Total: 8 bytes
  */
+<<<<<<< HEAD
 void pack_datetime_data(const NEOM9N_t *packet, uint8_t *buffer) {
     double *double_ptr = (double *)buffer;
     *double_ptr = datetime_to_milliseconds(packet);
+=======
+void pack_time_data(const NEOM9N_t *packet, uint64_t *buffer) {
+    
+    *buffer = (uint64_t)(time_to_seconds(packet) * 1000.0);  // Convert to ms and pack as u64
+    return;
+>>>>>>> refs/remotes/origin/neom9n_driver
 }
 
 
