@@ -11,7 +11,7 @@ int is_leap_year(int year) {
 }
 
 
-double utc_to_epoch_ms(uint8_t day,
+uint64_t utc_to_epoch_ms(uint8_t day,
     uint8_t month,
     uint8_t year,
     uint8_t hours,
@@ -45,5 +45,5 @@ double utc_to_epoch_ms(uint8_t day,
     total_ms += seconds * 1000LL;
     total_ms += milliseconds;
 
-    return (double)total_ms;
+    return (uint64_t)total_ms;
 }
