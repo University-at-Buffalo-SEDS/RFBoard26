@@ -175,7 +175,7 @@ bool UBX_SetConfigValue(SPI_HandleTypeDef *hspi, uint32_t key_id, uint32_t value
 /**
  * @brief Set dynamic model (AIR2 or AIR4 for rockets)
  */
-bool NEOM9N_SetDynamicModel(SPI_HandleTypeDef *hspi, uint8_t model, uint32_t timeout) {
+bool set_dynamic_model(SPI_HandleTypeDef *hspi, uint8_t model, uint32_t timeout) {
     return UBX_SetConfigValue(hspi, CFG_NAVSPG_DYNMODEL, model, 1, 
                               UBX_CFG_LAYER_ALL, timeout);
 }
@@ -183,7 +183,7 @@ bool NEOM9N_SetDynamicModel(SPI_HandleTypeDef *hspi, uint8_t model, uint32_t tim
 /**
  * @brief Set update rate in milliseconds
  */
-bool NEOM9N_SetUpdateRate(SPI_HandleTypeDef *hspi, uint16_t rate_ms, uint32_t timeout) {
+bool set_gps_update_rate(SPI_HandleTypeDef *hspi, uint16_t rate_ms, uint32_t timeout) {
     if (!UBX_SetConfigValue(hspi, CFG_RATE_MEAS, rate_ms, 2, 
                             UBX_CFG_LAYER_ALL, timeout)) {
         return false;
@@ -198,7 +198,7 @@ bool NEOM9N_SetUpdateRate(SPI_HandleTypeDef *hspi, uint16_t rate_ms, uint32_t ti
 /**
  * @brief Enable SPI interface
  */
-bool NEOM9N_EnableSPI(SPI_HandleTypeDef *hspi, uint32_t timeout) {
+bool enable_gps_spi(SPI_HandleTypeDef *hspi, uint32_t timeout) {
     if (!UBX_SetConfigValue(hspi, CFG_SPI_ENABLED, 1, 1, 
                             UBX_CFG_LAYER_ALL, timeout)) {
         return false;
@@ -213,7 +213,7 @@ bool NEOM9N_EnableSPI(SPI_HandleTypeDef *hspi, uint32_t timeout) {
 /**
  * @brief Configure NMEA message output (enable GGA, RMC | disable others)
  */
-bool NEOM9N_ConfigureNMEAOutput(SPI_HandleTypeDef *hspi, uint32_t timeout) {
+bool config_gps_output(SPI_HandleTypeDef *hspi, uint32_t timeout) {
     // Enable GGA (lat, lon, alt, no date, time)
     if (!UBX_SetConfigValue(hspi, CFG_MSGOUT_NMEA_ID_GGA_SPI, 1, 1, 
                             UBX_CFG_LAYER_ALL, timeout)) {
@@ -257,27 +257,27 @@ bool NEOM9N_ConfigureNMEAOutput(SPI_HandleTypeDef *hspi, uint32_t timeout) {
 /**
  * @brief Complete configuration for rocket flight
  */
-bool NEOM9N_ConfigureForRocket(SPI_HandleTypeDef *hspi, uint32_t timeout) {
+bool config_gps_seds_rocket(SPI_HandleTypeDef *hspi, uint32_t timeout) {
     // Enable SPI interface
-    if (!NEOM9N_EnableSPI(hspi, timeout)) {
+    if (!enable_gps_spi(hspi, timeout)) {
         return false;
     }
     HAL_Delay(200);
     
     // Set dynamic model to AIR4
-    if (!NEOM9N_SetDynamicModel(hspi, DYNMODEL_AIR4, timeout)) {
+    if (!set_dynamic_model(hspi, DYNMODEL_AIR4, timeout)) {
         return false;
     }
     HAL_Delay(200);
     
     // Set update rate to 1 Hz (1000ms) (Change to 250ms for 4Hz if desired)
-    if (!NEOM9N_SetUpdateRate(hspi, 1000, timeout)) {
+    if (!set_gps_update_rate(hspi, 1000, timeout)) {
         return false;
     }
     HAL_Delay(200);
     
     // Configure NMEA output
-    if (!NEOM9N_ConfigureNMEAOutput(hspi, timeout)) {
+    if (!config_gps_output(hspi, timeout)) {
         return false;
     }
     HAL_Delay(200);

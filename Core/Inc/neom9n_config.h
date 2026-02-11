@@ -55,11 +55,11 @@
 
 
 /* -- Function prototypes --------------------------------------------- */
-bool NEOM9N_ConfigureForRocket(SPI_HandleTypeDef *hspi, uint32_t timeout);
-bool NEOM9N_SetDynamicModel(SPI_HandleTypeDef *hspi, uint8_t model, uint32_t timeout);
-bool NEOM9N_SetUpdateRate(SPI_HandleTypeDef *hspi, uint16_t rate_ms, uint32_t timeout);
-bool NEOM9N_EnableSPI(SPI_HandleTypeDef *hspi, uint32_t timeout);
-bool NEOM9N_ConfigureNMEAOutput(SPI_HandleTypeDef *hspi, uint32_t timeout);
+bool config_gps_seds_rocket(SPI_HandleTypeDef *hspi, uint32_t timeout);
+bool set_dynamic_model(SPI_HandleTypeDef *hspi, uint8_t model, uint32_t timeout);
+bool set_gps_update_rate(SPI_HandleTypeDef *hspi, uint16_t rate_ms, uint32_t timeout);
+bool enable_gps_spi(SPI_HandleTypeDef *hspi, uint32_t timeout);
+bool config_gps_output(SPI_HandleTypeDef *hspi, uint32_t timeout);
 
 
 /* -- Low-level UBX functions ----------------------------------------- */

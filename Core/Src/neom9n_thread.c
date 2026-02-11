@@ -97,24 +97,21 @@ ULONG neom9n_thread_stack[NEOM9N_THREAD_STACK_SIZE / sizeof(ULONG)];
 void neom9n_thread_entry(ULONG initial_input) {
     (void)initial_input;
 
+    ///**
     tx_thread_sleep(2000);  // Wait 2 seconds for GPS to boot (recommended datasheet)
 
-    /** 
-     * Configure for rocket flight
-     * @note: Check with datasheet, after first config this block is likely reducdent 
-     */
-    if (NEOM9N_ConfigureForRocket(&hspi1, 5000)) {
+    // Configure for rocket flight
+    // @note: Check with datasheet, after first config this block is likely reducdent 
+    if (config_gps_seds_rocket(&hspi1, 5000)) {
         const char success[] = "NEOM9N config set successful";
         log_telemetry_asynchronous(SEDS_DT_MESSAGE_DATA, 
                                     success, 
                                     1, 
                                     sizeof(success)); //Log config success
     } else {
-        /**  
-         * Factory settings are fine, so no need to terminate if config fails
-         * Config method greatly reduces overhead, but failure is not critical
-         * Data rate unaffected by config success or failure 
-         */
+        // Factory settings are fine, so no need to terminate if config fails
+        // Config method greatly reduces overhead, but failure is not critical
+        // Data rate unaffected by config success or failure 
         const char failure[] = "NEOM9N config set failed";  
         log_telemetry_asynchronous(SEDS_DT_MESSAGE_DATA, 
                                     failure, 
@@ -123,6 +120,7 @@ void neom9n_thread_entry(ULONG initial_input) {
     }
 
     tx_thread_sleep(1000); // Wait for config to settle
+    //*/
 
     const char started_txt[] = "NEOM9N thread starting";
     log_telemetry_asynchronous(SEDS_DT_MESSAGE_DATA,
@@ -170,7 +168,7 @@ void neom9n_thread_entry(ULONG initial_input) {
                 // IMPORTANT: pack_time_data() must fill gps_time_of_day_ms as *ms since
                 // midnight UTC* (or you should change it accordingly).
 
-                // Pack GPS time-of-day (ms since midnight UTC) from the parsed fields.
+                // Pack GPS time-of-day (ms since UNIX Epoch) from the parsed fields.
                 gps_time_of_day_ms = get_datetime_data(&gps_packet);
 
                 // Update global offset so other threads can compute GPS time-of-day
