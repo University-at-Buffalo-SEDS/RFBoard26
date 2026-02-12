@@ -1,30 +1,33 @@
-// neom9n_thread.c
-//
-// UPDATED:
-// - Maintains a globally-accessible GPS-synced offset (ms) that other threads
-// (telemetry thread)
-//   can read to convert local ThreadX-relative time into GPS time-of-day.
-// - Offset definition:
-//      gps_time_of_day_ms ≈ (local_tx_now_ms % 86400000) + g_gps_time_offset_ms
-//
-// Notes:
-// - This is "time-of-day" sync (seconds since midnight UTC), because your
-// current GPS time packet
-//   appears to be "seconds since midnight". If you later expose full date
-//   (Y/M/D) or Unix epoch, we can make this a true epoch offset.
-//
-// How telemetry thread should use it:
-//   extern volatile int64_t g_gps_time_offset_ms;
-//   extern volatile uint32_t g_gps_time_offset_valid;
-//   if (g_gps_time_offset_valid) {
-//       uint64_t local_ms = tx_now_ms();
-//       uint64_t gps_tod_ms = (local_ms % 86400000ULL) +
-//       (int64_t)g_gps_time_offset_ms;
-//   }
+/** 
+ * neom9n_thread.c
+ *
+ * UPDATED:
+ *  - Maintains a globally-accessible GPS-synced offset (ms) that other threads
+ *    (telemetry thread)
+ *    can read to convert local ThreadX-relative time into GPS time-of-day.
+ *  - OFFSET:
+ *       gps_time_of_day_ms ≈ (local_tx_now_ms % 86400000) + g_gps_time_offset_ms
+ *
+ * NOTE:
+ *  - This is "time-of-day" sync (seconds since midnight UTC), because your
+ *    current GPS time packet
+ *    appears to be "seconds since midnight". If you later expose full date
+ *    (Y/M/D) or Unix epoch, we can make this a true epoch offset.
+ *
+ * EXAMPLE: How telemetry thread should use it
+ *    extern volatile int64_t g_gps_time_offset_ms;
+ *    extern volatile uint32_t g_gps_time_offset_valid;
+ *    if (g_gps_time_offset_valid) {
+ *        uint64_t local_ms = tx_now_ms();
+ *        uint64_t gps_tod_ms = (local_ms % 86400000ULL) +
+ *        (int64_t)g_gps_time_offset_ms;
+ *    }
+ */ 
 
 #include "RF-Threads.h"
 #include "neom9n.h"
 #include "neom9n_config.h"
+#include "gps_time.h"
 #include "telemetry.h"
 #include "tx_api.h"
 
@@ -33,14 +36,6 @@
 
 // External SPI handle
 extern SPI_HandleTypeDef hspi1;
-
-// Global GPS time offset (exported symbols)
-volatile int64_t g_gps_time_offset_ms = 0;     // ms
-volatile uint32_t g_gps_time_offset_valid = 0; // 0/1
-
-// Optional: expose a tiny accessor API (also globally link-visible)
-int64_t gps_time_offset_ms_get(void) { return g_gps_time_offset_ms; }
-uint32_t gps_time_offset_valid_get(void) { return g_gps_time_offset_valid; }
 
 #ifndef TX_TIMER_TICKS_PER_SECOND
 #error "TX_TIMER_TICKS_PER_SECOND must be defined by ThreadX."
@@ -58,35 +53,6 @@ static uint64_t tx_now_ms(void) {
 static uint64_t wrap_day_ms(uint64_t ms) {
     const uint64_t DAY_MS = 86400000ULL;
     return ms % DAY_MS;
-}
-
-// Smooth offset updates to avoid jitter
-#ifndef GPS_OFFSET_SMOOTH_DIV
-#define GPS_OFFSET_SMOOTH_DIV 8
-#endif
-
-#ifndef GPS_OFFSET_MAX_STEP_MS
-#define GPS_OFFSET_MAX_STEP_MS 60000 // ignore insane jumps > 60s
-#endif
-
-static void gps_offset_update_ms(int64_t measured_offset_ms) {
-    if (measured_offset_ms > GPS_OFFSET_MAX_STEP_MS || measured_offset_ms < -GPS_OFFSET_MAX_STEP_MS) {
-        return;
-    }
-
-    // Smooth: new = old + measured/Div
-    int64_t step = measured_offset_ms / (int64_t)GPS_OFFSET_SMOOTH_DIV;
-    if (step == 0) {
-        if (measured_offset_ms > 0) {
-            step = 1;
-        }
-        else if (measured_offset_ms < 0) {
-            step = -1;
-        }
-    }
-
-    g_gps_time_offset_ms += step;
-    g_gps_time_offset_valid = 1;
 }
 
 // Stack + TCB for neom9n thread
@@ -178,16 +144,6 @@ void neom9n_thread_entry(ULONG initial_input) {
 
                 // Compute signed difference (gps - local)
                 int64_t measured_offset = (int64_t)gps_time_of_day_ms - (int64_t)local_tod;
-
-                // Handle wrap-around near midnight: choose the shortest signed delta in
-                // [-12h, +12h]
-                const int64_t HALF_DAY = (int64_t)(86400000LL / 2LL);
-                if (measured_offset > HALF_DAY) {
-                    measured_offset -= (int64_t)86400000LL;
-                }
-                else if (measured_offset < -HALF_DAY) {
-                    measured_offset += (int64_t)86400000LL;
-                }
 
                 gps_offset_update_ms(measured_offset);
 
