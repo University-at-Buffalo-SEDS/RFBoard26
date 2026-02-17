@@ -35,24 +35,13 @@ set(MX_Application_Src
     ${CMAKE_CURRENT_SOURCE_DIR}/../../USBX/App/app_usbx_device.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/tx_initialize_low_level.S
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/main.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/can_bus.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/radio.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/telemetry_thread.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/telemetry.c 
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/telemetry_hooks.c 
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/app_threadx.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/stm32g4xx_it.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/stm32g4xx_hal_msp.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/stm32g4xx_hal_timebase_tim.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/sysmem.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/syscalls.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/telemetry_hooks.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/telemetry_thread.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/telemetry.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/neom9n.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/neom9n_config.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/neom9n_thread.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/gps_time.c
+  
     ${CMAKE_CURRENT_SOURCE_DIR}/../../startup_stm32g491xx.s
 )
 

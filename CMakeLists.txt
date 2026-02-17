@@ -34,6 +34,18 @@ enable_language(C ASM)
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
 
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/can_bus.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/radio.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_hooks.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_thread.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/neom9n.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/neom9n_config.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/neom9n_thread.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/gps_time.c
+)
+
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
 
