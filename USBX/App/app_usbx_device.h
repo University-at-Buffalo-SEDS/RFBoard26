@@ -29,6 +29,7 @@ extern "C" {
 #include "ux_api.h"
 #include "ux_device_descriptors.h"
 #include "ux_device_cdc_acm.h"
+#include "ux_device_dfu_media.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
