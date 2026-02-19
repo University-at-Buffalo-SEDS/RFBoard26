@@ -67,7 +67,7 @@ void neom9n_thread_entry(ULONG initial_input) {
     tx_thread_sleep(2000);  // Wait 2 seconds for GPS to boot (recommended datasheet)
 
     // Configure for rocket flight
-    // @note: Check with datasheet, after first config this block is likely reducdent 
+    // @note: Confirm with datasheet, after first config this block is likely reducdent 
     if (config_gps_seds_rocket(&hspi1, 5000)) {
         const char success[] = "NEOM9N config set successful";
         log_telemetry_asynchronous(SEDS_DT_MESSAGE_DATA, 
