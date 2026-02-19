@@ -41,7 +41,6 @@ set(MX_Application_Src
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/stm32g4xx_hal_timebase_tim.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/sysmem.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/syscalls.c
-  
     ${CMAKE_CURRENT_SOURCE_DIR}/../../startup_stm32g491xx.s
 )
 
@@ -380,9 +379,7 @@ set(MX_LINK_DIRS
 set(MX_LINK_LIBS 
     STM32_Drivers
     ${TOOLCHAIN_LINK_LIBRARIES}
-    USBX
-	ThreadX
-	
+    USBX	ThreadX	
 )
 # Interface library for includes and symbols
 add_library(stm32cubemx INTERFACE)
