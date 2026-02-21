@@ -55,6 +55,11 @@
 /* USER CODE BEGIN 0 */
 UX_SLAVE_CLASS_CDC_ACM *cdc_acm = UX_NULL;
 
+/* Minimal visual feedback when CDC is activated/deactivated so we can
+  confirm host enumeration without relying solely on the PC side. */
+#include "main.h"
+#include "ux_device_class_cdc_acm.h"
+
 /* USER CODE END 0 */
 
 /**
@@ -66,7 +71,10 @@ UX_SLAVE_CLASS_CDC_ACM *cdc_acm = UX_NULL;
 VOID USBD_CDC_ACM_Activate(VOID *cdc_acm_instance)
 {
   /* USER CODE BEGIN USBD_CDC_ACM_Activate */
-  UX_PARAMETER_NOT_USED(cdc_acm_instance);
+    cdc_acm = (UX_SLAVE_CLASS_CDC_ACM *)cdc_acm_instance;
+    /* Indicate class instance available; simple and safe (no blocking
+       USB ops here). The host may still need to open the COM port to
+       receive data. */
   /* USER CODE END USBD_CDC_ACM_Activate */
 
   return;
@@ -83,6 +91,7 @@ VOID USBD_CDC_ACM_Deactivate(VOID *cdc_acm_instance)
   /* USER CODE BEGIN USBD_CDC_ACM_Deactivate */
   UX_SLAVE_CLASS_CDC_ACM *inst = (UX_SLAVE_CLASS_CDC_ACM *)cdc_acm_instance;
   (void)inst;
+  cdc_acm = UX_NULL;
   /* USER CODE END USBD_CDC_ACM_Deactivate */
 
   return;

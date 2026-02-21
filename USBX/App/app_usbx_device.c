@@ -1,21 +1,21 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file    app_usbx_device.c
-  * @author  MCD Application Team
-  * @brief   USBX Device applicative file
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2020-2021 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file    app_usbx_device.c
+ * @author  MCD Application Team
+ * @brief   USBX Device applicative file
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2020-2021 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
@@ -23,7 +23,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "main.h"
+#include "ux_dcd_stm32.h"
+#include "ux_device_cdc_acm.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,10 +47,7 @@
 
 static ULONG cdc_acm_interface_number;
 static ULONG cdc_acm_configuration_number;
-static ULONG dfu_interface_number;
-static ULONG dfu_configuration_number;
 static UX_SLAVE_CLASS_CDC_ACM_PARAMETER cdc_acm_parameter;
-static UX_SLAVE_CLASS_DFU_PARAMETER dfu_parameter;
 static TX_THREAD ux_device_app_thread;
 
 /* USER CODE BEGIN PV */
@@ -57,6 +56,7 @@ static TX_THREAD ux_device_app_thread;
 
 /* Private function prototypes -----------------------------------------------*/
 static VOID app_ux_device_thread_entry(ULONG thread_input);
+static UINT USBD_ChangeFunction(ULONG Device_State);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -124,7 +124,7 @@ UINT MX_USBX_Device_Init(VOID *memory_ptr)
                                  string_framework_length,
                                  language_id_framework,
                                  language_id_framework_length,
-                                 UX_NULL) != UX_SUCCESS)
+                                 USBD_ChangeFunction) != UX_SUCCESS)
   {
     /* USER CODE BEGIN USBX_DEVICE_INITIALIZE_ERORR */
     return UX_ERROR;
@@ -156,41 +156,6 @@ UINT MX_USBX_Device_Init(VOID *memory_ptr)
     /* USER CODE BEGIN USBX_DEVICE_CDC_ACM_REGISTER_ERORR */
     return UX_ERROR;
     /* USER CODE END USBX_DEVICE_CDC_ACM_REGISTER_ERORR */
-  }
-
-  /* Initialize the dfu class parameters for the device */
-  dfu_parameter.ux_slave_class_dfu_parameter_instance_activate   = USBD_DFU_Activate;
-  dfu_parameter.ux_slave_class_dfu_parameter_instance_deactivate = USBD_DFU_Deactivate;
-  dfu_parameter.ux_slave_class_dfu_parameter_get_status          = USBD_DFU_GetStatus;
-  dfu_parameter.ux_slave_class_dfu_parameter_read                = USBD_DFU_Read;
-  dfu_parameter.ux_slave_class_dfu_parameter_write               = USBD_DFU_Write;
-  dfu_parameter.ux_slave_class_dfu_parameter_notify              = USBD_DFU_Notify;
-#ifdef UX_DEVICE_CLASS_DFU_CUSTOM_REQUEST_ENABLE
-  dfu_parameter.ux_device_class_dfu_parameter_custom_request     = USBD_DFU_CustomRequest;
-#endif /* UX_DEVICE_CLASS_DFU_CUSTOM_REQUEST_ENABLE */
-  dfu_parameter.ux_slave_class_dfu_parameter_framework           = device_framework_full_speed;
-  dfu_parameter.ux_slave_class_dfu_parameter_framework_length    = device_framework_fs_length;
-
-  /* USER CODE BEGIN DFU_PARAMETER */
-
-  /* USER CODE END DFU_PARAMETER */
-
-  /* Get dfu configuration number */
-  dfu_configuration_number = USBD_Get_Configuration_Number(CLASS_TYPE_DFU, 0);
-
-  /* Find dfu interface number */
-  dfu_interface_number = USBD_Get_Interface_Number(CLASS_TYPE_DFU, 0);
-
-  /* Initialize the device dfu class */
-  if (ux_device_stack_class_register(_ux_system_slave_class_dfu_name,
-                                     ux_device_class_dfu_entry,
-                                     dfu_configuration_number,
-                                     dfu_interface_number,
-                                     &dfu_parameter) != UX_SUCCESS)
-  {
-    /* USER CODE BEGIN USBX_DEVICE_DFU_REGISTER_ERORR */
-    return UX_ERROR;
-    /* USER CODE END USBX_DEVICE_DFU_REGISTER_ERORR */
   }
 
   /* Allocate the stack for device application main thread */
@@ -228,10 +193,105 @@ UINT MX_USBX_Device_Init(VOID *memory_ptr)
 static VOID app_ux_device_thread_entry(ULONG thread_input)
 {
   /* USER CODE BEGIN app_ux_device_thread_entry */
-  TX_PARAMETER_NOT_USED(thread_input);
+  extern PCD_HandleTypeDef hpcd_USB_FS;
+  HAL_PCDEx_PMAConfig(&hpcd_USB_FS, 0x00, PCD_SNG_BUF, 0x40);
+  HAL_PCDEx_PMAConfig(&hpcd_USB_FS, 0x80, PCD_SNG_BUF, 0x80);
+  HAL_PCDEx_PMAConfig(&hpcd_USB_FS, 0x01, PCD_SNG_BUF, 0xC0);
+  HAL_PCDEx_PMAConfig(&hpcd_USB_FS, 0x81, PCD_SNG_BUF, 0x100);
+  HAL_PCDEx_PMAConfig(&hpcd_USB_FS, 0x82, PCD_SNG_BUF, 0x140);
+  ux_dcd_stm32_initialize((ULONG)USB, (ULONG)&hpcd_USB_FS);
+  HAL_PCD_Start(&hpcd_USB_FS);
   /* USER CODE END app_ux_device_thread_entry */
 }
 
+/**
+  * @brief  USBD_ChangeFunction
+  *         This function is called when the device state changes.
+  * @param  Device_State: USB Device State
+  * @retval status
+  */
+static UINT USBD_ChangeFunction(ULONG Device_State)
+{
+   UINT status = UX_SUCCESS;
+
+  /* USER CODE BEGIN USBD_ChangeFunction0 */
+
+  /* USER CODE END USBD_ChangeFunction0 */
+
+  switch (Device_State)
+  {
+    case UX_DEVICE_ATTACHED:
+
+      /* USER CODE BEGIN UX_DEVICE_ATTACHED */
+
+      /* USER CODE END UX_DEVICE_ATTACHED */
+
+      break;
+
+    case UX_DEVICE_REMOVED:
+
+      /* USER CODE BEGIN UX_DEVICE_REMOVED */
+
+      /* USER CODE END UX_DEVICE_REMOVED */
+
+      break;
+
+    case UX_DCD_STM32_DEVICE_CONNECTED:
+
+      /* USER CODE BEGIN UX_DCD_STM32_DEVICE_CONNECTED */
+
+      /* USER CODE END UX_DCD_STM32_DEVICE_CONNECTED */
+
+      break;
+
+    case UX_DCD_STM32_DEVICE_DISCONNECTED:
+
+      /* USER CODE BEGIN UX_DCD_STM32_DEVICE_DISCONNECTED */
+
+      /* USER CODE END UX_DCD_STM32_DEVICE_DISCONNECTED */
+
+      break;
+
+    case UX_DCD_STM32_DEVICE_SUSPENDED:
+
+      /* USER CODE BEGIN UX_DCD_STM32_DEVICE_SUSPENDED */
+
+      /* USER CODE END UX_DCD_STM32_DEVICE_SUSPENDED */
+
+      break;
+
+    case UX_DCD_STM32_DEVICE_RESUMED:
+
+      /* USER CODE BEGIN UX_DCD_STM32_DEVICE_RESUMED */
+
+      /* USER CODE END UX_DCD_STM32_DEVICE_RESUMED */
+
+      break;
+
+    case UX_DCD_STM32_SOF_RECEIVED:
+
+      /* USER CODE BEGIN UX_DCD_STM32_SOF_RECEIVED */
+
+      /* USER CODE END UX_DCD_STM32_SOF_RECEIVED */
+
+      break;
+
+    default:
+
+      /* USER CODE BEGIN DEFAULT */
+
+      /* USER CODE END DEFAULT */
+
+      break;
+
+  }
+
+  /* USER CODE BEGIN USBD_ChangeFunction1 */
+
+  /* USER CODE END USBD_ChangeFunction1 */
+
+  return status;
+}
 /* USER CODE BEGIN 1 */
 
 /* USER CODE END 1 */

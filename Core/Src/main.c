@@ -40,7 +40,10 @@ extern UX_SLAVE_CLASS_CDC_ACM *cdc_acm;
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+static void busy_delay(volatile uint32_t n)
+{
+  while (n--) { __NOP(); }
+}
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -115,6 +118,7 @@ int main(void)
   MX_USB_PCD_Init();
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
+  /* Quick hardware check: blink GREEN then BLUE so user can confirm LEDs */
   can_bus_init(&hfdcan2);
   radio_uart_init(&huart1);
   radio_uart_start_rx();   /* after UART is initialized */
@@ -409,156 +413,125 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-static inline int cdc_in_isr(void) {
-  // Same as before, works on ThreadX too
-  return (__get_IPSR() != 0U);
-}
 
-/* Simple "kernel running" heuristic:
- * - Before tx_kernel_enter() returns and main thread starts,
- * tx_thread_identify() is NULL.
- * - In normal thread context, it returns the current TX_THREAD*.
- */
-static inline int cdc_kernel_running(void) {
-  return !cdc_in_isr() && (tx_thread_identify() != TX_NULL);
+static inline int cdc_in_isr(void)
+{
+  return (__get_IPSR() != 0U);
 }
 
 /* ------------ Mutex for multi-thread serialization ------------ */
 
 static TX_MUTEX cdc_mutex;
 
-void cdc_printf_init(void) {
-  // Call this from your application init (e.g. the main ThreadX app thread)
-  tx_mutex_create(&cdc_mutex, "cdc_tx_mutex", TX_NO_INHERIT);
+/*
+ * NOTE:
+ * Call this from a ThreadX thread AFTER USBX device init (MX_USBX_Device_Init)
+ * has run. It's OK to call multiple times if you guard creation elsewhere,
+ * but simplest is call once from your "app" thread entry.
+ */
+void cdc_printf_init(void)
+{
+  (void)tx_mutex_create(&cdc_mutex, "cdc_tx_mutex", TX_INHERIT);
 }
 
-static void cdc_lock(void) {
-  // Don't try to lock from ISR or before the scheduler
-  if (!cdc_kernel_running()) {
-    return;
-  }
-  // We *could* use TX_NO_WAIT here, but serialization is cheap and fast
-  tx_mutex_get(&cdc_mutex, TX_WAIT_FOREVER);
+extern volatile ULONG _tx_thread_system_state;
+
+static inline int tx_is_running(void)
+{
+  return (__get_IPSR() == 0U) && (_tx_thread_system_state == 0U);
 }
 
-static void cdc_unlock(void) {
-  if (!cdc_kernel_running()) {
-    return;
-  }
-  tx_mutex_put(&cdc_mutex);
+static void cdc_lock(void)
+{
+  if (!tx_is_running() || cdc_in_isr()) return;
+  (void)tx_mutex_get(&cdc_mutex, TX_WAIT_FOREVER);
+}
+
+static void cdc_unlock(void)
+{
+  if (!tx_is_running() || cdc_in_isr()) return;
+  (void)tx_mutex_put(&cdc_mutex);
 }
 
 /* ------------ USB ready helper ------------ */
 
-static inline UINT usb_cdc_ready(void) {
-  // Simplest check: class instance is valid
+static inline UINT usb_cdc_ready(void)
+{
   return (cdc_acm != UX_NULL);
 }
 
 /* ------------ Bounded, drop-on-trouble CDC write ------------ */
 
-static void cdc_write_raw(const uint8_t *buf, uint16_t len) {
-  if (!buf || !len || cdc_in_isr()) {
-    return;
-  }
-
-  // If USB not configured/ready, just drop (prevents heap blowup upstream)
-  if (!usb_cdc_ready()) {
-    return;
-  }
+static void cdc_write_raw(const uint8_t *buf, uint16_t len)
+{
+  if (!buf || !len || cdc_in_isr()) return;
+  if (!usb_cdc_ready()) return;
 
   cdc_lock();
 
-  ULONG sent = 0;
-  ULONG start_ticks = tx_time_get();
-  const ULONG overall_budget_ms = 5; // overall budget (ms) per _write()
-  const ULONG ticks_per_second = TX_TIMER_TICKS_PER_SECOND;
-  const ULONG overall_budget_ticks =
-      (overall_budget_ms * ticks_per_second + 999) / 1000; // ceil division
-
-  while (sent < (ULONG)len) {
-    // USB went away mid-write? abort
-    if (!usb_cdc_ready()) {
-      break;
-    }
-
-    // Respect overall time budget so we never stall the RTOS
-    if ((tx_time_get() - start_ticks) >= overall_budget_ticks) {
-      break; // drop the rest of this line
-    }
-
-    ULONG chunk = (ULONG)len - sent;
-    if (chunk > 64u) {
-      chunk = 64u; // USB FS packet size
-    }
-
-    ULONG actual = 0;
-    UINT status = ux_device_class_cdc_acm_write(cdc_acm, (UCHAR *)&buf[sent],
-                                                chunk, &actual);
-
-    if (status != UX_SUCCESS || actual == 0u) {
-      // Host not ready or error → don't fight it, drop remainder
-      break;
-    }
-
-    sent += actual;
-    // ux_device_class_cdc_acm_write() is synchronous; USBX handles
-    // packetization.
+  /* Keep it simple: one synchronous write. If host isn't ready, drop. */
+  ULONG actual = 0;
+  UINT st = ux_device_class_cdc_acm_write(cdc_acm, (UCHAR *)buf, (ULONG)len, &actual);
+  if (st != UX_SUCCESS || actual == 0)
+  {
+    /* Non-fatal: drop the packet if host not ready or write fails. Do not
+       call Error_Handler here because write failures are expected until the
+       host opens the port. */
+    cdc_unlock();
+    return;
   }
+  (void)actual;
 
   cdc_unlock();
 }
 
-// ---------- printf redirection ----------
+/* ---------- printf redirection ---------- */
 
 #ifdef __GNUC__
-int _write(int file, char *ptr, int len) {
+int _write(int file, char *ptr, int len)
+{
   (void)file;
-  if (len <= 0) {
-    return 0;
-  }
+  if (len <= 0) return 0;
 
-  // If USB not configured, pretend we consumed everything (best-effort debug)
-  if (!usb_cdc_ready()) {
-    return len;
-  }
+  /* If USB not configured, pretend we consumed everything (best-effort debug) */
+  if (!usb_cdc_ready()) return len;
 
   uint8_t buf[128];
   int i = 0;
-
-  // Track if the last character we *sent* was '\r'
   static uint8_t last_was_cr = 0;
 
-  while (i < len) {
+  while (i < len)
+  {
     uint16_t w = 0;
 
-    while (i < len && w < sizeof(buf)) {
+    while (i < len && w < sizeof(buf))
+    {
       uint8_t c = (uint8_t)ptr[i++];
 
-      if (c == '\n') {
-        // We want: "\r\n" if previous char was NOT '\r'
-        if (!last_was_cr) {
-          // Make sure we have space for both '\r' and '\n'
-          if (w > (uint16_t)(sizeof(buf) - 2)) {
-            // Not enough room; back up one and flush this buffer
-            i--; // re-process this '\n' in the next iteration
+      if (c == '\n')
+      {
+        if (!last_was_cr)
+        {
+          if (w > (uint16_t)(sizeof(buf) - 2))
+          {
+            i--;
             break;
           }
           buf[w++] = '\r';
         }
 
-        // Now write '\n'
-        if (w >= sizeof(buf)) {
-          // No more room; back up one and flush
+        if (w >= sizeof(buf))
+        {
           i--;
           break;
         }
         buf[w++] = '\n';
-        last_was_cr = 0; // last emitted was '\n'
-      } else {
-        // Normal char (could be '\r' itself)
-        if (w >= sizeof(buf)) {
-          // No room, back up one char and flush buffer
+        last_was_cr = 0;
+      }
+      else
+      {
+        if (w >= sizeof(buf))
+        {
           i--;
           break;
         }
@@ -567,7 +540,8 @@ int _write(int file, char *ptr, int len) {
       }
     }
 
-    if (w > 0) {
+    if (w > 0)
+    {
       cdc_write_raw(buf, w);
     }
   }
@@ -575,34 +549,33 @@ int _write(int file, char *ptr, int len) {
   return len;
 }
 #else
-int fputc(int ch, FILE *f) {
+int fputc(int ch, FILE *f)
+{
   (void)f;
 
   static uint8_t last_was_cr = 0;
   uint8_t buf[2];
   uint16_t w = 0;
 
-  if (!usb_cdc_ready()) {
-    return ch;
-  }
+  if (!usb_cdc_ready()) return ch;
 
-  if (ch == '\n') {
-    if (!last_was_cr) {
-      buf[w++] = '\r';
-    }
+  if (ch == '\n')
+  {
+    if (!last_was_cr) buf[w++] = '\r';
     buf[w++] = '\n';
     last_was_cr = 0;
-  } else {
+  }
+  else
+  {
     buf[w++] = (uint8_t)ch;
     last_was_cr = (ch == '\r');
   }
 
-  if (w > 0) {
-    cdc_write_raw(buf, w);
-  }
+  if (w > 0) cdc_write_raw(buf, w);
   return ch;
 }
 #endif
+
 /* USER CODE END 4 */
 
 /**
@@ -637,6 +610,8 @@ void Error_Handler(void)
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
   while (1) {
+    HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
+    busy_delay(100000);
   }
   /* USER CODE END Error_Handler_Debug */
 }

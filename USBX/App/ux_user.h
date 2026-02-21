@@ -97,7 +97,7 @@
    though the compiler's equivalent of the -D option.  */
 
 /* Define USBX Generic Thread Stack Size.  */
-/* #define UX_THREAD_STACK_SIZE                             (2 * 1024) */
+#define UX_THREAD_STACK_SIZE                                24576
 
 /* Define USBX Host Enum Thread Stack Size. The default is to use UX_THREAD_STACK_SIZE */
 /* #define UX_HOST_ENUM_THREAD_STACK_SIZE                   UX_THREAD_STACK_SIZE  */
@@ -330,14 +330,14 @@
        bwPollTimeout supported.
 */
 
-#define UX_DEVICE_CLASS_DFU_STATUS_MODE                     1
+/* #define UX_DEVICE_CLASS_DFU_STATUS_MODE                  1 */
 
 /* Defined, this value represents the default DFU status bwPollTimeout.
    The value is 3 bytes long (max 0xFFFFFFu).
    By default the bwPollTimeout is 1 (means 1ms).
  */
 
-#define UX_DEVICE_CLASS_DFU_STATUS_POLLTIMEOUT              0
+/* #define UX_DEVICE_CLASS_DFU_STATUS_POLLTIMEOUT           1 */
 
 /* Defined, this macro will enable custom request process callback.  */
 
