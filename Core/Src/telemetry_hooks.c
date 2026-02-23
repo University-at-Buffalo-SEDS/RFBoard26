@@ -1,66 +1,109 @@
-// Core/Src/telemetry_alloc.c
+// telemetry_hooks_threadx.c
 #include "tx_api.h"
 #include <stddef.h>
 #include <stdio.h>
+#include "main.h"
 
-/*
- * Rust expects these functions to exist for heap allocations:
- *
- *   void *telemetryMalloc(size_t);
- *   void telemetryFree(void *);
- *   void seds_error_msg(const char *str, size_t len);
- *
- */
-
-/* Default internal heap used only if an external pool is not provided. */
-#define RUST_HEAP_SIZE  (32 * 1024u)  // this will need to be tuned
-static TX_BYTE_POOL rust_byte_pool_internal;
-static UCHAR rust_heap_internal[RUST_HEAP_SIZE];
-
-/* Pointer to an externally-provided ThreadX byte pool. If non-NULL,
-   telemetryMalloc/Free will use that pool. */
 static TX_BYTE_POOL *rust_byte_pool_external = NULL;
+static TX_MUTEX g_telemetry_mutex;
+static UINT g_telemetry_mutex_ready = 0U;
+static TX_THREAD *g_telemetry_mutex_owner = TX_NULL;
+static UINT g_telemetry_mutex_recursion = 0U;
 
-/* Register an external `TX_BYTE_POOL` for Rust allocations. Call this
-   from `App_ThreadX_Init` (or similar) passing the application's
-   `TX_BYTE_POOL *` so Rust will use the existing pool. */
 void telemetry_set_byte_pool(TX_BYTE_POOL *pool)
 {
     rust_byte_pool_external = pool;
 }
 
-void rust_heap_init(void)
+void telemetry_init_lock(void)
 {
-    static UINT initialized = 0;
-    if (initialized || rust_byte_pool_external) {
+    if (g_telemetry_mutex_ready == 0U)
+    {
+        if (tx_mutex_create(&g_telemetry_mutex, "telemetry_mutex", TX_INHERIT) == TX_SUCCESS)
+        {
+            g_telemetry_mutex_ready = 1U;
+        }
+    }
+}
+void telemetry_lock(void)
+{
+    if (g_telemetry_mutex_ready == 0U)
+    {
         return;
     }
 
-    UINT status = tx_byte_pool_create(&rust_byte_pool_internal,
-                                      "rust_heap",
-                                      rust_heap_internal,
-                                      sizeof(rust_heap_internal));
-    if (status != TX_SUCCESS) {
-        /* If this fails, you're in deep trouble – spin or assert */
-        while (1) { }
+    TX_THREAD *self = tx_thread_identify();
+    if (self == TX_NULL)
+    {
+        /* Not in thread context; cannot safely block on a mutex. */
+        return;
     }
 
-    initialized = 1;
+    if (g_telemetry_mutex_owner == self)
+    {
+        /* Manual recursion for platforms where mutexes are not re-entrant. */
+        g_telemetry_mutex_recursion++;
+        return;
+    }
+
+    if (tx_mutex_get(&g_telemetry_mutex, TX_WAIT_FOREVER) == TX_SUCCESS)
+    {
+        g_telemetry_mutex_owner = self;
+        g_telemetry_mutex_recursion = 1U;
+    }
+}
+
+void telemetry_unlock(void)
+{
+    if (g_telemetry_mutex_ready == 0U)
+    {
+        return;
+    }
+
+    TX_THREAD *self = tx_thread_identify();
+    if (self == TX_NULL)
+    {
+        /* Not in thread context; ignore. */
+        return;
+    }
+
+    if (g_telemetry_mutex_owner != self)
+    {
+        return;
+    }
+
+    if (g_telemetry_mutex_recursion > 1U)
+    {
+        g_telemetry_mutex_recursion--;
+        return;
+    }
+
+    if (tx_mutex_put(&g_telemetry_mutex) == TX_SUCCESS)
+    {
+        g_telemetry_mutex_owner = TX_NULL;
+        g_telemetry_mutex_recursion = 0U;
+    }
 }
 
 void *telemetryMalloc(size_t xSize)
 {
     void *ptr = NULL;
 
-    /* Make sure pool is ready – safe to call multiple times */
-    rust_heap_init();
+    /* Defensive: if byte pool isn't registered yet, return NULL */
+    if (rust_byte_pool_external == NULL)
+    {
+        return NULL;
+    }
 
-    /* Prefer external pool if provided, otherwise use internal one. */
-    TX_BYTE_POOL *pool = rust_byte_pool_external ? rust_byte_pool_external : &rust_byte_pool_internal;
+    if (xSize == 0U)
+    {
+        /* Rust allocator contract expects non-NULL for successful alloc. */
+        xSize = 1U;
+    }
 
-    /* TX_NO_WAIT: allocator is fast and non-blocking */
-    UINT status = tx_byte_allocate(pool, &ptr, xSize, TX_NO_WAIT);
-    if (status != TX_SUCCESS) {
+    /* Never block allocator: on tight memory, fail fast instead of wedging threads. */
+    if (tx_byte_allocate(rust_byte_pool_external, &ptr, xSize, TX_NO_WAIT) != TX_SUCCESS)
+    {
         return NULL;
     }
     return ptr;
@@ -68,17 +111,25 @@ void *telemetryMalloc(size_t xSize)
 
 void telemetryFree(void *pv)
 {
-    if (pv == NULL) {
-        return;
+    if (pv != NULL)
+    {
+        (void)tx_byte_release(pv);
     }
-
-    /* tx_byte_release doesn't require the pool pointer here; it will
-       release the memory previously allocated by tx_byte_allocate. */
-    (void)tx_byte_release(pv);
 }
 
 void seds_error_msg(const char *str, size_t len)
 {
     (void)len;
-    printf("%s\n", str);
+    printf("%s\r\n", str);
+}
+
+void telemetry_panic_hook(const char *str, size_t len)
+{
+    (void)len;
+    if (str != NULL)
+    {
+        printf("PANIC: %s\r\n", str);
+    }
+    Error_Handler();
+    
 }

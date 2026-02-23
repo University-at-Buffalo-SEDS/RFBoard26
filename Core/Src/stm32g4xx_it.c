@@ -51,6 +51,21 @@
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static void fault_busy_delay(volatile uint32_t n)
+{
+  while (n--)
+  {
+    __NOP();
+  }
+}
+
+/* Blink helper used from fault handlers. Uses busy wait to avoid depending
+   on HAL timing (systick may be compromised during a fault). */
+static void fault_blink(GPIO_TypeDef *port, uint16_t pin, uint32_t delay_iters)
+{
+  HAL_GPIO_TogglePin(port, pin);
+  fault_busy_delay(delay_iters);
+}
 
 /* USER CODE END 0 */
 

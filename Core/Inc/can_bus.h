@@ -38,6 +38,22 @@ HAL_StatusTypeDef can_bus_subscribe_rx(can_bus_rx_cb_t cb, void *user);
  */
 HAL_StatusTypeDef can_bus_unsubscribe_rx(can_bus_rx_cb_t cb, void *user);
 
+/* Print FDCAN protocol status + error counters to aid debugging. */
+void can_bus_print_status(void);
+
+/*
+ * Poll hardware FIFOs (RX FIFO1 and TX event FIFO) and push events into the
+ * internal rings. This function is safe to call whether HAL notifications
+ * (interrupts) are enabled or not: if notifications are active it will
+ * temporarily deactivate them while polling to avoid races, then restore
+ * them.
+ */
+void can_bus_poll(void);
+
+/* Set this node's own standard ID so received copies of our own frames can
+	be ignored. Pass 0xFFFFFFFFu to disable. */
+void can_bus_set_own_id(uint32_t std_id);
+
 #ifdef __cplusplus
 }
 #endif

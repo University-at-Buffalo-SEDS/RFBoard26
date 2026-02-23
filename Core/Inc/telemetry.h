@@ -62,8 +62,8 @@ SedsResult process_all_queues_timeout(uint32_t timeout_ms);
 
 // Errors / debug
 SedsResult print_telemetry_error(int32_t error_code);
-SedsResult log_error_asyncronous(const char *fmt, ...);
-SedsResult log_error_syncronous(const char *fmt, ...);
+SedsResult log_error_asynchronous(const char* fmt, ...);
+SedsResult log_error_synchronous(const char* fmt, ...);
 
 void die(const char *fmt, ...);
 

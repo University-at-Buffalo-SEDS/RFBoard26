@@ -33,6 +33,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include "can_bus.h"
 
 // External SPI handle
 extern SPI_HandleTypeDef hspi1;
@@ -59,7 +60,7 @@ static uint64_t wrap_day_ms(uint64_t ms)
 
 // Stack + TCB for neom9n thread
 TX_THREAD neom9n_thread;
-#define NEOM9N_THREAD_STACK_SIZE 1024u
+#define NEOM9N_THREAD_STACK_SIZE (4 * 1024u)
 ULONG neom9n_thread_stack[NEOM9N_THREAD_STACK_SIZE / sizeof(ULONG)];
 
 void neom9n_thread_entry(ULONG initial_input)
@@ -67,7 +68,7 @@ void neom9n_thread_entry(ULONG initial_input)
     (void)initial_input;
     HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
     ///**
-    tx_thread_sleep(200); // Wait 2 seconds for GPS to boot (recommended datasheet)
+    tx_thread_sleep(2000); // Wait 2 seconds for GPS to boot (recommended datasheet)
 
     // Configure for rocket flight
     // @note: Confirm with datasheet, after first config this block is likely reducdent
@@ -119,9 +120,11 @@ void neom9n_thread_entry(ULONG initial_input)
     // Error tracking
     uint32_t consecutive_errors = 0;
     uint32_t no_fix_counter = 0;
+    HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
 
     for (;;)
     {
+
         NEOM9N_status_t status = receive_nmea(&gps_packet, NMEA_MAX_WAIT, NMEA_MAX_IGNORES);
 
         if (status == NEOM9N_OK)
@@ -138,36 +141,40 @@ void neom9n_thread_entry(ULONG initial_input)
                                            gps_data_buffer,
                                            3,
                                            sizeof(float));
-                  /* Print GPS data using fixed-point formatting because floating
-                   * point printf (%f) is disabled. Lat/lon use 6 fractional
-                   * digits, altitude uses 2 fractional digits.
-                   */
-                  {
-                      double latf = gps_packet.lat;
-                      double lonf = gps_packet.lon;
-                      double altf = gps_packet.altitude_msl;
+                /* Print GPS data using fixed-point formatting because floating
+                 * point printf (%f) is disabled. Lat/lon use 6 fractional
+                 * digits, altitude uses 2 fractional digits.
+                 */
+                {
+                    double latf = gps_packet.lat;
+                    double lonf = gps_packet.lon;
+                    double altf = gps_packet.altitude_msl;
 
-                      int64_t lat_scaled = (int64_t)(latf * 1000000.0 + (latf >= 0 ? 0.5 : -0.5));
-                      int64_t lon_scaled = (int64_t)(lonf * 1000000.0 + (lonf >= 0 ? 0.5 : -0.5));
-                      int64_t alt_scaled = (int64_t)(altf * 100.0 + (altf >= 0 ? 0.5 : -0.5));
+                    int64_t lat_scaled = (int64_t)(latf * 1000000.0 + (latf >= 0 ? 0.5 : -0.5));
+                    int64_t lon_scaled = (int64_t)(lonf * 1000000.0 + (lonf >= 0 ? 0.5 : -0.5));
+                    int64_t alt_scaled = (int64_t)(altf * 100.0 + (altf >= 0 ? 0.5 : -0.5));
 
-                      int64_t lat_whole = lat_scaled / 1000000;
-                      int64_t lat_frac = lat_scaled % 1000000;
-                      if (lat_frac < 0) lat_frac = -lat_frac;
+                    int64_t lat_whole = lat_scaled / 1000000;
+                    int64_t lat_frac = lat_scaled % 1000000;
+                    if (lat_frac < 0)
+                        lat_frac = -lat_frac;
 
-                      int64_t lon_whole = lon_scaled / 1000000;
-                      int64_t lon_frac = lon_scaled % 1000000;
-                      if (lon_frac < 0) lon_frac = -lon_frac;
+                    int64_t lon_whole = lon_scaled / 1000000;
+                    int64_t lon_frac = lon_scaled % 1000000;
+                    if (lon_frac < 0)
+                        lon_frac = -lon_frac;
 
-                      int64_t alt_whole = alt_scaled / 100;
-                      int64_t alt_frac = alt_scaled % 100;
-                      if (alt_frac < 0) alt_frac = -alt_frac;
+                    int64_t alt_whole = alt_scaled / 100;
+                    int64_t alt_frac = alt_scaled % 100;
+                    if (alt_frac < 0)
+                        alt_frac = -alt_frac;
 
-                      printf("GPS data sent: lat=%lld.%06lld, lon=%lld.%06lld, alt=%lld.%02lld\n",
-                          (long long)lat_whole, (long long)lat_frac,
-                          (long long)lon_whole, (long long)lon_frac,
-                          (long long)alt_whole, (long long)alt_frac);
-                  }
+                    printf("GPS data sent: lat=%lld.%06lld, lon=%lld.%06lld, alt=%lld.%02lld\n",
+                           (long long)lat_whole, (long long)lat_frac,
+                           (long long)lon_whole, (long long)lon_frac,
+                           (long long)alt_whole, (long long)alt_frac);
+
+                }
                 // Pack GPS time-of-day.
                 // IMPORTANT: pack_time_data() must fill gps_time_of_day_ms as *ms since
                 // midnight UTC* (or you should change it accordingly).
@@ -202,10 +209,9 @@ void neom9n_thread_entry(ULONG initial_input)
                 {
                     printf("GPS has no fix\n");
                     const char no_fix_txt[] = "GPS FATAL: No fix";
-                    log_telemetry_asynchronous(SEDS_DT_MESSAGE_DATA,
+                    log_telemetry_asynchronous(SEDS_DT_WARNING,
                                                no_fix_txt,
-                                               1,
-                                               sizeof(no_fix_txt));
+                                               sizeof(no_fix_txt), 1);
 
                     no_fix_counter = 0;
                 }
@@ -235,17 +241,16 @@ void neom9n_thread_entry(ULONG initial_input)
                     break;
                 }
 
-                log_telemetry_asynchronous(SEDS_DT_GENERIC_ERROR,
-                                           error_type,
-                                           1,
-                                           strlen(error_type) + 1);
+                log_telemetry_asynchronous(
+                    SEDS_DT_WARNING,
+                    error_type,
+                    strlen(error_type) + 1, // include NUL for C-string payload
+                    1);
 
                 consecutive_errors = 0;
-
-                printf("%s\n", error_type);
             }
         }
-        tx_thread_sleep(1);
+        tx_thread_sleep(50);
     }
 }
 
@@ -266,8 +271,8 @@ UINT create_neom9n_thread(TX_BYTE_POOL *byte_pool)
         0,
         pointer,
         NEOM9N_THREAD_STACK_SIZE,
-        5,
-        5,
+        4,
+        4,
         TX_NO_TIME_SLICE,
         TX_AUTO_START);
 
