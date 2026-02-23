@@ -4,6 +4,7 @@
 #include "telemetry.h"
 #include "can_bus.h"
 #include "main.h"
+#include <stdio.h>
 
 TX_THREAD telemetry_thread;
 #define TELEMETRY_THREAD_STACK_SIZE (4U *1024U)
@@ -35,7 +36,6 @@ void telemetry_thread_entry(ULONG initial_input)
     //                                 sizeof(started_txt),
     //                                 1);
 
-    uint64_t last_req_ms = 0;
     uint64_t last_announce_ms = 0;
 
     for (;;) {

@@ -51,7 +51,7 @@ static uint64_t tx_raw_now_ms_locked(void)
   return ((uint64_t)ticks32 * 1000ULL) / (uint64_t)TX_TIMER_TICKS_PER_SECOND;
 }
 
-static uint64_t tx_raw_now_ms(void *user)
+static UNUSED_FUNCTION uint64_t tx_raw_now_ms(void *user)
 {
   (void)user;
   return tx_raw_now_ms_locked();
