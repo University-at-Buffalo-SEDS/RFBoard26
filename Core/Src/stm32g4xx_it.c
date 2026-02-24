@@ -59,14 +59,6 @@ static void fault_busy_delay(volatile uint32_t n)
   }
 }
 
-/* Blink helper used from fault handlers. Uses busy wait to avoid depending
-   on HAL timing (systick may be compromised during a fault). */
-static void fault_blink(GPIO_TypeDef *port, uint16_t pin, uint32_t delay_iters)
-{
-  HAL_GPIO_TogglePin(port, pin);
-  fault_busy_delay(delay_iters);
-}
-
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
@@ -202,6 +194,20 @@ void TIM6_DAC_IRQHandler(void)
   /* USER CODE BEGIN TIM6_DAC_IRQn 1 */
 
   /* USER CODE END TIM6_DAC_IRQn 1 */
+}
+
+/**
+  * @brief This function handles FDCAN2 interrupt 0.
+  */
+void FDCAN2_IT0_IRQHandler(void)
+{
+  /* USER CODE BEGIN FDCAN2_IT0_IRQn 0 */
+
+  /* USER CODE END FDCAN2_IT0_IRQn 0 */
+  HAL_FDCAN_IRQHandler(&hfdcan2);
+  /* USER CODE BEGIN FDCAN2_IT0_IRQn 1 */
+
+  /* USER CODE END FDCAN2_IT0_IRQn 1 */
 }
 
 /**

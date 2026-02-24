@@ -38,7 +38,10 @@ extern void telemetry_init_lock(void);
 /* USER CODE BEGIN PTD */
 static void busy_delay(volatile uint32_t n)
 {
-  while (n--) { __NOP(); }
+  while (n--)
+  {
+    __NOP();
+  }
 }
 /* USER CODE END PTD */
 
@@ -63,10 +66,10 @@ static void busy_delay(volatile uint32_t n)
 /* USER CODE END PFP */
 
 /**
-  * @brief  Application ThreadX Initialization.
-  * @param memory_ptr: memory pointer
-  * @retval int
-  */
+ * @brief  Application ThreadX Initialization.
+ * @param memory_ptr: memory pointer
+ * @retval int
+ */
 UINT App_ThreadX_Init(VOID *memory_ptr)
 {
   UINT ret = TX_SUCCESS;
@@ -79,8 +82,16 @@ UINT App_ThreadX_Init(VOID *memory_ptr)
   telemetry_set_byte_pool(byte_pool);
   /* Initialize telemetry lock used by Rust (telemetry_lock/telemetry_unlock). */
   telemetry_init_lock();
-  create_telemetry_thread(byte_pool);
-  create_neom9n_thread(byte_pool);
+  ret = create_neom9n_thread(byte_pool);
+  if (ret != TX_SUCCESS)
+  {
+    Error_Handler();
+  }
+  ret = create_telemetry_thread(byte_pool);
+  if (ret != TX_SUCCESS)
+  {
+    Error_Handler();
+  }
 
   /* NOTE: USBX monitor thread will be created after USBX initialization
      completes (see tx_application_define in app_azure_rtos.c). */
@@ -89,11 +100,11 @@ UINT App_ThreadX_Init(VOID *memory_ptr)
   return ret;
 }
 
-  /**
-  * @brief  Function that implements the kernel's initialization.
-  * @param  None
-  * @retval None
-  */
+/**
+ * @brief  Function that implements the kernel's initialization.
+ * @param  None
+ * @retval None
+ */
 void MX_ThreadX_Init(void)
 {
   /* USER CODE BEGIN  Before_Kernel_Start */

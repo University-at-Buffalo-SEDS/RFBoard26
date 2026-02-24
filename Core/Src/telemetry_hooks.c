@@ -33,11 +33,11 @@ void telemetry_lock(void)
     }
 
     TX_THREAD *self = tx_thread_identify();
-    if (self == TX_NULL)
-    {
-        /* Not in thread context; cannot safely block on a mutex. */
-        return;
-    }
+    // if (self == TX_NULL)
+    // {
+    //     /* Not in thread context; cannot safely block on a mutex. */
+    //     return;
+    // }
 
     if (g_telemetry_mutex_owner == self)
     {
@@ -61,11 +61,11 @@ void telemetry_unlock(void)
     }
 
     TX_THREAD *self = tx_thread_identify();
-    if (self == TX_NULL)
-    {
-        /* Not in thread context; ignore. */
-        return;
-    }
+    // if (self == TX_NULL)
+    // {
+    //     /* Not in thread context; ignore. */
+    //     return;
+    // }
 
     if (g_telemetry_mutex_owner != self)
     {

@@ -39,13 +39,18 @@ void telemetry_thread_entry(ULONG initial_input)
     uint64_t last_announce_ms = 0;
 
     for (;;) {
-        can_bus_poll();
+        // can_bus_poll();
+        radio_uart_process_rx();
         can_bus_process_rx();
         SedsResult res = process_all_queues_timeout(50);
         if (res != SEDS_OK)
         {
             printf("Telemetry thread: process_all_queues_timeout error %d\n", (int)res);
         }
+        telemetry_timesync_process_queue();
+
+        /* and then push any queued TX out */
+        (void)dispatch_tx_queue_timeout(5);
 
         const uint64_t now_ms = tx_now_ms();
 #if TELEMETRY_TIME_MASTER
