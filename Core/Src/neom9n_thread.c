@@ -35,8 +35,9 @@
 #include <string.h>
 #include "can_bus.h"
 
-// External SPI handle
+// External serial handleras
 extern SPI_HandleTypeDef hspi1;
+extern UART_HandleTypeDef huart2;
 
 #ifndef TX_TIMER_TICKS_PER_SECOND
 #error "TX_TIMER_TICKS_PER_SECOND must be defined by ThreadX."
@@ -72,7 +73,7 @@ void neom9n_thread_entry(ULONG initial_input)
 
     // Configure for rocket flight
     // @note: Confirm with datasheet, after first config this block is likely reducdent
-    if (config_gps_seds_rocket(&hspi1, 5000))
+    if (config_gps_seds_rocket(&hspi1, &huart2, 5000))
     {
         const char success[] = "NEOM9N config set successful";
         log_telemetry_asynchronous(SEDS_DT_MESSAGE_DATA,

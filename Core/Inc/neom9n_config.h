@@ -55,17 +55,30 @@
 
 
 /* -- Function prototypes --------------------------------------------- */
-bool config_gps_seds_rocket(SPI_HandleTypeDef *hspi, uint32_t timeout);
-bool set_dynamic_model(SPI_HandleTypeDef *hspi, uint8_t model, uint32_t timeout);
-bool set_gps_update_rate(SPI_HandleTypeDef *hspi, uint16_t rate_ms, uint32_t timeout);
-bool enable_gps_spi(SPI_HandleTypeDef *hspi, uint32_t timeout);
-bool config_gps_output(SPI_HandleTypeDef *hspi, uint32_t timeout);
+// High Level Config
+bool config_gps_seds_rocket(SPI_HandleTypeDef *hspi, UART_HandleTypeDef *huart, uint32_t timeout);
+bool config_gps_seds_rocket_spi(SPI_HandleTypeDef *hspi, uint32_t timeout);
+bool config_gps_seds_rocket_uart(UART_HandleTypeDef *huart, uint32_t timeout);
 
+// SPI Config Functions 
+bool set_dynamic_model_spi(SPI_HandleTypeDef *hspi, uint8_t model, uint32_t timeout);
+bool set_gps_update_rate_spi(SPI_HandleTypeDef *hspi, uint16_t rate_ms, uint32_t timeout);
+bool enable_gps_spi_via_spi(SPI_HandleTypeDef *hspi, uint32_t timeout);
+bool config_gps_output_spi(SPI_HandleTypeDef *hspi, uint32_t timeout);
 
-/* -- Low-level UBX functions ----------------------------------------- */
-bool UBX_SendMessage(SPI_HandleTypeDef *hspi, uint8_t msg_class, uint8_t msg_id, 
-                     const uint8_t *payload, uint16_t payload_len, uint32_t timeout);
-bool UBX_WaitForAck(SPI_HandleTypeDef *hspi, uint8_t msg_class, uint8_t msg_id, uint32_t timeout);
+// UART Config Functions
+bool set_dynamic_model_uart(UART_HandleTypeDef *huart, uint8_t model, uint32_t timeout);
+bool set_gps_update_rate_uart(UART_HandleTypeDef *huart, uint16_t rate_ms, uint32_t timeout);
+bool enable_gps_spi_via_uart(UART_HandleTypeDef *huart, uint32_t timeout);
+bool config_gps_output_uart(UART_HandleTypeDef *huart, uint32_t timeout);
+
+// Low-level UBX Functions 
+bool UBX_SendMessage_SPI(SPI_HandleTypeDef *hspi, uint8_t msg_class, uint8_t msg_id, 
+    const uint8_t *payload, uint16_t payload_len, uint32_t timeout);
+bool UBX_SendMessage_UART(UART_HandleTypeDef *huart, uint8_t msg_class, uint8_t msg_id,
+     const uint8_t *payload, uint16_t payload_len, uint32_t timeout);
+bool UBX_WaitForAck_SPI(SPI_HandleTypeDef *hspi, uint8_t msg_class, uint8_t msg_id, uint32_t timeout);
+bool UBX_WaitForAck_UART(UART_HandleTypeDef *huart, uint8_t msg_class, uint8_t msg_id, uint32_t timeout);
 void UBX_CalculateChecksum(const uint8_t *data, uint16_t len, uint8_t *ck_a, uint8_t *ck_b);
 
 #endif /* NEOM9N_CONFIG_H */
