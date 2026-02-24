@@ -5,6 +5,7 @@
 /* Tune these */
 #define RADIO_UART_RX_BUF_SIZE      256
 #define RADIO_UART_MAX_SUBSCRIBERS  8
+#define RADIO_UART_TX_TIMEOUT_MS    5U
 
 /* How many RX chunks we can queue from ISR */
 #ifndef RADIO_UART_RX_RING_DEPTH
@@ -42,9 +43,10 @@ HAL_StatusTypeDef radio_uart_start_rx(void) {
 }
 
 HAL_StatusTypeDef radio_uart_send_bytes(const uint8_t *bytes, size_t len) {
+  // return HAL_OK;
   if (!g_huart) return HAL_ERROR;
   if (!bytes || len == 0) return HAL_ERROR;
-  return HAL_UART_Transmit(g_huart, (uint8_t *)bytes, (uint16_t)len, HAL_MAX_DELAY);
+  return HAL_UART_Transmit(g_huart, (uint8_t *)bytes, (uint16_t)len, RADIO_UART_TX_TIMEOUT_MS);
 }
 
 HAL_StatusTypeDef radio_uart_subscribe_rx(radio_rx_cb_t cb, void *user) {

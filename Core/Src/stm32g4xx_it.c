@@ -59,6 +59,48 @@ static void fault_busy_delay(volatile uint32_t n)
   }
 }
 
+static void fault_blink_pattern(uint32_t code)
+{
+  __disable_irq();
+  for (;;)
+  {
+    switch (code)
+    {
+    case 1U: /* HardFault: both LEDs blink together */
+      HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_SET);
+      fault_busy_delay(300000);
+      HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_RESET);
+      HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
+      fault_busy_delay(300000);
+      break;
+    case 2U: /* MemManage: BLUE-only blink */
+      HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
+      fault_busy_delay(300000);
+      HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_RESET);
+      fault_busy_delay(300000);
+      break;
+    case 3U: /* BusFault: GREEN-only blink */
+      HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_RESET);
+      HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_SET);
+      fault_busy_delay(300000);
+      HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
+      fault_busy_delay(300000);
+      break;
+    case 4U: /* UsageFault: alternating blink */
+    default:
+      HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
+      fault_busy_delay(180000);
+      HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_RESET);
+      HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_SET);
+      fault_busy_delay(180000);
+      break;
+    }
+  }
+}
+
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/

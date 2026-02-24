@@ -114,7 +114,7 @@ void neom9n_thread_entry(ULONG initial_input)
     // HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
     ///**
     tx_thread_sleep(200); // Wait 2 seconds for GPS to boot (recommended datasheet)
-    HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
+    // HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
 
     // Configure for rocket flight
     // @note: Confirm with datasheet, after first config this block is likely reducdent
@@ -156,7 +156,7 @@ void neom9n_thread_entry(ULONG initial_input)
 
     uint8_t gps_test_active = (GPS_TEST_MODE ? 1u : 0u);
     uint32_t gps_error_accum = 0;
-    HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
+    // HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
 
     for (;;)
     {
@@ -178,7 +178,7 @@ void neom9n_thread_entry(ULONG initial_input)
             // Emit a fixed GPS position payload occasionally
             float fake[3] = {GPS_TEST_LAT, GPS_TEST_LON, GPS_TEST_ALT_M};
             log_telemetry_asynchronous(SEDS_DT_GPS_DATA, fake, 3, sizeof(float));
-
+            printf("GPS TEST MODE: emitted fake GPS data\r\n");
             tx_thread_sleep(200);
 
             continue;

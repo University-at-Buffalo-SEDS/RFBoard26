@@ -45,6 +45,10 @@
 #define CAN_BUS_POLLING 0
 #endif
 
+#ifndef CAN_BUS_TX_ENQUEUE_TIMEOUT_MS
+#define CAN_BUS_TX_ENQUEUE_TIMEOUT_MS 5U
+#endif
+
 
 
 /* Forward declarations (avoid implicit decl / linkage mismatch) */
@@ -211,6 +215,39 @@ volatile uint32_t g_fdcan_irq_count = 0;
 static volatile uint8_t g_rx_fifo0_pending = 0;
 static volatile uint8_t g_rx_fifo1_pending = 0;
 static volatile uint8_t g_txevt_pending = 0;
+
+static HAL_StatusTypeDef can_bus_enqueue_tx_frame(const FDCAN_TxHeaderTypeDef *hdr,
+                                                  const uint8_t *data)
+{
+  if (!g_hfdcan || !hdr || !data)
+    return HAL_ERROR;
+
+  const uint32_t t0 = HAL_GetTick();
+  for (;;)
+  {
+    /* Fail fast if controller is bus-off. */
+    if (__HAL_FDCAN_GET_FLAG(g_hfdcan, FDCAN_FLAG_BUS_OFF) != 0U)
+      return HAL_ERROR;
+
+    if (HAL_FDCAN_GetTxFifoFreeLevel(g_hfdcan) > 0U)
+    {
+      HAL_StatusTypeDef st = HAL_FDCAN_AddMessageToTxFifoQ(g_hfdcan, hdr, data);
+      if (st == HAL_OK)
+        return HAL_OK;
+
+      /*
+       * Retry only when queue is temporarily full; for all other errors,
+       * return immediately.
+       */
+      const uint32_t err = HAL_FDCAN_GetError(g_hfdcan);
+      if ((err & HAL_FDCAN_ERROR_FIFO_FULL) == 0U)
+        return st;
+    }
+
+    if ((uint32_t)(HAL_GetTick() - t0) >= (uint32_t)CAN_BUS_TX_ENQUEUE_TIMEOUT_MS)
+      return HAL_TIMEOUT;
+  }
+}
 
 static inline void can_bus_notify_rx(const uint8_t *data, size_t len)
 {
@@ -818,7 +855,7 @@ HAL_StatusTypeDef can_bus_send_bytes(const uint8_t *bytes, size_t len, uint32_t 
   uint8_t txData[64] = {0};
   memcpy(txData, bytes, len);
 
-  HAL_StatusTypeDef st = HAL_FDCAN_AddMessageToTxFifoQ(g_hfdcan, &txHeader, txData);
+  HAL_StatusTypeDef st = can_bus_enqueue_tx_frame(&txHeader, txData);
   if (st == HAL_OK)
   {
     CAN_BUS_DBG("CAN TX queued: id=0x%03lx len=%u\r\n",
