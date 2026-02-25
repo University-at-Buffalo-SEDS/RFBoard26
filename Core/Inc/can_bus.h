@@ -10,49 +10,85 @@ extern "C" {
 
 typedef void (*can_bus_rx_cb_t)(const uint8_t *data, size_t len, void *user);
 
-/* Init with the FDCAN handle that receives on FIFO1 (e.g. &hfdcan2). */
+/*
+ * Initialize CAN bus module with the FDCAN handle.
+ *
+ * This must be called once at startup before any other can_bus_* calls.
+ *
+ * This function:
+ *  - Stores the handle
+ *  - Enables notifications (unless polling mode enabled)
+ *  - Initializes internal queues
+ */
 void can_bus_init(FDCAN_HandleTypeDef *hfdcan);
 
-/* Send raw bytes (len clamped to 64). */
+/*
+ * Send raw bytes (len clamped to 64).
+ */
 HAL_StatusTypeDef can_bus_send_bytes(const uint8_t *bytes, size_t len, uint32_t std_id);
 
-/* Send an arbitrarily large buffer by fragmenting into multiple CAN FD frames. */
+/*
+ * Send arbitrarily large buffer via CAN FD fragmentation.
+ */
 HAL_StatusTypeDef can_bus_send_large(const uint8_t *bytes, size_t len, uint32_t std_id);
 
 /*
  * MUST be called periodically from thread/main-loop context.
- * This drains the ISR RX ring, performs reassembly, and invokes subscribers.
+ *
+ * This function is responsible for ALL processing:
+ *
+ *  - Drains hardware FIFOs (if ISR flagged or polling detects data)
+ *  - Moves frames into internal queues
+ *  - Performs reassembly
+ *  - Calls subscriber callbacks
+ *
+ * This function is SAFE to call frequently.
+ *
+ * It exits immediately if no data is pending.
+ *
+ * This function is thread-safe ONLY when called from a single thread.
+ *
+ * ISR NEVER calls subscribers or router directly.
  */
 void can_bus_process_rx(void);
 
 /*
- * Subscribe a callback to RX events (FIFO1).
- * Can be called at startup before interrupts start firing.
- * Returns HAL_OK on success, HAL_ERROR if the list is full or duplicate.
+ * Subscribe callback to received CAN packets.
+ *
+ * Callback is invoked from can_bus_process_rx() context ONLY.
+ *
+ * Safe to call at startup.
  */
 HAL_StatusTypeDef can_bus_subscribe_rx(can_bus_rx_cb_t cb, void *user);
 
 /*
- * Optional: remove a previously added subscription.
- * Returns HAL_OK if removed, HAL_ERROR if not found.
+ * Remove subscription.
  */
 HAL_StatusTypeDef can_bus_unsubscribe_rx(can_bus_rx_cb_t cb, void *user);
 
-/* Print FDCAN protocol status + error counters to aid debugging. */
+/*
+ * Print CAN controller status and error counters.
+ */
 void can_bus_print_status(void);
 
 /*
- * Poll hardware FIFOs (RX FIFO1 and TX event FIFO) and push events into the
- * internal rings. This function is safe to call whether HAL notifications
- * (interrupts) are enabled or not: if notifications are active it will
- * temporarily deactivate them while polling to avoid races, then restore
- * them.
+ * Set own node ID so loopback/self frames can be ignored.
+ *
+ * Pass 0xFFFFFFFFu to disable filtering.
  */
-void can_bus_poll(void);
-
-/* Set this node's own standard ID so received copies of our own frames can
-	be ignored. Pass 0xFFFFFFFFu to disable. */
 void can_bus_set_own_id(uint32_t std_id);
+
+/*
+ * Legacy compatibility alias.
+ *
+ * This now simply calls can_bus_process_rx().
+ *
+ * New code should call can_bus_process_rx() directly.
+ */
+static inline void can_bus_poll(void)
+{
+    can_bus_process_rx();
+}
 
 #ifdef __cplusplus
 }

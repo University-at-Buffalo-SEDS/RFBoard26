@@ -59,12 +59,46 @@ static void fault_busy_delay(volatile uint32_t n)
   }
 }
 
-/* Blink helper used from fault handlers. Uses busy wait to avoid depending
-   on HAL timing (systick may be compromised during a fault). */
-static void fault_blink(GPIO_TypeDef *port, uint16_t pin, uint32_t delay_iters)
+static void fault_blink_pattern(uint32_t code)
 {
-  HAL_GPIO_TogglePin(port, pin);
-  fault_busy_delay(delay_iters);
+  __disable_irq();
+  for (;;)
+  {
+    switch (code)
+    {
+    case 1U: /* HardFault: both LEDs blink together */
+      HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_SET);
+      fault_busy_delay(300000);
+      HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_RESET);
+      HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
+      fault_busy_delay(300000);
+      break;
+    case 2U: /* MemManage: BLUE-only blink */
+      HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
+      fault_busy_delay(300000);
+      HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_RESET);
+      fault_busy_delay(300000);
+      break;
+    case 3U: /* BusFault: GREEN-only blink */
+      HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_RESET);
+      HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_SET);
+      fault_busy_delay(300000);
+      HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
+      fault_busy_delay(300000);
+      break;
+    case 4U: /* UsageFault: alternating blink */
+    default:
+      HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
+      fault_busy_delay(180000);
+      HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_RESET);
+      HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_SET);
+      fault_busy_delay(180000);
+      break;
+    }
+  }
 }
 
 /* USER CODE END 0 */
@@ -202,6 +236,20 @@ void TIM6_DAC_IRQHandler(void)
   /* USER CODE BEGIN TIM6_DAC_IRQn 1 */
 
   /* USER CODE END TIM6_DAC_IRQn 1 */
+}
+
+/**
+  * @brief This function handles FDCAN2 interrupt 0.
+  */
+void FDCAN2_IT0_IRQHandler(void)
+{
+  /* USER CODE BEGIN FDCAN2_IT0_IRQn 0 */
+
+  /* USER CODE END FDCAN2_IT0_IRQn 0 */
+  HAL_FDCAN_IRQHandler(&hfdcan2);
+  /* USER CODE BEGIN FDCAN2_IT0_IRQn 1 */
+
+  /* USER CODE END FDCAN2_IT0_IRQn 1 */
 }
 
 /**

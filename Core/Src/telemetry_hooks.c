@@ -2,13 +2,96 @@
 #include "tx_api.h"
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 #include "main.h"
 
 static TX_BYTE_POOL *rust_byte_pool_external = NULL;
 static TX_MUTEX g_telemetry_mutex;
 static UINT g_telemetry_mutex_ready = 0U;
-static TX_THREAD *g_telemetry_mutex_owner = TX_NULL;
-static UINT g_telemetry_mutex_recursion = 0U;
+volatile uint32_t g_telemetry_lock_get_fail = 0U;
+volatile uint32_t g_telemetry_lock_put_fail = 0U;
+volatile uint32_t g_telemetry_alloc_fail = 0U;
+volatile uint32_t g_telemetry_panic_count = 0U;
+static volatile uint8_t g_last_err_memory_hint = 0U;
+static volatile uint8_t g_last_err_mutex_hint = 0U;
+
+static void telemetry_busy_delay(volatile uint32_t n)
+{
+    while (n--) { __NOP(); }
+}
+
+static void telemetry_panic_led_loop_memory(void)
+{
+    __disable_irq();
+    for (;;)
+    {
+        /* Memory panic: two BLUE pulses, GREEN off, then pause. */
+        HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
+        telemetry_busy_delay(9000000U);
+        HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_RESET);
+        telemetry_busy_delay(5000000U);
+        HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
+        telemetry_busy_delay(9000000U);
+        HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_RESET);
+        telemetry_busy_delay(25000000U);
+    }
+}
+
+static void telemetry_panic_led_loop_mutex(void)
+{
+    __disable_irq();
+    for (;;)
+    {
+        /* Mutex panic: two GREEN pulses, BLUE off, then pause. */
+        HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_SET);
+        telemetry_busy_delay(9000000U);
+        HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
+        telemetry_busy_delay(5000000U);
+        HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_SET);
+        telemetry_busy_delay(9000000U);
+        HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
+        telemetry_busy_delay(25000000U);
+    }
+}
+
+static void telemetry_panic_led_loop_unknown(void)
+{
+    __disable_irq();
+    for (;;)
+    {
+        /* Unknown panic: alternating BLUE/GREEN. */
+        HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
+        HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
+        telemetry_busy_delay(12000000U);
+        HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_SET);
+        telemetry_busy_delay(12000000U);
+    }
+}
+
+static int str_contains_ci_n(const char *s, size_t n, const char *needle)
+{
+    if (!s || !needle) return 0;
+    size_t needle_len = strlen(needle);
+    if (needle_len == 0U || n < needle_len) return 0;
+
+    for (size_t i = 0; i + needle_len <= n; ++i)
+    {
+        size_t j = 0;
+        for (; j < needle_len; ++j)
+        {
+            char a = s[i + j];
+            char b = needle[j];
+            if (a >= 'A' && a <= 'Z') a = (char)(a - 'A' + 'a');
+            if (b >= 'A' && b <= 'Z') b = (char)(b - 'A' + 'a');
+            if (a != b) break;
+        }
+        if (j == needle_len) return 1;
+    }
+    return 0;
+}
 
 void telemetry_set_byte_pool(TX_BYTE_POOL *pool)
 {
@@ -35,21 +118,14 @@ void telemetry_lock(void)
     TX_THREAD *self = tx_thread_identify();
     if (self == TX_NULL)
     {
-        /* Not in thread context; cannot safely block on a mutex. */
+        /* Never block in ISR/startup context. */
         return;
     }
 
-    if (g_telemetry_mutex_owner == self)
+    UINT st = tx_mutex_get(&g_telemetry_mutex, TX_WAIT_FOREVER);
+    if (st != TX_SUCCESS)
     {
-        /* Manual recursion for platforms where mutexes are not re-entrant. */
-        g_telemetry_mutex_recursion++;
-        return;
-    }
-
-    if (tx_mutex_get(&g_telemetry_mutex, TX_WAIT_FOREVER) == TX_SUCCESS)
-    {
-        g_telemetry_mutex_owner = self;
-        g_telemetry_mutex_recursion = 1U;
+        g_telemetry_lock_get_fail++;
     }
 }
 
@@ -63,25 +139,14 @@ void telemetry_unlock(void)
     TX_THREAD *self = tx_thread_identify();
     if (self == TX_NULL)
     {
-        /* Not in thread context; ignore. */
+        /* Never block/touch mutex in ISR/startup context. */
         return;
     }
 
-    if (g_telemetry_mutex_owner != self)
+    UINT st = tx_mutex_put(&g_telemetry_mutex);
+    if (st != TX_SUCCESS)
     {
-        return;
-    }
-
-    if (g_telemetry_mutex_recursion > 1U)
-    {
-        g_telemetry_mutex_recursion--;
-        return;
-    }
-
-    if (tx_mutex_put(&g_telemetry_mutex) == TX_SUCCESS)
-    {
-        g_telemetry_mutex_owner = TX_NULL;
-        g_telemetry_mutex_recursion = 0U;
+        g_telemetry_lock_put_fail++;
     }
 }
 
@@ -101,9 +166,13 @@ void *telemetryMalloc(size_t xSize)
         xSize = 1U;
     }
 
-    /* Never block allocator: on tight memory, fail fast instead of wedging threads. */
-    if (tx_byte_allocate(rust_byte_pool_external, &ptr, xSize, TX_NO_WAIT) != TX_SUCCESS)
+    /*
+     * Allow a brief wait so telemetry bursts don't immediately fail allocator
+     * requests and trigger panic paths in Rust.
+     */
+    if (tx_byte_allocate(rust_byte_pool_external, &ptr, xSize, 5) != TX_SUCCESS)
     {
+        g_telemetry_alloc_fail++;
         return NULL;
     }
     return ptr;
@@ -119,17 +188,45 @@ void telemetryFree(void *pv)
 
 void seds_error_msg(const char *str, size_t len)
 {
-    (void)len;
-    printf("%s\r\n", str);
+    if (str != NULL && len > 0U)
+    {
+        g_last_err_memory_hint = (uint8_t)(
+            str_contains_ci_n(str, len, "alloc") ||
+            str_contains_ci_n(str, len, "memory") ||
+            str_contains_ci_n(str, len, "oom"));
+        g_last_err_mutex_hint = (uint8_t)(
+            str_contains_ci_n(str, len, "mutex") ||
+            str_contains_ci_n(str, len, "lock"));
+        printf("%.*s\r\n", (int)len, str);
+    }
 }
 
 void telemetry_panic_hook(const char *str, size_t len)
 {
-    (void)len;
-    if (str != NULL)
+    g_telemetry_panic_count++;
+
+    if (str != NULL && len > 0U)
     {
-        printf("PANIC: %s\r\n", str);
+        // printf("PANIC: %.*s\r\n", (int)len, str);
     }
-    Error_Handler();
+
+    /* Prefer explicit text match if available. */
+    if ((str != NULL && len > 0U &&
+         (str_contains_ci_n(str, len, "alloc") || str_contains_ci_n(str, len, "memory"))) ||
+        (g_last_err_memory_hint != 0U) ||
+        (g_telemetry_alloc_fail != 0U))
+    {
+        telemetry_panic_led_loop_memory();
+    }
+
+    if ((str != NULL && len > 0U &&
+         (str_contains_ci_n(str, len, "mutex") || str_contains_ci_n(str, len, "lock"))) ||
+        (g_last_err_mutex_hint != 0U) ||
+        ((g_telemetry_lock_get_fail + g_telemetry_lock_put_fail) != 0U))
+    {
+        telemetry_panic_led_loop_mutex();
+    }
+
+    telemetry_panic_led_loop_unknown();
     
 }

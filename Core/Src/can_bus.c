@@ -42,8 +42,18 @@
 #endif
 
 #ifndef CAN_BUS_POLLING
-#define CAN_BUS_POLLING 1
+#define CAN_BUS_POLLING 0
 #endif
+
+#ifndef CAN_BUS_TX_ENQUEUE_TIMEOUT_MS
+#define CAN_BUS_TX_ENQUEUE_TIMEOUT_MS 5U
+#endif
+
+
+
+/* Forward declarations (avoid implicit decl / linkage mismatch) */
+static void can_bus_drain_rx_fifo(FDCAN_HandleTypeDef *hfdcan, uint32_t fifo);
+static void can_bus_drain_tx_events(FDCAN_HandleTypeDef *hfdcan);
 
 static void can_bus_debug_print(const char *fmt, ...)
 {
@@ -196,6 +206,48 @@ static uint32_t g_own_std_id = 0xFFFFFFFFu;
 
 /* IRQ counter incremented by ISR to help debug whether interrupts fire. */
 volatile uint32_t g_fdcan_irq_count = 0;
+
+/*
+ * RX/TX pending flags set from ISR.
+ * Keep ISRs constant-time: they only set these flags.
+ * Thread context (can_bus_process_rx) drains HW FIFOs into the ring.
+ */
+static volatile uint8_t g_rx_fifo0_pending = 0;
+static volatile uint8_t g_rx_fifo1_pending = 0;
+static volatile uint8_t g_txevt_pending = 0;
+
+static HAL_StatusTypeDef can_bus_enqueue_tx_frame(const FDCAN_TxHeaderTypeDef *hdr,
+                                                  const uint8_t *data)
+{
+  if (!g_hfdcan || !hdr || !data)
+    return HAL_ERROR;
+
+  const uint32_t t0 = HAL_GetTick();
+  for (;;)
+  {
+    /* Fail fast if controller is bus-off. */
+    if (__HAL_FDCAN_GET_FLAG(g_hfdcan, FDCAN_FLAG_BUS_OFF) != 0U)
+      return HAL_ERROR;
+
+    if (HAL_FDCAN_GetTxFifoFreeLevel(g_hfdcan) > 0U)
+    {
+      HAL_StatusTypeDef st = HAL_FDCAN_AddMessageToTxFifoQ(g_hfdcan, hdr, data);
+      if (st == HAL_OK)
+        return HAL_OK;
+
+      /*
+       * Retry only when queue is temporarily full; for all other errors,
+       * return immediately.
+       */
+      const uint32_t err = HAL_FDCAN_GetError(g_hfdcan);
+      if ((err & HAL_FDCAN_ERROR_FIFO_FULL) == 0U)
+        return st;
+    }
+
+    if ((uint32_t)(HAL_GetTick() - t0) >= (uint32_t)CAN_BUS_TX_ENQUEUE_TIMEOUT_MS)
+      return HAL_TIMEOUT;
+  }
+}
 
 static inline void can_bus_notify_rx(const uint8_t *data, size_t len)
 {
@@ -358,6 +410,49 @@ static inline int rb_pop(can_bus_rx_frame_t *out)
   __DMB(); // conservative
   g_rx_tail = rb_next(t);
   return 1;
+}
+
+// =========================
+// HW FIFO drain (thread-only)
+// =========================
+
+/*
+ * Drain hardware RX FIFOs (and TX event FIFO for debug) into the ISR->thread
+ * rings.
+ *
+ * IMPORTANT:
+ *  - Call ONLY from thread/main-loop context.
+ *  - ISRs must not drain HW FIFOs; they only set pending flags.
+ */
+static void can_bus_drain_hw_to_ring_thread(void)
+{
+  if (!g_hfdcan)
+    return;
+
+  /* RX FIFO0 */
+  if (g_rx_fifo0_pending || (HAL_FDCAN_GetRxFifoFillLevel(g_hfdcan, FDCAN_RX_FIFO0) > 0))
+  {
+    g_rx_fifo0_pending = 0;
+    can_bus_drain_rx_fifo(g_hfdcan, FDCAN_RX_FIFO0);
+  }
+
+  /* RX FIFO1 */
+  if (g_rx_fifo1_pending || (HAL_FDCAN_GetRxFifoFillLevel(g_hfdcan, FDCAN_RX_FIFO1) > 0))
+  {
+    g_rx_fifo1_pending = 0;
+    can_bus_drain_rx_fifo(g_hfdcan, FDCAN_RX_FIFO1);
+  }
+
+#if CAN_BUS_DEBUG
+  /* TX event FIFO */
+  if (g_txevt_pending)
+  {
+    g_txevt_pending = 0;
+    can_bus_drain_tx_events(g_hfdcan);
+  }
+#else
+  (void)g_txevt_pending;
+#endif
 }
 
 // =========================
@@ -661,51 +756,19 @@ void can_bus_init(FDCAN_HandleTypeDef *hfdcan)
 
 #if defined(CAN_BUS_POLLING) && (CAN_BUS_POLLING != 0)
   /* Polling mode: do not activate HAL notifications / IRQs. Caller should
-     call `can_bus_poll()` periodically from a thread. */
+     call `can_bus_process_rx()` periodically from a thread.
+     */
 #else
   // Enable BOTH FIFO0 and FIFO1 notifications (common default routing is FIFO0).
   g_notification_mask = FDCAN_IT_RX_FIFO0_NEW_MESSAGE |
                         FDCAN_IT_RX_FIFO1_NEW_MESSAGE |
                         FDCAN_IT_TX_EVT_FIFO_NEW_DATA;
 
-  (void)HAL_FDCAN_ConfigInterruptLines(hfdcan, g_notification_mask, FDCAN_INTERRUPT_LINE1);
+  (void)HAL_FDCAN_ConfigInterruptLines(hfdcan, g_notification_mask, FDCAN_INTERRUPT_LINE1 | FDCAN_INTERRUPT_LINE0);
   (void)HAL_FDCAN_ActivateNotification(hfdcan, g_notification_mask, 0);
 #endif
 
   (void)HAL_FDCAN_Start(hfdcan);
-}
-
-/*
- * Universal polling helper: can be called whether interrupts/notifications are
- * enabled or not. To avoid races with ISR-driven handling, it temporarily
- * deactivates the same notifications we enable in `can_bus_init()` while it
- * drains the hardware RX FIFO0/FIFO1 and the TX event FIFO, then restores
- * notifications if they were active.
- */
-void can_bus_poll(void)
-{
-  if (!g_hfdcan)
-    return;
-
-  uint32_t mask = g_notification_mask;
-  if (mask)
-  {
-    /* Temporarily disable notifications to avoid races with ISRs. */
-    (void)HAL_FDCAN_DeactivateNotification(g_hfdcan, mask);
-  }
-
-  // Drain BOTH FIFOs (fixes “polling mode receives nothing”)
-  can_bus_drain_rx_fifo(g_hfdcan, FDCAN_RX_FIFO0);
-  can_bus_drain_rx_fifo(g_hfdcan, FDCAN_RX_FIFO1);
-
-  // Drain TX event FIFO (debug)
-  can_bus_drain_tx_events(g_hfdcan);
-
-  if (mask)
-  {
-    /* Restore notifications */
-    (void)HAL_FDCAN_ActivateNotification(g_hfdcan, mask, 0);
-  }
 }
 
 HAL_StatusTypeDef can_bus_subscribe_rx(can_bus_rx_cb_t cb, void *user)
@@ -771,7 +834,6 @@ HAL_StatusTypeDef can_bus_send_bytes(const uint8_t *bytes, size_t len, uint32_t 
 
   FDCAN_TxHeaderTypeDef txHeader;
   memset(&txHeader, 0, sizeof(txHeader));
-
   txHeader.Identifier = std_id & 0x7FFu;
   txHeader.IdType = FDCAN_STANDARD_ID;
   txHeader.TxFrameType = FDCAN_DATA_FRAME;
@@ -793,7 +855,7 @@ HAL_StatusTypeDef can_bus_send_bytes(const uint8_t *bytes, size_t len, uint32_t 
   uint8_t txData[64] = {0};
   memcpy(txData, bytes, len);
 
-  HAL_StatusTypeDef st = HAL_FDCAN_AddMessageToTxFifoQ(g_hfdcan, &txHeader, txData);
+  HAL_StatusTypeDef st = can_bus_enqueue_tx_frame(&txHeader, txData);
   if (st == HAL_OK)
   {
     CAN_BUS_DBG("CAN TX queued: id=0x%03lx len=%u\r\n",
@@ -880,6 +942,34 @@ void can_bus_process_rx(void)
   uint32_t now = HAL_GetTick();
   reasm_expire_old(now);
 
+    /*
+   * Fast-path early exit:
+   * - If there is no pending RX/TX event indicated by ISR,
+   * - AND our software rings are empty,
+   * - AND (in polling builds) the hardware FIFOs are empty,
+   * then return quickly.
+   */
+  if (!g_rx_fifo0_pending && !g_rx_fifo1_pending &&
+      (g_rx_head == g_rx_tail) &&
+      (g_tx_head == g_tx_tail) &&
+      !g_txevt_pending)
+  {
+#if CAN_BUS_POLLING
+    if (!g_hfdcan)
+      return;
+
+    const uint32_t f0 = HAL_FDCAN_GetRxFifoFillLevel(g_hfdcan, FDCAN_RX_FIFO0);
+    const uint32_t f1 = HAL_FDCAN_GetRxFifoFillLevel(g_hfdcan, FDCAN_RX_FIFO1);
+    if (f0 == 0U && f1 == 0U)
+      return;
+#else
+    return;
+#endif
+  }
+
+  /* Thread-context HW drain (pull FIFO0/FIFO1 into the ring). */
+  can_bus_drain_hw_to_ring_thread();
+
   // Drain any TX event notifications queued by ISR (debug only)
   can_bus_tx_event_t txe;
   while (tx_rb_pop(&txe))
@@ -914,7 +1004,7 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
     return;
 
   g_fdcan_irq_count++;
-  can_bus_drain_rx_fifo(hfdcan, FDCAN_RX_FIFO0);
+  g_rx_fifo0_pending = 1;
 }
 
 void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo1ITs)
@@ -924,13 +1014,16 @@ void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo1ITs)
     return;
 
   g_fdcan_irq_count++;
-  can_bus_drain_rx_fifo(hfdcan, FDCAN_RX_FIFO1);
+  g_rx_fifo1_pending = 1;
 }
 
 // TX event FIFO callback (called in ISR context). We read all new events
 // and queue lightweight summaries to the thread via `g_tx_ring`.
 void HAL_FDCAN_TxEventFifoCallback(FDCAN_HandleTypeDef *hfdcan, uint32_t TxEventFifoITs)
 {
+  (void)hfdcan;
   (void)TxEventFifoITs;
-  can_bus_drain_tx_events(hfdcan);
+#if CAN_BUS_DEBUG
+  g_txevt_pending = 1;
+#endif
 }

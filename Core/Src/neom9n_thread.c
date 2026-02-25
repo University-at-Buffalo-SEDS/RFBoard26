@@ -35,7 +35,38 @@
 #include <string.h>
 #include "can_bus.h"
 
-// External serial handleras
+
+#ifndef GPS_TEST_MODE
+// Set to 1 to force GPS test mode (no hardware required).
+#define GPS_TEST_MODE 1
+#endif
+
+#ifndef GPS_TEST_AUTO_FALLBACK
+// If 1, automatically enter test mode after repeated SPI/timeout errors.
+#define GPS_TEST_AUTO_FALLBACK 0
+#endif
+
+#ifndef GPS_TEST_FALLBACK_AFTER_ERRORS
+#define GPS_TEST_FALLBACK_AFTER_ERRORS 50u
+#endif
+
+#ifndef GPS_TEST_FALLBACK_EPOCH_MS
+// Feb 23, 2026 00:00:00 UTC (same value you used earlier)
+#define GPS_TEST_FALLBACK_EPOCH_MS 1771804800000ULL
+#endif
+
+#ifndef GPS_TEST_LAT
+#define GPS_TEST_LAT 42.6526f
+#endif
+#ifndef GPS_TEST_LON
+#define GPS_TEST_LON -73.7562f
+#endif
+#ifndef GPS_TEST_ALT_M
+#define GPS_TEST_ALT_M 100.0f
+#endif
+
+
+// External SPI handle
 extern SPI_HandleTypeDef hspi1;
 extern UART_HandleTypeDef huart1;
 
@@ -58,12 +89,26 @@ static uint64_t wrap_day_ms(uint64_t ms)
     const uint64_t DAY_MS = 86400000ULL;
     return ms % DAY_MS;
 }
+static const char *neom9n_status_to_string(NEOM9N_status_t status)
+{
+    switch (status)
+    {
+    case NEOM9N_OK:
+        return "OK";
+    case NEOM9N_TIMEOUT:
+        return "TIMEOUT";
+    case NEOM9N_SPI_ERR:
+        return "SPI_ERR";
+    case NEOM9N_PARSE_ERR:
+        return "PARSE_ERR";
+    default:
+        return "UNKNOWN";
+    }
+}
 
 // Stack + TCB for neom9n thread
 TX_THREAD neom9n_thread;
-#define NEOM9N_THREAD_STACK_SIZE (4 * 1024u)
-ULONG neom9n_thread_stack[NEOM9N_THREAD_STACK_SIZE / sizeof(ULONG)];
-
+#define NEOM9N_THREAD_STACK_SIZE (9 * 1024u)
 void neom9n_thread_entry(ULONG initial_input)
 {
     (void)initial_input;
@@ -75,62 +120,76 @@ void neom9n_thread_entry(ULONG initial_input)
     // @note: Confirm with datasheet, after first config this block is likely reducdent
     if (config_gps_seds_rocket(&hspi1, &huart1, 5000))
     {
-        const char success[] = "NEOM9N config set successful";
-        log_telemetry_asynchronous(SEDS_DT_MESSAGE_DATA,
-                                   success,
-                                   1,
-                                   sizeof(success)); // Log config success
+        // const char success[] = "NEOM9N config set successful";
+        // log_telemetry_asynchronous(SEDS_DT_MESSAGE_DATA,
+        //                            success,
+        //                            1,
+        //                            sizeof(success)); // Log config success
     }
     else
     {
         // Factory settings are fine, so no need to terminate if config fails
         // Config method greatly reduces overhead, but failure is not critical
         // Data rate unaffected by config success or failure
-        const char failure[] = "NEOM9N config set failed";
-        log_telemetry_asynchronous(SEDS_DT_MESSAGE_DATA,
-                                   failure,
-                                   1,
-                                   sizeof(failure)); // Log config failure
+        // const char failure[] = "NEOM9N config set failed";
+        // log_telemetry_asynchronous(SEDS_DT_MESSAGE_DATA,
+        //                            failure,
+        //                            1,
+        //                            sizeof(failure)); // Log config failure
     }
 
     tx_thread_sleep(100); // Wait for config to settle
     //*/
-
-    const char started_txt[] = "NEOM9N thread starting";
-    log_telemetry_asynchronous(SEDS_DT_MESSAGE_DATA,
-                               started_txt,
-                               1,
-                               sizeof(started_txt)); // initial log statement
-
     // Initialize GPS packet
     NEOM9N_t gps_packet;
     gps_init(&gps_packet, &hspi1);
 
-    const char init_txt[] = "NEOM9N packet initialized";
-    log_telemetry_asynchronous(SEDS_DT_MESSAGE_DATA,
-                               init_txt,
-                               1,
-                               sizeof(init_txt));
-
     // Binary buffers for telemetry
     uint8_t gps_data_buffer[12]; // 3 floats (lat, lon, alt)
 
-    // Time in milliseconds since UNIX EPOCH
-    uint64_t gps_time_of_day_ms = 0;
+    // GPS time in milliseconds since UNIX epoch
+    uint64_t gps_epoch_ms = 0;
 
     // Error tracking
     uint32_t consecutive_errors = 0;
     uint32_t no_fix_counter = 0;
-    HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
+
+    uint8_t gps_test_active = (GPS_TEST_MODE ? 1u : 0u);
+    uint32_t gps_error_accum = 0;
+    // HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
 
     for (;;)
     {
+        if (gps_test_active)
+        {
+            // Synthetic epoch time that advances with local ticks
+            const uint64_t now_local_ms = tx_now_ms();
+            gps_epoch_ms = GPS_TEST_FALLBACK_EPOCH_MS + now_local_ms;
+
+            // Publish a sane GPS offset for other subsystems
+            const uint64_t local_tod = wrap_day_ms(now_local_ms);
+            const uint64_t gps_tod = wrap_day_ms(gps_epoch_ms);
+            const int64_t measured_offset = (int64_t)gps_tod - (int64_t)local_tod;
+            gps_offset_update_ms(measured_offset);
+
+            // Provide unix time base (only used on TELEMETRY_TIME_MASTER builds)
+            telemetry_set_unix_time_ms(gps_epoch_ms);
+
+            // Emit a fixed GPS position payload occasionally
+            float fake[3] = {GPS_TEST_LAT, GPS_TEST_LON, GPS_TEST_ALT_M};
+            log_telemetry_asynchronous(SEDS_DT_GPS_DATA, fake, 3, sizeof(float));
+            printf("GPS TEST MODE: emitted fake GPS data\r\n");
+            tx_thread_sleep(200);
+
+            continue;
+        }
 
         NEOM9N_status_t status = receive_nmea(&gps_packet, NMEA_MAX_WAIT, NMEA_MAX_IGNORES);
 
         if (status == NEOM9N_OK)
         {
             consecutive_errors = 0;
+            gps_error_accum = 0;
 
             if (gps_has_fix(&gps_packet))
             {
@@ -146,62 +205,56 @@ void neom9n_thread_entry(ULONG initial_input)
                  * point printf (%f) is disabled. Lat/lon use 6 fractional
                  * digits, altitude uses 2 fractional digits.
                  */
-                {
-                    double latf = gps_packet.lat;
-                    double lonf = gps_packet.lon;
-                    double altf = gps_packet.altitude_msl;
+                // {
+                //     double latf = gps_packet.lat;
+                //     double lonf = gps_packet.lon;
+                //     double altf = gps_packet.altitude_msl;
 
-                    int64_t lat_scaled = (int64_t)(latf * 1000000.0 + (latf >= 0 ? 0.5 : -0.5));
-                    int64_t lon_scaled = (int64_t)(lonf * 1000000.0 + (lonf >= 0 ? 0.5 : -0.5));
-                    int64_t alt_scaled = (int64_t)(altf * 100.0 + (altf >= 0 ? 0.5 : -0.5));
+                //     int64_t lat_scaled = (int64_t)(latf * 1000000.0 + (latf >= 0 ? 0.5 : -0.5));
+                //     int64_t lon_scaled = (int64_t)(lonf * 1000000.0 + (lonf >= 0 ? 0.5 : -0.5));
+                //     int64_t alt_scaled = (int64_t)(altf * 100.0 + (altf >= 0 ? 0.5 : -0.5));
 
-                    int64_t lat_whole = lat_scaled / 1000000;
-                    int64_t lat_frac = lat_scaled % 1000000;
-                    if (lat_frac < 0)
-                        lat_frac = -lat_frac;
+                //     int64_t lat_whole = lat_scaled / 1000000;
+                //     int64_t lat_frac = lat_scaled % 1000000;
+                //     if (lat_frac < 0)
+                //         lat_frac = -lat_frac;
 
-                    int64_t lon_whole = lon_scaled / 1000000;
-                    int64_t lon_frac = lon_scaled % 1000000;
-                    if (lon_frac < 0)
-                        lon_frac = -lon_frac;
+                //     int64_t lon_whole = lon_scaled / 1000000;
+                //     int64_t lon_frac = lon_scaled % 1000000;
+                //     if (lon_frac < 0)
+                //         lon_frac = -lon_frac;
 
-                    int64_t alt_whole = alt_scaled / 100;
-                    int64_t alt_frac = alt_scaled % 100;
-                    if (alt_frac < 0)
-                        alt_frac = -alt_frac;
+                //     int64_t alt_whole = alt_scaled / 100;
+                //     int64_t alt_frac = alt_scaled % 100;
+                //     if (alt_frac < 0)
+                //         alt_frac = -alt_frac;
 
-                    printf("GPS data sent: lat=%lld.%06lld, lon=%lld.%06lld, alt=%lld.%02lld\n",
-                           (long long)lat_whole, (long long)lat_frac,
-                           (long long)lon_whole, (long long)lon_frac,
-                           (long long)alt_whole, (long long)alt_frac);
-
-                }
+                //     printf("GPS data sent: lat=%lld.%06lld, lon=%lld.%06lld, alt=%lld.%02lld\n",
+                //            (long long)lat_whole, (long long)lat_frac,
+                //            (long long)lon_whole, (long long)lon_frac,
+                //            (long long)alt_whole, (long long)alt_frac);
+                // }
                 // Pack GPS time-of-day.
                 // IMPORTANT: pack_time_data() must fill gps_time_of_day_ms as *ms since
                 // midnight UTC* (or you should change it accordingly).
 
                 // Pack GPS time-of-day (ms since UNIX Epoch) from the parsed fields.
-                gps_time_of_day_ms = get_datetime_data(&gps_packet);
+                gps_epoch_ms = get_datetime_data(&gps_packet);
 
                 // Update global offset so other threads can compute GPS time-of-day
-                // from local ticks. offset := gps_tod_ms - (local_tod_ms)
+                // from local ticks. offset := gps_tod_ms - local_tod_ms
                 const uint64_t local_ms = tx_now_ms();
                 const uint64_t local_tod = wrap_day_ms(local_ms);
+                const uint64_t gps_tod  = wrap_day_ms(gps_epoch_ms);
 
                 // Compute signed difference (gps - local)
-                int64_t measured_offset = (int64_t)gps_time_of_day_ms - (int64_t)local_tod;
-
+                int64_t measured_offset = (int64_t)gps_tod - (int64_t)local_tod;
                 gps_offset_update_ms(measured_offset);
 
-                // Optional: log time sync occasionally (very spammy otherwise)
-                // static uint32_t dbg = 0;
-                // if ((dbg++ % 200) == 0) {
-                //     char buf[96];
-                //     int n = snprintf(buf, sizeof(buf), "GPS offset_ms=%lld", (long
-                //     long)g_gps_time_offset_ms); if (n > 0)
-                //     log_telemetry_asynchronous(SEDS_DT_MESSAGE_DATA, buf, 1,
-                //     (size_t)n + 1);
-                // }
+                // Inform telemetry master of the current unix epoch time so
+                // time announcements use a valid unix base.
+                telemetry_set_unix_time_ms(gps_epoch_ms);
+
             }
             else
             {
@@ -221,6 +274,17 @@ void neom9n_thread_entry(ULONG initial_input)
         else
         {
             consecutive_errors++;
+            gps_error_accum++;
+
+#if GPS_TEST_AUTO_FALLBACK
+            if (gps_error_accum >= (uint32_t)GPS_TEST_FALLBACK_AFTER_ERRORS)
+            {
+                gps_test_active = 1u;
+                const char fb_txt[] = "GPS TEST MODE: entering fallback (no GPS detected)";
+                log_telemetry_asynchronous(SEDS_DT_WARNING, fb_txt, sizeof(fb_txt), 1);
+                continue;
+            }
+#endif
 
             if (consecutive_errors >= 5)
             {
@@ -249,6 +313,7 @@ void neom9n_thread_entry(ULONG initial_input)
                     1);
 
                 consecutive_errors = 0;
+            gps_error_accum = 0;
             }
         }
         tx_thread_sleep(50);

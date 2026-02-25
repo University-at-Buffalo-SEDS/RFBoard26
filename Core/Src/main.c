@@ -422,6 +422,7 @@ static inline int cdc_in_isr(void)
 /* ------------ Mutex for multi-thread serialization ------------ */
 
 static TX_MUTEX cdc_mutex;
+static volatile UINT cdc_mutex_ready = 0U;
 
 /*
  * NOTE:
@@ -431,7 +432,13 @@ static TX_MUTEX cdc_mutex;
  */
 void cdc_printf_init(void)
 {
-  (void)tx_mutex_create(&cdc_mutex, "cdc_tx_mutex", TX_INHERIT);
+  if (cdc_mutex_ready == 0U)
+  {
+    if (tx_mutex_create(&cdc_mutex, "cdc_tx_mutex", TX_INHERIT) == TX_SUCCESS)
+    {
+      cdc_mutex_ready = 1U;
+    }
+  }
 }
 
 extern volatile ULONG _tx_thread_system_state;
@@ -441,15 +448,16 @@ static inline int tx_is_running(void)
   return (__get_IPSR() == 0U) && (_tx_thread_system_state == 0U);
 }
 
-static void cdc_lock(void)
+static UINT cdc_lock(void)
 {
-  if (!tx_is_running() || cdc_in_isr()) return;
-  (void)tx_mutex_get(&cdc_mutex, TX_WAIT_FOREVER);
+  if (!tx_is_running() || cdc_in_isr() || cdc_mutex_ready == 0U)
+    return TX_NOT_AVAILABLE;
+  return tx_mutex_get(&cdc_mutex, TX_NO_WAIT);
 }
 
 static void cdc_unlock(void)
 {
-  if (!tx_is_running() || cdc_in_isr()) return;
+  if (!tx_is_running() || cdc_in_isr() || cdc_mutex_ready == 0U) return;
   (void)tx_mutex_put(&cdc_mutex);
 }
 
@@ -467,7 +475,10 @@ static void cdc_write_raw(const uint8_t *buf, uint16_t len)
   if (!buf || !len || cdc_in_isr()) return;
   if (!usb_cdc_ready()) return;
 
-  cdc_lock();
+  if (cdc_lock() != TX_SUCCESS)
+  {
+    return;
+  }
 
   /* Keep it simple: one synchronous write. If host isn't ready, drop. */
   ULONG actual = 0;

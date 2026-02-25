@@ -4,15 +4,18 @@
 #include "telemetry.h"
 #include "can_bus.h"
 #include "main.h"
+#include "radio.h"
 #include <stdio.h>
 
 TX_THREAD telemetry_thread;
-#define TELEMETRY_THREAD_STACK_SIZE (4U *1024U)
+#define TELEMETRY_THREAD_STACK_SIZE (24U *1024U)
 
 // How often this node requests a resync from the master:
 #define TIMESYNC_REQUEST_PERIOD_MS 2000u   // e.g. every 2 seconds
 // How often grand-master announces Unix time:
-#define TIMESYNC_ANNOUNCE_PERIOD_MS 1000u
+#define TIMESYNC_ANNOUNCE_PERIOD_MS 2000u
+
+#define TELEMETRY_STARTUP_DELAY_MS 2000u
 
 #ifndef TX_TIMER_TICKS_PER_SECOND
 #error "TX_TIMER_TICKS_PER_SECOND must be defined by ThreadX."
@@ -23,9 +26,27 @@ static uint64_t tx_now_ms(void) {
     return ((uint64_t)(uint32_t)ticks * 1000ULL) / (uint64_t)TX_TIMER_TICKS_PER_SECOND;
 }
 
+/* Debug-only breadcrumbs for live watch in debugger (avoid printf in RT loop). */
+volatile uint32_t g_telem_stage = 0U;
+volatile int32_t g_telem_last_res = 0;
+volatile uint32_t g_telem_loop_count = 0U;
+
+/* Timesync response diagnostics exported from telemetry.c */
+extern volatile uint32_t g_timesync_req_seen;
+extern volatile uint32_t g_timesync_resp_enqueued;
+extern volatile uint32_t g_timesync_resp_dequeued;
+extern volatile uint32_t g_timesync_resp_ser_fail;
+extern volatile uint32_t g_timesync_resp_can_fail;
+extern volatile uint32_t g_timesync_resp_radio_fail;
+extern volatile uint32_t g_timesync_resp_stage;
+extern volatile uint32_t g_timesync_diag_fault_code;
+
 void telemetry_thread_entry(ULONG initial_input)
 {
     (void)initial_input;
+
+    /* Hold telemetry startup so debugger/USB console can attach first. */
+    // tx_thread_sleep((ULONG)(((uint64_t)TELEMETRY_STARTUP_DELAY_MS * (uint64_t)TX_TIMER_TICKS_PER_SECOND) / 1000ULL));
 
     // Ensure router exists early (so we can send requests immediately)
     (void)init_telemetry_router();
@@ -36,16 +57,19 @@ void telemetry_thread_entry(ULONG initial_input)
     //                                 sizeof(started_txt),
     //                                 1);
 
-    uint64_t last_announce_ms = 0;
+    uint64_t last_diag_ms = 0;
+#if TELEMETRY_TIME_MASTER
+    uint64_t last_announce_ms = tx_now_ms() - (uint64_t)TIMESYNC_ANNOUNCE_PERIOD_MS;
+#else
+    uint64_t last_req_ms = tx_now_ms() - (uint64_t)TIMESYNC_REQUEST_PERIOD_MS;
+#endif
 
     for (;;) {
-        can_bus_poll();
+        // can_bus_poll();
+        radio_uart_process_rx();
         can_bus_process_rx();
         SedsResult res = process_all_queues_timeout(50);
-        if (res != SEDS_OK)
-        {
-            printf("Telemetry thread: process_all_queues_timeout error %d\n", (int)res);
-        }
+        /* and then push any queued TX out */
 
         const uint64_t now_ms = tx_now_ms();
 #if TELEMETRY_TIME_MASTER
