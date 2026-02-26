@@ -12,6 +12,7 @@ Features
     * st-flash (ST-LINK USB dongle, stlink tools)
     * st-util + arm-none-eabi-gdb (ST-LINK server + GDB "load")
     * ST-LINK_gdbserver + arm-none-eabi-gdb (CubeProgrammer gdbserver / ST-LINK server)
+    * STM32_Programmer_CLI (STM32CubeProgrammer direct flash)
 - Friendly, non-traceback error messages by default
 
 Usage examples
@@ -322,6 +323,32 @@ def flash_st_flash(ui: UI, bin_path: Path, addr: str, reset: bool) -> None:
     run(ui, cmd)
 
 
+def flash_stm32prog_cli(
+    ui: UI,
+    bin_path: Path,
+    addr: str,
+    reset: bool,
+    stm32prog_cli: str | None,
+    connect: str,
+    extra_args: list[str],
+) -> None:
+    exe = (
+        stm32prog_cli
+        or os.environ.get("STM32_PROGRAMMER_CLI")
+        or which("STM32_Programmer_CLI")
+        or which("STM32ProgrammerCLI")
+    )
+    if exe is None:
+        raise FriendlyError("STM32_Programmer_CLI not found.\n"
+                            "Install STM32CubeProgrammer and add it to PATH, "
+                            "or pass --stm32prog-cli /path/to/STM32_Programmer_CLI.")
+    cmd = [exe, "-c", connect, "-w", str(bin_path), addr, "-v"]
+    if reset:
+        cmd.append("-rst")
+    cmd += extra_args
+    run(ui, cmd)
+
+
 def flash_via_gdb(ui: UI, elf_path: Path, host: str, port: int, gdb: str, extra_gdb_cmds: list[str] | None = None) -> None:
     if which(gdb) is None:
         raise FriendlyError(f"{gdb} not found.\n"
@@ -419,10 +446,10 @@ def make_parser() -> argparse.ArgumentParser:
     f = sub.add_parser("flash", help="Build then flash")
     add_mode_and_common(f)
 
-    f.add_argument("--method", choices=["dfu", "st-flash", "st-util", "stlink-gdbserver"], default="st-flash",
+    f.add_argument("--method", choices=["dfu", "st-flash", "st-util", "stlink-gdbserver", "stm32prog-cli"], default="st-flash",
                    help="Flashing method.")
     f.add_argument("--addr", default="0x08000000", help="Flash base address (default: 0x08000000)")
-    f.add_argument("--no-reset", action="store_true", help="Do not reset after flash (st-flash only).")
+    f.add_argument("--no-reset", action="store_true", help="Do not reset after flash (st-flash/stm32prog-cli).")
 
     # st-util options
     f.add_argument("--host", default="127.0.0.1", help="GDB server host (default: 127.0.0.1)")
@@ -432,6 +459,12 @@ def make_parser() -> argparse.ArgumentParser:
     f.add_argument("--st-util-args", default="", help="Extra args for st-util (quoted string).")
     f.add_argument("--gdbserver", default="ST-LINK_gdbserver", help="GDB server executable (default: ST-LINK_gdbserver)")
     f.add_argument("--gdbserver-args", default="", help="Extra args for gdbserver (quoted string).")
+    f.add_argument("--stm32prog-cli", default=None,
+                   help="STM32CubeProgrammer CLI executable path (default: env STM32_PROGRAMMER_CLI or PATH).")
+    f.add_argument("--stm32prog-connect", default="port=SWD",
+                   help="STM32_Programmer_CLI -c argument value (default: port=SWD).")
+    f.add_argument("--stm32prog-args", default="",
+                   help="Extra args for STM32_Programmer_CLI (quoted string).")
 
     return p
 
@@ -501,6 +534,17 @@ def main() -> None:
             # If user didn't specify port in args, try to nudge server via args when possible.
             # We won't guess vendor-specific flags; user can pass them in --gdbserver-args.
             flash_stlink_gdbserver(ui, elf, args.gdb, args.host, port, args.gdbserver, gs_args)
+        elif method == "stm32prog-cli":
+            sp_args = shlex.split(args.stm32prog_args) if args.stm32prog_args else []
+            flash_stm32prog_cli(
+                ui,
+                bin_path,
+                addr,
+                reset=(not args.no_reset),
+                stm32prog_cli=args.stm32prog_cli,
+                connect=args.stm32prog_connect,
+                extra_args=sp_args,
+            )
         else:
             raise FriendlyError(f"Unknown method: {method}")
 
