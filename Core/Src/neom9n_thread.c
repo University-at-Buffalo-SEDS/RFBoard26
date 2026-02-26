@@ -38,7 +38,7 @@
 
 #ifndef GPS_TEST_MODE
 // Set to 1 to force GPS test mode (no hardware required).
-#define GPS_TEST_MODE 1
+#define GPS_TEST_MODE 0
 #endif
 
 #ifndef GPS_TEST_AUTO_FALLBACK
@@ -65,6 +65,7 @@
 #define GPS_TEST_ALT_M 100.0f
 #endif
 
+#define UNUSED_FUNCTION __attribute__((unused))
 
 // External SPI handle
 extern SPI_HandleTypeDef hspi1;
@@ -89,7 +90,7 @@ static uint64_t wrap_day_ms(uint64_t ms)
     const uint64_t DAY_MS = 86400000ULL;
     return ms % DAY_MS;
 }
-static const char *neom9n_status_to_string(NEOM9N_status_t status)
+static UNUSED_FUNCTION const char *neom9n_status_to_string(NEOM9N_status_t status)
 {
     switch (status)
     {
