@@ -379,6 +379,7 @@ NEOM9N_status_t receive_nmea(NEOM9N_t *packet, uint32_t max_wait, uint32_t max_i
             return NEOM9N_SPI_ERR;
         }
         if (byte == '$') break;
+        printf("%s\r\n", &byte);
         ignores++;
     }
     

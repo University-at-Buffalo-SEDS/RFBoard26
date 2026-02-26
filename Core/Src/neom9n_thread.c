@@ -113,10 +113,9 @@ TX_THREAD neom9n_thread;
 void neom9n_thread_entry(ULONG initial_input)
 {
     (void)initial_input;
-    // HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
-    ///**
-    tx_thread_sleep(200); // Wait 2 seconds for GPS to boot (recommended datasheet)
-    // HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
+    /**
+    tx_thread_sleep(2000); // Wait 2 seconds for GPS to boot (recommended datasheet)
 
     // Configure for rocket flight
     // @note: Confirm with datasheet, after first config this block is likely reducdent
@@ -199,43 +198,43 @@ void neom9n_thread_entry(ULONG initial_input)
 
                 // Pack and send GPS position data (lat, lon, alt)
                 pack_gps_data(&gps_packet, gps_data_buffer);
-                log_telemetry_asynchronous(SEDS_DT_GPS_DATA,
-                                           gps_data_buffer,
-                                           3,
-                                           sizeof(float));
+                //log_telemetry_asynchronous(SEDS_DT_GPS_DATA,
+                //                           gps_data_buffer,
+                //                           3,
+                //                           sizeof(float));
                 /* Print GPS data using fixed-point formatting because floating
                  * point printf (%f) is disabled. Lat/lon use 6 fractional
                  * digits, altitude uses 2 fractional digits.
                  */
-                // {
-                //     double latf = gps_packet.lat;
-                //     double lonf = gps_packet.lon;
-                //     double altf = gps_packet.altitude_msl;
+                {
+                    double latf = gps_packet.lat;
+                    double lonf = gps_packet.lon;
+                    double altf = gps_packet.altitude_msl;
 
-                //     int64_t lat_scaled = (int64_t)(latf * 1000000.0 + (latf >= 0 ? 0.5 : -0.5));
-                //     int64_t lon_scaled = (int64_t)(lonf * 1000000.0 + (lonf >= 0 ? 0.5 : -0.5));
-                //     int64_t alt_scaled = (int64_t)(altf * 100.0 + (altf >= 0 ? 0.5 : -0.5));
+                    int64_t lat_scaled = (int64_t)(latf * 1000000.0 + (latf >= 0 ? 0.5 : -0.5));
+                    int64_t lon_scaled = (int64_t)(lonf * 1000000.0 + (lonf >= 0 ? 0.5 : -0.5));
+                    int64_t alt_scaled = (int64_t)(altf * 100.0 + (altf >= 0 ? 0.5 : -0.5));
 
-                //     int64_t lat_whole = lat_scaled / 1000000;
-                //     int64_t lat_frac = lat_scaled % 1000000;
-                //     if (lat_frac < 0)
-                //         lat_frac = -lat_frac;
+                    int64_t lat_whole = lat_scaled / 1000000;
+                    int64_t lat_frac = lat_scaled % 1000000;
+                    if (lat_frac < 0)
+                        lat_frac = -lat_frac;
 
-                //     int64_t lon_whole = lon_scaled / 1000000;
-                //     int64_t lon_frac = lon_scaled % 1000000;
-                //     if (lon_frac < 0)
-                //         lon_frac = -lon_frac;
+                    int64_t lon_whole = lon_scaled / 1000000;
+                    int64_t lon_frac = lon_scaled % 1000000;
+                    if (lon_frac < 0)
+                        lon_frac = -lon_frac;
 
-                //     int64_t alt_whole = alt_scaled / 100;
-                //     int64_t alt_frac = alt_scaled % 100;
-                //     if (alt_frac < 0)
-                //         alt_frac = -alt_frac;
+                    int64_t alt_whole = alt_scaled / 100;
+                    int64_t alt_frac = alt_scaled % 100;
+                    if (alt_frac < 0)
+                        alt_frac = -alt_frac;
 
-                //     printf("GPS data sent: lat=%lld.%06lld, lon=%lld.%06lld, alt=%lld.%02lld\n",
-                //            (long long)lat_whole, (long long)lat_frac,
-                //            (long long)lon_whole, (long long)lon_frac,
-                //            (long long)alt_whole, (long long)alt_frac);
-                // }
+                    printf("GPS data sent: lat=%lld.%06lld, lon=%lld.%06lld, alt=%lld.%02lld\n",
+                           (long long)lat_whole, (long long)lat_frac,
+                           (long long)lon_whole, (long long)lon_frac,
+                           (long long)alt_whole, (long long)alt_frac);
+                }
                 // Pack GPS time-of-day.
                 // IMPORTANT: pack_time_data() must fill gps_time_of_day_ms as *ms since
                 // midnight UTC* (or you should change it accordingly).
@@ -263,7 +262,7 @@ void neom9n_thread_entry(ULONG initial_input)
                 // GPS has no fix - log occasionally
                 if (++no_fix_counter >= 100)
                 {
-                    printf("GPS has no fix\n");
+                    printf("GPS has no fix\r\n");
                     const char no_fix_txt[] = "GPS FATAL: No fix";
                     log_telemetry_asynchronous(SEDS_DT_WARNING,
                                                no_fix_txt,
@@ -275,8 +274,9 @@ void neom9n_thread_entry(ULONG initial_input)
         }
         else
         {
-            consecutive_errors++;
+            consecutive_errors += 5;
             gps_error_accum++;
+            printf("Hi\r\n");
 
 #if GPS_TEST_AUTO_FALLBACK
             if (gps_error_accum >= (uint32_t)GPS_TEST_FALLBACK_AFTER_ERRORS)
@@ -308,11 +308,12 @@ void neom9n_thread_entry(ULONG initial_input)
                     break;
                 }
 
-                log_telemetry_asynchronous(
-                    SEDS_DT_WARNING,
-                    error_type,
-                    strlen(error_type) + 1, // include NUL for C-string payload
-                    1);
+                // log_telemetry_asynchronous(
+                //     SEDS_DT_WARNING,
+                //     error_type,
+                //     strlen(error_type) + 1, // include NUL for C-string payload
+                //     1);
+                printf("%s\r\n", error_type); 
 
                 consecutive_errors = 0;
             gps_error_accum = 0;
