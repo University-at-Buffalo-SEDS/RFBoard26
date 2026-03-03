@@ -47,7 +47,6 @@ typedef enum {
     NEOM9N_TIMEOUT,
     NEOM9N_SPI_ERR,
     NEOM9N_PARSE_ERR,
-    NEOM9N_NO_FIX,
     NEOM9N_BUFFER_OVERFLOW
 } NEOM9N_status_t; 
 

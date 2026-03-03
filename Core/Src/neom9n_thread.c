@@ -207,33 +207,40 @@ void neom9n_thread_entry(ULONG initial_input)
                  * digits, altitude uses 2 fractional digits.
                  */
                 {
-                    double latf = gps_packet.lat;
-                    double lonf = gps_packet.lon;
-                    double altf = gps_packet.altitude_msl;
-
-                    int64_t lat_scaled = (int64_t)(latf * 1000000.0 + (latf >= 0 ? 0.5 : -0.5));
-                    int64_t lon_scaled = (int64_t)(lonf * 1000000.0 + (lonf >= 0 ? 0.5 : -0.5));
-                    int64_t alt_scaled = (int64_t)(altf * 100.0 + (altf >= 0 ? 0.5 : -0.5));
-
-                    int64_t lat_whole = lat_scaled / 1000000;
-                    int64_t lat_frac = lat_scaled % 1000000;
-                    if (lat_frac < 0)
-                        lat_frac = -lat_frac;
-
-                    int64_t lon_whole = lon_scaled / 1000000;
-                    int64_t lon_frac = lon_scaled % 1000000;
-                    if (lon_frac < 0)
-                        lon_frac = -lon_frac;
-
-                    int64_t alt_whole = alt_scaled / 100;
-                    int64_t alt_frac = alt_scaled % 100;
-                    if (alt_frac < 0)
-                        alt_frac = -alt_frac;
-
-                    printf("GPS data sent: lat=%lld.%06lld, lon=%lld.%06lld, alt=%lld.%02lld\n",
-                           (long long)lat_whole, (long long)lat_frac,
-                           (long long)lon_whole, (long long)lon_frac,
-                           (long long)alt_whole, (long long)alt_frac);
+                    int32_t lat_int = (int32_t)(gps_packet.lat * 1000000.0f);
+                    int32_t lon_int = (int32_t)(gps_packet.lon * 1000000.0f);
+                    int32_t alt_int = (int32_t)(gps_packet.altitude_msl * 100.0f);
+                    
+                    printf("========== GPS DATA ==========\n");
+                    
+                    // Position
+                    printf("Position:\n");
+                    printf("  Lat: %d.%06d° %c\n", 
+                           (int)(lat_int / 1000000), 
+                           (int)(lat_int >= 0 ? lat_int % 1000000 : -(lat_int % 1000000)),
+                           gps_packet.lat >= 0 ? 'N' : 'S');
+                    printf("  Lon: %d.%06d° %c\n", 
+                           (int)(lon_int / 1000000), 
+                           (int)(lon_int >= 0 ? lon_int % 1000000 : -(lon_int % 1000000)),
+                           gps_packet.lon >= 0 ? 'E' : 'W');
+                    printf("  Alt: %d.%02d m MSL\n", 
+                           (int)(alt_int / 100), 
+                           (int)(alt_int >= 0 ? alt_int % 100 : -(alt_int % 100)));
+                    
+                    // Date
+                    printf("Date: %02d/%02d/20%02d\n", 
+                           gps_packet.day, gps_packet.month, gps_packet.year);
+                    
+                    // Time
+                    printf("Time: %02d:%02d:%02d.%03d UTC\n", 
+                           gps_packet.hours, gps_packet.minutes, gps_packet.seconds, gps_packet.milliseconds);
+                    
+                    // Status
+                    printf("Status:\n");
+                    printf("  Fix: %s\n", gps_packet.valid_fix ? "VALID" : "NO FIX");
+                    printf("  Last Update: %lu ticks\n", gps_packet.last_update_tick);
+                    
+                    printf("==============================\n");
                 }
                 // Pack GPS time-of-day.
                 // IMPORTANT: pack_time_data() must fill gps_time_of_day_ms as *ms since
@@ -274,9 +281,9 @@ void neom9n_thread_entry(ULONG initial_input)
         }
         else
         {
-            consecutive_errors += 5;
+            printf("I got here");
+            consecutive_errors ++;
             gps_error_accum++;
-            printf("Hi\r\n");
 
 #if GPS_TEST_AUTO_FALLBACK
             if (gps_error_accum >= (uint32_t)GPS_TEST_FALLBACK_AFTER_ERRORS)
@@ -288,8 +295,7 @@ void neom9n_thread_entry(ULONG initial_input)
             }
 #endif
 
-            if (consecutive_errors >= 5)
-            {
+            if (consecutive_errors >= 5) {
                 const char *error_type;
 
                 switch (status)
@@ -316,7 +322,7 @@ void neom9n_thread_entry(ULONG initial_input)
                 printf("%s\r\n", error_type); 
 
                 consecutive_errors = 0;
-            gps_error_accum = 0;
+                gps_error_accum = 0;
             }
         }
         tx_thread_sleep(50);
