@@ -31,7 +31,7 @@ void gps_init(NEOM9N_t *packet, SPI_HandleTypeDef *hspi) {
  *  -UTC (no timezone offsets) 
  *  -Leap years handled correctly
  */
-uint64_t datetime_to_milliseconds(const NEOM9N_t *packet) {
+uint64_t get_datetime_data(const NEOM9N_t *packet) {
     return utc_to_epoch_ms(
         packet->day,
         packet->month,
@@ -55,14 +55,6 @@ void pack_gps_data(const NEOM9N_t *packet, uint8_t *buffer) {
     float_ptr[0] = packet->lat;
     float_ptr[1] = packet->lon;
     float_ptr[2] = packet->altitude_msl;
-}
-
-
-/**
- * @brief Get GPS time as uint64
- */
-uint64_t get_datetime_data(const NEOM9N_t *packet) {
-    return datetime_to_milliseconds(packet);
 }
 
 

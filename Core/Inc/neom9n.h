@@ -84,7 +84,6 @@ void gps_init(NEOM9N_t *packet, SPI_HandleTypeDef *hspi);
 bool gps_has_fix(const NEOM9N_t *packet);
 void pack_gps_data(const NEOM9N_t *packet, uint8_t *buffer);
 uint64_t get_datetime_data(const NEOM9N_t *packet);
-uint64_t datetime_to_milliseconds(const NEOM9N_t *packet);
 NEOM9N_status_t read_nmea_gga(NEOM9N_t *packet, uint32_t max_wait);
 NEOM9N_status_t read_nmea_rmc(NEOM9N_t *packet, uint32_t max_wait);
 NEOM9N_status_t receive_nmea(NEOM9N_t *packet, uint32_t max_wait, uint32_t max_ignores);

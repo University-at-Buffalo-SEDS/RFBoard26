@@ -238,7 +238,7 @@ void neom9n_thread_entry(ULONG initial_input)
                     // Status
                     printf("Status:\n");
                     printf("  Fix: %s\n", gps_packet.valid_fix ? "VALID" : "NO FIX");
-                    printf("  Last Update: %lu ticks\n", gps_packet.last_update_tick);
+                    printf("  Last Update: %lu ticks\n", (unsigned long)gps_packet.last_update_tick);
                     
                     printf("==============================\n");
                 }
@@ -281,7 +281,6 @@ void neom9n_thread_entry(ULONG initial_input)
         }
         else
         {
-            printf("I got here");
             consecutive_errors ++;
             gps_error_accum++;
 
@@ -320,6 +319,7 @@ void neom9n_thread_entry(ULONG initial_input)
                 //     strlen(error_type) + 1, // include NUL for C-string payload
                 //     1);
                 printf("%s\r\n", error_type); 
+                printf("%d",gps_error_accum);
 
                 consecutive_errors = 0;
                 gps_error_accum = 0;
