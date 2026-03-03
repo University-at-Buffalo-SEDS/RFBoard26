@@ -65,82 +65,63 @@
 #define GPS_TEST_ALT_M 100.0f
 #endif
 
+// Set to 1 to enable config, 0 to disable
+#define GPS_ENABLE_RUNTIME_CONFIG 0
+
 #define UNUSED_FUNCTION __attribute__((unused))
 
 // External SPI handle
 extern SPI_HandleTypeDef hspi1;
-extern UART_HandleTypeDef huart1;
 
 #ifndef TX_TIMER_TICKS_PER_SECOND
 #error "TX_TIMER_TICKS_PER_SECOND must be defined by ThreadX."
 #endif
 
-static uint64_t tx_now_ms(void)
-{
-    // ThreadX tick -> ms, using integer math.
-    // If your tick rate does not divide 1000 evenly, this will truncate.
-    // (Still fine for offset sync; if you want better precision, accumulate
-    // remainder.)
+/* ThreadX tick -> ms, using integer math */
+static uint64_t tx_now_ms(void) {
     ULONG ticks = tx_time_get();
     return ((uint64_t)(uint32_t)ticks * 1000ULL) / (uint64_t)TX_TIMER_TICKS_PER_SECOND;
 }
 
-static uint64_t wrap_day_ms(uint64_t ms)
-{
+static uint64_t wrap_day_ms(uint64_t ms) {
     const uint64_t DAY_MS = 86400000ULL;
     return ms % DAY_MS;
 }
-static UNUSED_FUNCTION const char *neom9n_status_to_string(NEOM9N_status_t status)
-{
-    switch (status)
-    {
-    case NEOM9N_OK:
-        return "OK";
-    case NEOM9N_TIMEOUT:
-        return "TIMEOUT";
-    case NEOM9N_SPI_ERR:
-        return "SPI_ERR";
-    case NEOM9N_PARSE_ERR:
-        return "PARSE_ERR";
-    default:
-        return "UNKNOWN";
+
+static UNUSED_FUNCTION const char *neom9n_status_to_string(NEOM9N_status_t status) {
+    switch (status) {
+        case NEOM9N_OK:
+            return "OK";
+        case NEOM9N_TIMEOUT:
+            return "TIMEOUT";
+        case NEOM9N_SPI_ERR:
+            return "SPI_ERR";
+        case NEOM9N_PARSE_ERR:
+            return "PARSE_ERR";
+        default:
+            return "UNKNOWN";
     }
 }
 
-// Stack + TCB for neom9n thread
+/* Stack + TCB for neom9n thread */
 TX_THREAD neom9n_thread;
 #define NEOM9N_THREAD_STACK_SIZE (9 * 1024u)
 void neom9n_thread_entry(ULONG initial_input)
 {
     (void)initial_input;
     HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
-    /**
-    tx_thread_sleep(2000); // Wait 2 seconds for GPS to boot (recommended datasheet)
 
-    // Configure for rocket flight
-    // @note: Confirm with datasheet, after first config this block is likely reducdent
-    if (config_gps_seds_rocket(&hspi1, &huart1, 5000))
-    {
-        // const char success[] = "NEOM9N config set successful";
-        // log_telemetry_asynchronous(SEDS_DT_MESSAGE_DATA,
-        //                            success,
-        //                            1,
-        //                            sizeof(success)); // Log config success
+    tx_thread_sleep(TX_TIMER_TICKS_PER_SECOND * 3);  // Wait for GPS boot
+    
+#if GPS_ENABLE_RUNTIME_CONFIG
+    // RAM only config
+    if (gps_config(&hspi1, 3000)) {
+        printf("GPS configured: GGA+RMC enabled, others disabled\n");
+    } else {
+        printf("Config failed\n");  // GPS still works, just more verbose
     }
-    else
-    {
-        // Factory settings are fine, so no need to terminate if config fails
-        // Config method greatly reduces overhead, but failure is not critical
-        // Data rate unaffected by config success or failure
-        // const char failure[] = "NEOM9N config set failed";
-        // log_telemetry_asynchronous(SEDS_DT_MESSAGE_DATA,
-        //                            failure,
-        //                            1,
-        //                            sizeof(failure)); // Log config failure
-    }
+#endif
 
-    tx_thread_sleep(100); // Wait for config to settle
-    //*/
     // Initialize GPS packet
     NEOM9N_t gps_packet;
     gps_init(&gps_packet, &hspi1);
@@ -234,6 +215,10 @@ void neom9n_thread_entry(ULONG initial_input)
                     // Time
                     printf("Time: %02d:%02d:%02d.%03d UTC\n", 
                            gps_packet.hours, gps_packet.minutes, gps_packet.seconds, gps_packet.milliseconds);
+
+                    // Unix Epoch
+                    gps_epoch_ms = get_datetime_data(&gps_packet);
+                    printf("FC Time: %llu ms since 1/1/1970\n", gps_epoch_ms);
                     
                     // Status
                     printf("Status:\n");
@@ -319,7 +304,7 @@ void neom9n_thread_entry(ULONG initial_input)
                 //     strlen(error_type) + 1, // include NUL for C-string payload
                 //     1);
                 printf("%s\r\n", error_type); 
-                printf("%d",gps_error_accum);
+                printf("%u",gps_error_accum);
 
                 consecutive_errors = 0;
                 gps_error_accum = 0;
