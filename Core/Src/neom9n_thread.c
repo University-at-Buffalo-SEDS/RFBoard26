@@ -111,7 +111,7 @@ void neom9n_thread_entry(ULONG initial_input)
     (void)initial_input;
     HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
 
-    tx_thread_sleep(TX_TIMER_TICKS_PER_SECOND * 3);  // Wait for GPS boot
+    tx_thread_sleep(TX_TIMER_TICKS_PER_SECOND * 5);  // Wait for GPS boot
     
 #if GPS_ENABLE_RUNTIME_CONFIG
     // RAM only config
@@ -218,7 +218,7 @@ void neom9n_thread_entry(ULONG initial_input)
 
                     // Unix Epoch
                     gps_epoch_ms = get_datetime_data(&gps_packet);
-                    printf("FC Time: %llu ms since 1/1/1970\n", gps_epoch_ms);
+                    printf("FC Time: %lu ms since 1/1/1970\n", (unsigned long)gps_epoch_ms);
                     
                     // Status
                     printf("Status:\n");
@@ -304,7 +304,7 @@ void neom9n_thread_entry(ULONG initial_input)
                 //     strlen(error_type) + 1, // include NUL for C-string payload
                 //     1);
                 printf("%s\r\n", error_type); 
-                printf("%u",gps_error_accum);
+                printf("%lu\r\n", (unsigned long)gps_error_accum); 
 
                 consecutive_errors = 0;
                 gps_error_accum = 0;

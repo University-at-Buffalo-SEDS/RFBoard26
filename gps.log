@@ -1,0 +1,3129 @@
+GPS ERROR: Timeout
+5
+========== GPS DATA ==========
+Position:
+  Lat: 43.001896° N
+  Lon: -78.787304° W
+  Alt: 0.00 m MSL
+Date: 05/03/2026
+Time: 05:13:08.000 UTC
+FC Time: 3161062048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 375 ticks
+==============================
+Not the desired sentence type - GNVTG,���] �,B���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001896° N
+  Lon: -78.787304° W
+  Alt: 0.00 m MSL
+Date: 05/03/2026
+Time: 05:13:08.000 UTC
+FC Time: 3161062048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 381 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001896° N
+  Lon: -78.787304° W
+  Alt: 204.30 m MSL
+Date: 05/03/2026
+Time: 05:13:08.000 UTC
+FC Time: 3161062048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 384 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B����LLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001896° N
+  Lon: -78.787304° W
+  Alt: 204.30 m MSL
+Date: 05/03/2026
+Time: 05:13:08.000 UTC
+FC Time: 3161062048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 390 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B����LLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001896° N
+  Lon: -78.787304° W
+  Alt: 204.30 m MSL
+Date: 05/03/2026
+Time: 05:13:08.000 UTC
+FC Time: 3161062048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 394 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B����LLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001896° N
+  Lon: -78.787304° W
+  Alt: 204.30 m MSL
+Date: 05/03/2026
+Time: 05:13:08.000 UTC
+FC Time: 3161062048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 400 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B����LLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001896° N
+  Lon: -78.787304° W
+  Alt: 204.30 m MSL
+Date: 05/03/2026
+Time: 05:13:08.000 UTC
+FC Time: 3161062048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 404 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B����LLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001896° N
+  Lon: -78.787304° W
+  Alt: 204.30 m MSL
+Date: 05/03/2026
+Time: 05:13:08.000 UTC
+FC Time: 3161062048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 408 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B����LLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001896° N
+  Lon: -78.787304° W
+  Alt: 204.30 m MSL
+Date: 05/03/2026
+Time: 05:13:08.000 UTC
+FC Time: 3161062048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 413 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B����LLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001896° N
+  Lon: -78.787304° W
+  Alt: 204.30 m MSL
+Date: 05/03/2026
+Time: 05:13:08.000 UTC
+FC Time: 3161062048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 418 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B����LLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001896° N
+  Lon: -78.787304° W
+  Alt: 204.30 m MSL
+Date: 05/03/2026
+Time: 05:13:08.000 UTC
+FC Time: 3161062048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 423 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B����LLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001896° N
+  Lon: -78.787304° W
+  Alt: 204.30 m MSL
+Date: 05/03/2026
+Time: 05:13:08.000 UTC
+FC Time: 3161062048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 427 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B����LLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001896° N
+  Lon: -78.787304° W
+  Alt: 204.30 m MSL
+Date: 05/03/2026
+Time: 05:13:08.000 UTC
+FC Time: 3161062048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 432 ticks
+==============================
+Not the desired sentence type - GAGSV,���] �,B����LLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001896° N
+  Lon: -78.787304° W
+  Alt: 204.30 m MSL
+Date: 05/03/2026
+Time: 05:13:08.000 UTC
+FC Time: 3161062048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 437 ticks
+==============================
+Not the desired sentence type - GBGSV,���] �,B����LLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001896° N
+  Lon: -78.787304° W
+  Alt: 204.30 m MSL
+Date: 05/03/2026
+Time: 05:13:08.000 UTC
+FC Time: 3161062048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 442 ticks
+==============================
+Not the desired sentence type - GNGLL,���] �,B����LLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001896° N
+  Lon: -78.787304° W
+  Alt: 204.30 m MSL
+Date: 05/03/2026
+Time: 05:13:08.000 UTC
+FC Time: 3161062048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 447 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001892° N
+  Lon: -78.787304° W
+  Alt: 204.30 m MSL
+Date: 05/03/2026
+Time: 05:13:18.000 UTC
+FC Time: 3161072048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 472 ticks
+==============================
+Not the desired sentence type - GNVTG,���] �,B����LLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001892° N
+  Lon: -78.787304° W
+  Alt: 204.30 m MSL
+Date: 05/03/2026
+Time: 05:13:18.000 UTC
+FC Time: 3161072048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 477 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001892° N
+  Lon: -78.787304° W
+  Alt: 204.40 m MSL
+Date: 05/03/2026
+Time: 05:13:18.000 UTC
+FC Time: 3161072048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 482 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B���ffLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001892° N
+  Lon: -78.787304° W
+  Alt: 204.40 m MSL
+Date: 05/03/2026
+Time: 05:13:18.000 UTC
+FC Time: 3161072048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 487 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B���ffLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001892° N
+  Lon: -78.787304° W
+  Alt: 204.40 m MSL
+Date: 05/03/2026
+Time: 05:13:18.000 UTC
+FC Time: 3161072048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 492 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B���ffLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001892° N
+  Lon: -78.787304° W
+  Alt: 204.40 m MSL
+Date: 05/03/2026
+Time: 05:13:18.000 UTC
+FC Time: 3161072048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 497 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B���ffLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001892° N
+  Lon: -78.787304° W
+  Alt: 204.40 m MSL
+Date: 05/03/2026
+Time: 05:13:18.000 UTC
+FC Time: 3161072048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 502 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B���ffLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001892° N
+  Lon: -78.787304° W
+  Alt: 204.40 m MSL
+Date: 05/03/2026
+Time: 05:13:18.000 UTC
+FC Time: 3161072048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 507 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B���ffLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001892° N
+  Lon: -78.787304° W
+  Alt: 204.40 m MSL
+Date: 05/03/2026
+Time: 05:13:18.000 UTC
+FC Time: 3161072048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 511 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B���ffLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001892° N
+  Lon: -78.787304° W
+  Alt: 204.40 m MSL
+Date: 05/03/2026
+Time: 05:13:18.000 UTC
+FC Time: 3161072048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 517 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B���ffLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001892° N
+  Lon: -78.787304° W
+  Alt: 204.40 m MSL
+Date: 05/03/2026
+Time: 05:13:18.000 UTC
+FC Time: 3161072048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 521 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B���ffLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001892° N
+  Lon: -78.787304° W
+  Alt: 204.40 m MSL
+Date: 05/03/2026
+Time: 05:13:18.000 UTC
+FC Time: 3161072048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 527 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B���ffLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001892° N
+  Lon: -78.787304° W
+  Alt: 204.40 m MSL
+Date: 05/03/2026
+Time: 05:13:18.000 UTC
+FC Time: 3161072048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 531 ticks
+==============================
+Not the desired sentence type - GAGSV,���] �,B���ffLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001892° N
+  Lon: -78.787304° W
+  Alt: 204.40 m MSL
+Date: 05/03/2026
+Time: 05:13:18.000 UTC
+FC Time: 3161072048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 537 ticks
+==============================
+Not the desired sentence type - GBGSV,���] �,B���ffLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001892° N
+  Lon: -78.787304° W
+  Alt: 204.40 m MSL
+Date: 05/03/2026
+Time: 05:13:18.000 UTC
+FC Time: 3161072048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 541 ticks
+==============================
+Not the desired sentence type - GNGLL,���] �,B���ffLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001892° N
+  Lon: -78.787304° W
+  Alt: 204.40 m MSL
+Date: 05/03/2026
+Time: 05:13:18.000 UTC
+FC Time: 3161072048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 547 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001900° N
+  Lon: -78.787304° W
+  Alt: 204.40 m MSL
+Date: 05/03/2026
+Time: 05:13:28.000 UTC
+FC Time: 3161082048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 571 ticks
+==============================
+Not the desired sentence type - GNVTG,���] �,B���ffLC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001900° N
+  Lon: -78.787304° W
+  Alt: 204.40 m MSL
+Date: 05/03/2026
+Time: 05:13:28.000 UTC
+FC Time: 3161082048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 577 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001900° N
+  Lon: -78.787304° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:28.000 UTC
+FC Time: 3161082048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 581 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B�����LC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001900° N
+  Lon: -78.787304° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:28.000 UTC
+FC Time: 3161082048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 586 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B�����LC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001900° N
+  Lon: -78.787304° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:28.000 UTC
+FC Time: 3161082048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 591 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B�����LC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001900° N
+  Lon: -78.787304° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:28.000 UTC
+FC Time: 3161082048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 596 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B�����LC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001900° N
+  Lon: -78.787304° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:28.000 UTC
+FC Time: 3161082048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 601 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B�����LC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001900° N
+  Lon: -78.787304° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:28.000 UTC
+FC Time: 3161082048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 605 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B�����LC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001900° N
+  Lon: -78.787304° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:28.000 UTC
+FC Time: 3161082048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 611 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B�����LC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001900° N
+  Lon: -78.787304° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:28.000 UTC
+FC Time: 3161082048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 615 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B�����LC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001900° N
+  Lon: -78.787304° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:28.000 UTC
+FC Time: 3161082048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 621 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B�����LC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001900° N
+  Lon: -78.787304° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:28.000 UTC
+FC Time: 3161082048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 625 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B�����LC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001900° N
+  Lon: -78.787304° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:28.000 UTC
+FC Time: 3161082048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 631 ticks
+==============================
+Not the desired sentence type - GAGSV,���] �,B�����LC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001900° N
+  Lon: -78.787304° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:28.000 UTC
+FC Time: 3161082048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 635 ticks
+==============================
+Not the desired sentence type - GBGSV,���] �,B�����LC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001900° N
+  Lon: -78.787304° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:28.000 UTC
+FC Time: 3161082048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 641 ticks
+==============================
+Not the desired sentence type - GNGLL,���] �,B�����LC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001900° N
+  Lon: -78.787304° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:28.000 UTC
+FC Time: 3161082048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 645 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001920° N
+  Lon: -78.787312° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:38.000 UTC
+FC Time: 3161092048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 665 ticks
+==============================
+Not the desired sentence type - GNVTG,���] �,B�����LC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001920° N
+  Lon: -78.787312° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:38.000 UTC
+FC Time: 3161092048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 671 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001920° N
+  Lon: -78.787312° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:38.000 UTC
+FC Time: 3161092048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 674 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B�����LC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001920° N
+  Lon: -78.787312° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:38.000 UTC
+FC Time: 3161092048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 678 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B�����LC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001920° N
+  Lon: -78.787312° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:38.000 UTC
+FC Time: 3161092048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 683 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B�����LC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001920° N
+  Lon: -78.787312° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:38.000 UTC
+FC Time: 3161092048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 688 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B�����LC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001920° N
+  Lon: -78.787312° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:38.000 UTC
+FC Time: 3161092048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 693 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B�����LC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001920° N
+  Lon: -78.787312° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:38.000 UTC
+FC Time: 3161092048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 697 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B�����LC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001920° N
+  Lon: -78.787312° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:38.000 UTC
+FC Time: 3161092048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 702 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B�����LC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001920° N
+  Lon: -78.787312° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:38.000 UTC
+FC Time: 3161092048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 707 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B�����LC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001920° N
+  Lon: -78.787312° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:38.000 UTC
+FC Time: 3161092048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 712 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B�����LC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001920° N
+  Lon: -78.787312° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:38.000 UTC
+FC Time: 3161092048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 717 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B�����LC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001920° N
+  Lon: -78.787312° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:38.000 UTC
+FC Time: 3161092048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 722 ticks
+==============================
+Not the desired sentence type - GAGSV,���] �,B�����LC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001920° N
+  Lon: -78.787312° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:38.000 UTC
+FC Time: 3161092048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 727 ticks
+==============================
+Not the desired sentence type - GBGSV,���] �,B�����LC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001920° N
+  Lon: -78.787312° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:38.000 UTC
+FC Time: 3161092048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 732 ticks
+==============================
+Not the desired sentence type - GNGLL,���] �,B�����LC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001920° N
+  Lon: -78.787312° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:38.000 UTC
+FC Time: 3161092048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 737 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787320° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:48.000 UTC
+FC Time: 3161102048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 762 ticks
+==============================
+Not the desired sentence type - GNVTG,���] �,B�����LC0
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787320° W
+  Alt: 204.80 m MSL
+Date: 05/03/2026
+Time: 05:13:48.000 UTC
+FC Time: 3161102048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 767 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787320° W
+  Alt: 205.20 m MSL
+Date: 05/03/2026
+Time: 05:13:48.000 UTC
+FC Time: 3161102048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 772 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B���33MC0
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787320° W
+  Alt: 205.20 m MSL
+Date: 05/03/2026
+Time: 05:13:48.000 UTC
+FC Time: 3161102048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 777 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B���33MC0
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787320° W
+  Alt: 205.20 m MSL
+Date: 05/03/2026
+Time: 05:13:48.000 UTC
+FC Time: 3161102048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 781 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B���33MC0
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787320° W
+  Alt: 205.20 m MSL
+Date: 05/03/2026
+Time: 05:13:48.000 UTC
+FC Time: 3161102048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 787 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B���33MC0
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787320° W
+  Alt: 205.20 m MSL
+Date: 05/03/2026
+Time: 05:13:48.000 UTC
+FC Time: 3161102048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 791 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B���33MC0
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787320° W
+  Alt: 205.20 m MSL
+Date: 05/03/2026
+Time: 05:13:48.000 UTC
+FC Time: 3161102048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 797 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B���33MC0
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787320° W
+  Alt: 205.20 m MSL
+Date: 05/03/2026
+Time: 05:13:48.000 UTC
+FC Time: 3161102048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 801 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B���33MC0
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787320° W
+  Alt: 205.20 m MSL
+Date: 05/03/2026
+Time: 05:13:48.000 UTC
+FC Time: 3161102048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 807 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B���33MC0
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787320° W
+  Alt: 205.20 m MSL
+Date: 05/03/2026
+Time: 05:13:48.000 UTC
+FC Time: 3161102048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 811 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B���33MC0
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787320° W
+  Alt: 205.20 m MSL
+Date: 05/03/2026
+Time: 05:13:48.000 UTC
+FC Time: 3161102048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 817 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B���33MC0
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787320° W
+  Alt: 205.20 m MSL
+Date: 05/03/2026
+Time: 05:13:48.000 UTC
+FC Time: 3161102048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 821 ticks
+==============================
+Not the desired sentence type - GAGSV,���] �,B���33MC0
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787320° W
+  Alt: 205.20 m MSL
+Date: 05/03/2026
+Time: 05:13:48.000 UTC
+FC Time: 3161102048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 827 ticks
+==============================
+Not the desired sentence type - GBGSV,���] �,B���33MC0
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787320° W
+  Alt: 205.20 m MSL
+Date: 05/03/2026
+Time: 05:13:48.000 UTC
+FC Time: 3161102048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 831 ticks
+==============================
+Not the desired sentence type - GNGLL,���] �,B���33MC0
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787320° W
+  Alt: 205.20 m MSL
+Date: 05/03/2026
+Time: 05:13:48.000 UTC
+FC Time: 3161102048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 837 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787336° W
+  Alt: 205.20 m MSL
+Date: 05/03/2026
+Time: 05:13:58.000 UTC
+FC Time: 3161112048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 861 ticks
+==============================
+Not the desired sentence type - GNVTG,���] �,B���33MC:
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787336° W
+  Alt: 205.20 m MSL
+Date: 05/03/2026
+Time: 05:13:58.000 UTC
+FC Time: 3161112048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 864 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787336° W
+  Alt: 205.40 m MSL
+Date: 05/03/2026
+Time: 05:13:58.000 UTC
+FC Time: 3161112048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 868 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B���ffMC:
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787336° W
+  Alt: 205.40 m MSL
+Date: 05/03/2026
+Time: 05:13:58.000 UTC
+FC Time: 3161112048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 872 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B���ffMC:
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787336° W
+  Alt: 205.40 m MSL
+Date: 05/03/2026
+Time: 05:13:58.000 UTC
+FC Time: 3161112048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 878 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B���ffMC:
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787336° W
+  Alt: 205.40 m MSL
+Date: 05/03/2026
+Time: 05:13:58.000 UTC
+FC Time: 3161112048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 882 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B���ffMC:
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787336° W
+  Alt: 205.40 m MSL
+Date: 05/03/2026
+Time: 05:13:58.000 UTC
+FC Time: 3161112048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 888 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B���ffMC:
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787336° W
+  Alt: 205.40 m MSL
+Date: 05/03/2026
+Time: 05:13:58.000 UTC
+FC Time: 3161112048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 892 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B���ffMC:
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787336° W
+  Alt: 205.40 m MSL
+Date: 05/03/2026
+Time: 05:13:58.000 UTC
+FC Time: 3161112048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 898 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B���ffMC:
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787336° W
+  Alt: 205.40 m MSL
+Date: 05/03/2026
+Time: 05:13:58.000 UTC
+FC Time: 3161112048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 902 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B���ffMC:
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787336° W
+  Alt: 205.40 m MSL
+Date: 05/03/2026
+Time: 05:13:58.000 UTC
+FC Time: 3161112048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 908 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B���ffMC:
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787336° W
+  Alt: 205.40 m MSL
+Date: 05/03/2026
+Time: 05:13:58.000 UTC
+FC Time: 3161112048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 912 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B���ffMC:
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787336° W
+  Alt: 205.40 m MSL
+Date: 05/03/2026
+Time: 05:13:58.000 UTC
+FC Time: 3161112048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 918 ticks
+==============================
+Not the desired sentence type - GAGSV,���] �,B���ffMC:
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787336° W
+  Alt: 205.40 m MSL
+Date: 05/03/2026
+Time: 05:13:58.000 UTC
+FC Time: 3161112048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 922 ticks
+==============================
+Not the desired sentence type - GBGSV,���] �,B���ffMC:
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787336° W
+  Alt: 205.40 m MSL
+Date: 05/03/2026
+Time: 05:13:58.000 UTC
+FC Time: 3161112048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 928 ticks
+==============================
+Not the desired sentence type - GNGLL,���] �,B���ffMC:
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787336° W
+  Alt: 205.40 m MSL
+Date: 05/03/2026
+Time: 05:13:58.000 UTC
+FC Time: 3161112048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 932 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 205.40 m MSL
+Date: 05/03/2026
+Time: 05:13:68.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 952 ticks
+==============================
+Not the desired sentence type - GNVTG,���] �,B���ffMCD
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 205.40 m MSL
+Date: 05/03/2026
+Time: 05:13:68.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 957 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 205.50 m MSL
+Date: 05/03/2026
+Time: 05:13:68.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 962 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 205.50 m MSL
+Date: 05/03/2026
+Time: 05:13:68.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 967 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 205.50 m MSL
+Date: 05/03/2026
+Time: 05:13:68.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 972 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 205.50 m MSL
+Date: 05/03/2026
+Time: 05:13:68.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 977 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 205.50 m MSL
+Date: 05/03/2026
+Time: 05:13:68.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 982 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 205.50 m MSL
+Date: 05/03/2026
+Time: 05:13:68.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 987 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 205.50 m MSL
+Date: 05/03/2026
+Time: 05:13:68.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 992 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 205.50 m MSL
+Date: 05/03/2026
+Time: 05:13:68.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 997 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 205.50 m MSL
+Date: 05/03/2026
+Time: 05:13:68.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1002 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 205.50 m MSL
+Date: 05/03/2026
+Time: 05:13:68.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1007 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 205.50 m MSL
+Date: 05/03/2026
+Time: 05:13:68.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1012 ticks
+==============================
+Not the desired sentence type - GAGSV,���] �,B���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 205.50 m MSL
+Date: 05/03/2026
+Time: 05:13:68.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1017 ticks
+==============================
+Not the desired sentence type - GBGSV,���] �,B���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 205.50 m MSL
+Date: 05/03/2026
+Time: 05:13:68.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1020 ticks
+==============================
+Not the desired sentence type - GNGLL,���] �,B���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 205.50 m MSL
+Date: 05/03/2026
+Time: 05:13:68.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1025 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 205.50 m MSL
+Date: 05/03/2026
+Time: 05:13:78.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1049 ticks
+==============================
+Not the desired sentence type - GNVTG,���] �,B���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 205.50 m MSL
+Date: 05/03/2026
+Time: 05:13:78.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1055 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 206.10 m MSL
+Date: 05/03/2026
+Time: 05:13:78.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1058 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B��NCN
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 206.10 m MSL
+Date: 05/03/2026
+Time: 05:13:78.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1064 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B��NCN
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 206.10 m MSL
+Date: 05/03/2026
+Time: 05:13:78.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1068 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B��NCN
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 206.10 m MSL
+Date: 05/03/2026
+Time: 05:13:78.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1074 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B��NCN
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 206.10 m MSL
+Date: 05/03/2026
+Time: 05:13:78.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1078 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B��NCN
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 206.10 m MSL
+Date: 05/03/2026
+Time: 05:13:78.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1084 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B��NCN
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 206.10 m MSL
+Date: 05/03/2026
+Time: 05:13:78.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1088 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B��NCN
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 206.10 m MSL
+Date: 05/03/2026
+Time: 05:13:78.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1094 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B��NCN
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 206.10 m MSL
+Date: 05/03/2026
+Time: 05:13:78.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1098 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B��NCN
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 206.10 m MSL
+Date: 05/03/2026
+Time: 05:13:78.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1103 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B��NCN
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 206.10 m MSL
+Date: 05/03/2026
+Time: 05:13:78.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1108 ticks
+==============================
+Not the desired sentence type - GAGSV,���] �,B��NCN
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 206.10 m MSL
+Date: 05/03/2026
+Time: 05:13:78.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1113 ticks
+==============================
+Not the desired sentence type - GBGSV,���] �,B��NCN
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 206.10 m MSL
+Date: 05/03/2026
+Time: 05:13:78.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1118 ticks
+==============================
+Not the desired sentence type - GNGLL,���] �,B��NCN
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787344° W
+  Alt: 206.10 m MSL
+Date: 05/03/2026
+Time: 05:13:78.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1122 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001936° N
+  Lon: -78.787352° W
+  Alt: 206.10 m MSL
+Date: 05/03/2026
+Time: 05:13:88.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1148 ticks
+==============================
+Not the desired sentence type - GNVTG,���] �,B ��NCX
+========== GPS DATA ==========
+Position:
+  Lat: 43.001936° N
+  Lon: -78.787352° W
+  Alt: 206.10 m MSL
+Date: 05/03/2026
+Time: 05:13:88.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1152 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001936° N
+  Lon: -78.787352° W
+  Alt: 206.60 m MSL
+Date: 05/03/2026
+Time: 05:13:88.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1158 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B ���NCX
+========== GPS DATA ==========
+Position:
+  Lat: 43.001936° N
+  Lon: -78.787352° W
+  Alt: 206.60 m MSL
+Date: 05/03/2026
+Time: 05:13:88.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1162 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B ���NCX
+========== GPS DATA ==========
+Position:
+  Lat: 43.001936° N
+  Lon: -78.787352° W
+  Alt: 206.60 m MSL
+Date: 05/03/2026
+Time: 05:13:88.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1168 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B ���NCX
+========== GPS DATA ==========
+Position:
+  Lat: 43.001936° N
+  Lon: -78.787352° W
+  Alt: 206.60 m MSL
+Date: 05/03/2026
+Time: 05:13:88.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1172 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B ���NCX
+========== GPS DATA ==========
+Position:
+  Lat: 43.001936° N
+  Lon: -78.787352° W
+  Alt: 206.60 m MSL
+Date: 05/03/2026
+Time: 05:13:88.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1178 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B ���NCX
+========== GPS DATA ==========
+Position:
+  Lat: 43.001936° N
+  Lon: -78.787352° W
+  Alt: 206.60 m MSL
+Date: 05/03/2026
+Time: 05:13:88.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1182 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B ���NCX
+========== GPS DATA ==========
+Position:
+  Lat: 43.001936° N
+  Lon: -78.787352° W
+  Alt: 206.60 m MSL
+Date: 05/03/2026
+Time: 05:13:88.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1188 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B ���NCX
+========== GPS DATA ==========
+Position:
+  Lat: 43.001936° N
+  Lon: -78.787352° W
+  Alt: 206.60 m MSL
+Date: 05/03/2026
+Time: 05:13:88.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1192 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B ���NCX
+========== GPS DATA ==========
+Position:
+  Lat: 43.001936° N
+  Lon: -78.787352° W
+  Alt: 206.60 m MSL
+Date: 05/03/2026
+Time: 05:13:88.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1198 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B ���NCX
+========== GPS DATA ==========
+Position:
+  Lat: 43.001936° N
+  Lon: -78.787352° W
+  Alt: 206.60 m MSL
+Date: 05/03/2026
+Time: 05:13:88.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1202 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B ���NCX
+========== GPS DATA ==========
+Position:
+  Lat: 43.001936° N
+  Lon: -78.787352° W
+  Alt: 206.60 m MSL
+Date: 05/03/2026
+Time: 05:13:88.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1207 ticks
+==============================
+Not the desired sentence type - GAGSV,���] �,B ���NCX
+========== GPS DATA ==========
+Position:
+  Lat: 43.001936° N
+  Lon: -78.787352° W
+  Alt: 206.60 m MSL
+Date: 05/03/2026
+Time: 05:13:88.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1212 ticks
+==============================
+Not the desired sentence type - GBGSV,���] �,B ���NCX
+========== GPS DATA ==========
+Position:
+  Lat: 43.001936° N
+  Lon: -78.787352° W
+  Alt: 206.60 m MSL
+Date: 05/03/2026
+Time: 05:13:88.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1217 ticks
+==============================
+Not the desired sentence type - GNGLL,���] �,B ���NCX
+========== GPS DATA ==========
+Position:
+  Lat: 43.001936° N
+  Lon: -78.787352° W
+  Alt: 206.60 m MSL
+Date: 05/03/2026
+Time: 05:13:88.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1222 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 206.60 m MSL
+Date: 05/03/2026
+Time: 05:14:254.000 UTC
+FC Time: 3161368048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1247 ticks
+==============================
+Not the desired sentence type - GNVTG,���] �,B ���NC�
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 206.60 m MSL
+Date: 05/03/2026
+Time: 05:14:254.000 UTC
+FC Time: 3161368048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1252 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 206.70 m MSL
+Date: 05/03/2026
+Time: 05:14:254.000 UTC
+FC Time: 3161368048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1257 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B ���3�NC�
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 206.70 m MSL
+Date: 05/03/2026
+Time: 05:14:254.000 UTC
+FC Time: 3161368048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1262 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B ���3�NC�
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 206.70 m MSL
+Date: 05/03/2026
+Time: 05:14:254.000 UTC
+FC Time: 3161368048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1267 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B ���3�NC�
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 206.70 m MSL
+Date: 05/03/2026
+Time: 05:14:254.000 UTC
+FC Time: 3161368048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1272 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B ���3�NC�
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 206.70 m MSL
+Date: 05/03/2026
+Time: 05:14:254.000 UTC
+FC Time: 3161368048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1277 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B ���3�NC�
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 206.70 m MSL
+Date: 05/03/2026
+Time: 05:14:254.000 UTC
+FC Time: 3161368048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1282 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B ���3�NC�
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 206.70 m MSL
+Date: 05/03/2026
+Time: 05:14:254.000 UTC
+FC Time: 3161368048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1287 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B ���3�NC�
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 206.70 m MSL
+Date: 05/03/2026
+Time: 05:14:254.000 UTC
+FC Time: 3161368048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1292 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B ���3�NC�
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 206.70 m MSL
+Date: 05/03/2026
+Time: 05:14:254.000 UTC
+FC Time: 3161368048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1297 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B ���3�NC�
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 206.70 m MSL
+Date: 05/03/2026
+Time: 05:14:254.000 UTC
+FC Time: 3161368048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1301 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B ���3�NC�
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 206.70 m MSL
+Date: 05/03/2026
+Time: 05:14:254.000 UTC
+FC Time: 3161368048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1307 ticks
+==============================
+Not the desired sentence type - GAGSV,���] �,B ���3�NC�
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 206.70 m MSL
+Date: 05/03/2026
+Time: 05:14:254.000 UTC
+FC Time: 3161368048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1311 ticks
+==============================
+Not the desired sentence type - GBGSV,���] �,B ���3�NC�
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 206.70 m MSL
+Date: 05/03/2026
+Time: 05:14:254.000 UTC
+FC Time: 3161368048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1317 ticks
+==============================
+Not the desired sentence type - GNGLL,���] �,B ���3�NC�
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 206.70 m MSL
+Date: 05/03/2026
+Time: 05:14:254.000 UTC
+FC Time: 3161368048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1321 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 206.70 m MSL
+Date: 05/03/2026
+Time: 05:14:08.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1341 ticks
+==============================
+Not the desired sentence type - GNVTG,���] �,B ���3�NC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 206.70 m MSL
+Date: 05/03/2026
+Time: 05:14:08.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1347 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 207.10 m MSL
+Date: 05/03/2026
+Time: 05:14:08.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1351 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B ��OC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 207.10 m MSL
+Date: 05/03/2026
+Time: 05:14:08.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1357 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B ��OC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 207.10 m MSL
+Date: 05/03/2026
+Time: 05:14:08.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1361 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B ��OC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 207.10 m MSL
+Date: 05/03/2026
+Time: 05:14:08.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1366 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B ��OC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 207.10 m MSL
+Date: 05/03/2026
+Time: 05:14:08.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1371 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B ��OC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 207.10 m MSL
+Date: 05/03/2026
+Time: 05:14:08.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1376 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B ��OC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 207.10 m MSL
+Date: 05/03/2026
+Time: 05:14:08.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1381 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B ��OC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 207.10 m MSL
+Date: 05/03/2026
+Time: 05:14:08.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1384 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B ��OC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 207.10 m MSL
+Date: 05/03/2026
+Time: 05:14:08.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1390 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B ��OC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 207.10 m MSL
+Date: 05/03/2026
+Time: 05:14:08.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1394 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B ��OC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 207.10 m MSL
+Date: 05/03/2026
+Time: 05:14:08.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1400 ticks
+==============================
+Not the desired sentence type - GAGSV,���] �,B ��OC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 207.10 m MSL
+Date: 05/03/2026
+Time: 05:14:08.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1404 ticks
+==============================
+Not the desired sentence type - GBGSV,���] �,B ��OC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 207.10 m MSL
+Date: 05/03/2026
+Time: 05:14:08.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1410 ticks
+==============================
+Not the desired sentence type - GNGLL,���] �,B ��OC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001944° N
+  Lon: -78.787352° W
+  Alt: 207.10 m MSL
+Date: 05/03/2026
+Time: 05:14:08.000 UTC
+FC Time: 3161122048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1414 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001948° N
+  Lon: -78.787352° W
+  Alt: 207.10 m MSL
+Date: 05/03/2026
+Time: 05:14:18.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1440 ticks
+==============================
+Not the desired sentence type - GNVTG,���] �,B ��OC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001948° N
+  Lon: -78.787352° W
+  Alt: 207.10 m MSL
+Date: 05/03/2026
+Time: 05:14:18.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1444 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001948° N
+  Lon: -78.787352° W
+  Alt: 207.30 m MSL
+Date: 05/03/2026
+Time: 05:14:18.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1450 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B ����LOC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001948° N
+  Lon: -78.787352° W
+  Alt: 207.30 m MSL
+Date: 05/03/2026
+Time: 05:14:18.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1454 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B ����LOC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001948° N
+  Lon: -78.787352° W
+  Alt: 207.30 m MSL
+Date: 05/03/2026
+Time: 05:14:18.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1460 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B ����LOC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001948° N
+  Lon: -78.787352° W
+  Alt: 207.30 m MSL
+Date: 05/03/2026
+Time: 05:14:18.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1464 ticks
+==============================
+Not the desired sentence type - GNGSA,���] �,B ����LOC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001948° N
+  Lon: -78.787352° W
+  Alt: 207.30 m MSL
+Date: 05/03/2026
+Time: 05:14:18.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1468 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B ����LOC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001948° N
+  Lon: -78.787352° W
+  Alt: 207.30 m MSL
+Date: 05/03/2026
+Time: 05:14:18.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1473 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B ����LOC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001948° N
+  Lon: -78.787352° W
+  Alt: 207.30 m MSL
+Date: 05/03/2026
+Time: 05:14:18.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1478 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B ����LOC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001948° N
+  Lon: -78.787352° W
+  Alt: 207.30 m MSL
+Date: 05/03/2026
+Time: 05:14:18.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1483 ticks
+==============================
+Not the desired sentence type - GPGSV,���] �,B ����LOC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001948° N
+  Lon: -78.787352° W
+  Alt: 207.30 m MSL
+Date: 05/03/2026
+Time: 05:14:18.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1487 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B ����LOC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001948° N
+  Lon: -78.787352° W
+  Alt: 207.30 m MSL
+Date: 05/03/2026
+Time: 05:14:18.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1492 ticks
+==============================
+Not the desired sentence type - GLGSV,���] �,B ����LOC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001948° N
+  Lon: -78.787352° W
+  Alt: 207.30 m MSL
+Date: 05/03/2026
+Time: 05:14:18.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1497 ticks
+==============================
+Not the desired sentence type - GAGSV,���] �,B ����LOC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001948° N
+  Lon: -78.787352° W
+  Alt: 207.30 m MSL
+Date: 05/03/2026
+Time: 05:14:18.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1502 ticks
+==============================
+Not the desired sentence type - GBGSV,���] �,B ����LOC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001948° N
+  Lon: -78.787352° W
+  Alt: 207.30 m MSL
+Date: 05/03/2026
+Time: 05:14:18.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1507 ticks
+==============================
+Not the desired sentence type - GNGLL,���] �,B ����LOC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001948° N
+  Lon: -78.787352° W
+  Alt: 207.30 m MSL
+Date: 05/03/2026
+Time: 05:14:18.000 UTC
+FC Time: 3161132048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1512 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001956° N
+  Lon: -78.787360° W
+  Alt: 207.30 m MSL
+Date: 05/03/2026
+Time: 05:14:28.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1537 ticks
+==============================
+Not the desired sentence type - GNVTG,���] ,B!����LOC
+========== GPS DATA ==========
+Position:
+  Lat: 43.001956° N
+  Lon: -78.787360° W
+  Alt: 207.30 m MSL
+Date: 05/03/2026
+Time: 05:14:28.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1542 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001956° N
+  Lon: -78.787360° W
+  Alt: 208.00 m MSL
+Date: 05/03/2026
+Time: 05:14:28.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1547 ticks
+==============================
+Not the desired sentence type - GNGSA,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001956° N
+  Lon: -78.787360° W
+  Alt: 208.00 m MSL
+Date: 05/03/2026
+Time: 05:14:28.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1552 ticks
+==============================
+Not the desired sentence type - GNGSA,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001956° N
+  Lon: -78.787360° W
+  Alt: 208.00 m MSL
+Date: 05/03/2026
+Time: 05:14:28.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1557 ticks
+==============================
+Not the desired sentence type - GNGSA,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001956° N
+  Lon: -78.787360° W
+  Alt: 208.00 m MSL
+Date: 05/03/2026
+Time: 05:14:28.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1562 ticks
+==============================
+Not the desired sentence type - GNGSA,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001956° N
+  Lon: -78.787360° W
+  Alt: 208.00 m MSL
+Date: 05/03/2026
+Time: 05:14:28.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1567 ticks
+==============================
+Not the desired sentence type - GPGSV,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001956° N
+  Lon: -78.787360° W
+  Alt: 208.00 m MSL
+Date: 05/03/2026
+Time: 05:14:28.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1570 ticks
+==============================
+Not the desired sentence type - GPGSV,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001956° N
+  Lon: -78.787360° W
+  Alt: 208.00 m MSL
+Date: 05/03/2026
+Time: 05:14:28.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1576 ticks
+==============================
+Not the desired sentence type - GPGSV,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001956° N
+  Lon: -78.787360° W
+  Alt: 208.00 m MSL
+Date: 05/03/2026
+Time: 05:14:28.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1580 ticks
+==============================
+Not the desired sentence type - GPGSV,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001956° N
+  Lon: -78.787360° W
+  Alt: 208.00 m MSL
+Date: 05/03/2026
+Time: 05:14:28.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1586 ticks
+==============================
+Not the desired sentence type - GLGSV,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001956° N
+  Lon: -78.787360° W
+  Alt: 208.00 m MSL
+Date: 05/03/2026
+Time: 05:14:28.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1590 ticks
+==============================
+Not the desired sentence type - GLGSV,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001956° N
+  Lon: -78.787360° W
+  Alt: 208.00 m MSL
+Date: 05/03/2026
+Time: 05:14:28.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1596 ticks
+==============================
+Not the desired sentence type - GAGSV,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001956° N
+  Lon: -78.787360° W
+  Alt: 208.00 m MSL
+Date: 05/03/2026
+Time: 05:14:28.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1600 ticks
+==============================
+Not the desired sentence type - GBGSV,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001956° N
+  Lon: -78.787360° W
+  Alt: 208.00 m MSL
+Date: 05/03/2026
+Time: 05:14:28.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1606 ticks
+==============================
+Not the desired sentence type - GNGLL,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001956° N
+  Lon: -78.787360° W
+  Alt: 208.00 m MSL
+Date: 05/03/2026
+Time: 05:14:28.000 UTC
+FC Time: 3161142048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1609 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787360° W
+  Alt: 208.00 m MSL
+Date: 05/03/2026
+Time: 05:14:38.000 UTC
+FC Time: 3161152048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1629 ticks
+==============================
+Not the desired sentence type - GNVTG,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787360° W
+  Alt: 208.00 m MSL
+Date: 05/03/2026
+Time: 05:14:38.000 UTC
+FC Time: 3161152048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1635 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787360° W
+  Alt: 208.70 m MSL
+Date: 05/03/2026
+Time: 05:14:38.000 UTC
+FC Time: 3161152048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1638 ticks
+==============================
+Not the desired sentence type - GNGSA,���] ,B!���3�PC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787360° W
+  Alt: 208.70 m MSL
+Date: 05/03/2026
+Time: 05:14:38.000 UTC
+FC Time: 3161152048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1644 ticks
+==============================
+Not the desired sentence type - GNGSA,���] ,B!���3�PC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787360° W
+  Alt: 208.70 m MSL
+Date: 05/03/2026
+Time: 05:14:38.000 UTC
+FC Time: 3161152048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1648 ticks
+==============================
+Not the desired sentence type - GNGSA,���] ,B!���3�PC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787360° W
+  Alt: 208.70 m MSL
+Date: 05/03/2026
+Time: 05:14:38.000 UTC
+FC Time: 3161152048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1653 ticks
+==============================
+Not the desired sentence type - GNGSA,���] ,B!���3�PC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787360° W
+  Alt: 208.70 m MSL
+Date: 05/03/2026
+Time: 05:14:38.000 UTC
+FC Time: 3161152048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1658 ticks
+==============================
+Not the desired sentence type - GPGSV,���] ,B!���3�PC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787360° W
+  Alt: 208.70 m MSL
+Date: 05/03/2026
+Time: 05:14:38.000 UTC
+FC Time: 3161152048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1663 ticks
+==============================
+Not the desired sentence type - GPGSV,���] ,B!���3�PC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787360° W
+  Alt: 208.70 m MSL
+Date: 05/03/2026
+Time: 05:14:38.000 UTC
+FC Time: 3161152048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1668 ticks
+==============================
+Not the desired sentence type - GPGSV,���] ,B!���3�PC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787360° W
+  Alt: 208.70 m MSL
+Date: 05/03/2026
+Time: 05:14:38.000 UTC
+FC Time: 3161152048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1671 ticks
+==============================
+Not the desired sentence type - GPGSV,���] ,B!���3�PC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787360° W
+  Alt: 208.70 m MSL
+Date: 05/03/2026
+Time: 05:14:38.000 UTC
+FC Time: 3161152048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1677 ticks
+==============================
+Not the desired sentence type - GLGSV,���] ,B!���3�PC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787360° W
+  Alt: 208.70 m MSL
+Date: 05/03/2026
+Time: 05:14:38.000 UTC
+FC Time: 3161152048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1681 ticks
+==============================
+Not the desired sentence type - GLGSV,���] ,B!���3�PC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787360° W
+  Alt: 208.70 m MSL
+Date: 05/03/2026
+Time: 05:14:38.000 UTC
+FC Time: 3161152048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1687 ticks
+==============================
+Not the desired sentence type - GAGSV,���] ,B!���3�PC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787360° W
+  Alt: 208.70 m MSL
+Date: 05/03/2026
+Time: 05:14:38.000 UTC
+FC Time: 3161152048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1691 ticks
+==============================
+Not the desired sentence type - GBGSV,���] ,B!���3�PC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787360° W
+  Alt: 208.70 m MSL
+Date: 05/03/2026
+Time: 05:14:38.000 UTC
+FC Time: 3161152048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1697 ticks
+==============================
+Not the desired sentence type - GNGLL,���] ,B!���3�PC&
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787360° W
+  Alt: 208.70 m MSL
+Date: 05/03/2026
+Time: 05:14:38.000 UTC
+FC Time: 3161152048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1701 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001972° N
+  Lon: -78.787360° W
+  Alt: 208.70 m MSL
+Date: 05/03/2026
+Time: 05:14:48.000 UTC
+FC Time: 3161162048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1727 ticks
+==============================
+Not the desired sentence type - GNVTG,���] ,B!���3�PC0
+========== GPS DATA ==========
+Position:
+  Lat: 43.001972° N
+  Lon: -78.787360° W
+  Alt: 208.70 m MSL
+Date: 05/03/2026
+Time: 05:14:48.000 UTC
+FC Time: 3161162048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1731 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001972° N
+  Lon: -78.787360° W
+  Alt: 209.00 m MSL
+Date: 05/03/2026
+Time: 05:14:48.000 UTC
+FC Time: 3161162048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1737 ticks
+==============================
+Not the desired sentence type - GNGSA,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001972° N
+  Lon: -78.787360° W
+  Alt: 209.00 m MSL
+Date: 05/03/2026
+Time: 05:14:48.000 UTC
+FC Time: 3161162048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1741 ticks
+==============================
+Not the desired sentence type - GNGSA,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001972° N
+  Lon: -78.787360° W
+  Alt: 209.00 m MSL
+Date: 05/03/2026
+Time: 05:14:48.000 UTC
+FC Time: 3161162048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1746 ticks
+==============================
+Not the desired sentence type - GNGSA,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001972° N
+  Lon: -78.787360° W
+  Alt: 209.00 m MSL
+Date: 05/03/2026
+Time: 05:14:48.000 UTC
+FC Time: 3161162048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1750 ticks
+==============================
+Not the desired sentence type - GNGSA,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001972° N
+  Lon: -78.787360° W
+  Alt: 209.00 m MSL
+Date: 05/03/2026
+Time: 05:14:48.000 UTC
+FC Time: 3161162048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1755 ticks
+==============================
+Not the desired sentence type - GPGSV,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001972° N
+  Lon: -78.787360° W
+  Alt: 209.00 m MSL
+Date: 05/03/2026
+Time: 05:14:48.000 UTC
+FC Time: 3161162048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1760 ticks
+==============================
+Not the desired sentence type - GPGSV,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001972° N
+  Lon: -78.787360° W
+  Alt: 209.00 m MSL
+Date: 05/03/2026
+Time: 05:14:48.000 UTC
+FC Time: 3161162048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1765 ticks
+==============================
+Not the desired sentence type - GPGSV,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001972° N
+  Lon: -78.787360° W
+  Alt: 209.00 m MSL
+Date: 05/03/2026
+Time: 05:14:48.000 UTC
+FC Time: 3161162048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1770 ticks
+==============================
+Not the desired sentence type - GPGSV,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001972° N
+  Lon: -78.787360° W
+  Alt: 209.00 m MSL
+Date: 05/03/2026
+Time: 05:14:48.000 UTC
+FC Time: 3161162048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1775 ticks
+==============================
+Not the desired sentence type - GLGSV,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001972° N
+  Lon: -78.787360° W
+  Alt: 209.00 m MSL
+Date: 05/03/2026
+Time: 05:14:48.000 UTC
+FC Time: 3161162048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1780 ticks
+==============================
+Not the desired sentence type - GLGSV,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001972° N
+  Lon: -78.787360° W
+  Alt: 209.00 m MSL
+Date: 05/03/2026
+Time: 05:14:48.000 UTC
+FC Time: 3161162048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1785 ticks
+==============================
+Not the desired sentence type - GAGSV,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001972° N
+  Lon: -78.787360° W
+  Alt: 209.00 m MSL
+Date: 05/03/2026
+Time: 05:14:48.000 UTC
+FC Time: 3161162048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1790 ticks
+==============================
+Not the desired sentence type - GBGSV,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001972° N
+  Lon: -78.787360° W
+  Alt: 209.00 m MSL
+Date: 05/03/2026
+Time: 05:14:48.000 UTC
+FC Time: 3161162048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1795 ticks
+==============================
+Not the desired sentence type - GNGLL,���] ,B!���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001972° N
+  Lon: -78.787360° W
+  Alt: 209.00 m MSL
+Date: 05/03/2026
+Time: 05:14:48.000 UTC
+FC Time: 3161162048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1799 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001972° N
+  Lon: -78.787368° W
+  Alt: 209.00 m MSL
+Date: 05/03/2026
+Time: 05:14:58.000 UTC
+FC Time: 3161172048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1824 ticks
+==============================
+Not the desired sentence type - GNVTG,���] ,B"���
+========== GPS DATA ==========
+Position:
+  Lat: 43.001972° N
+  Lon: -78.787368° W
+  Alt: 209.00 m MSL
+Date: 05/03/2026
+Time: 05:14:58.000 UTC
+FC Time: 3161172048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1829 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001972° N
+  Lon: -78.787368° W
+  Alt: 209.60 m MSL
+Date: 05/03/2026
+Time: 05:14:58.000 UTC
+FC Time: 3161172048 ms since 1/1/1970
+Status:
+  Fix: VALID
+  Last Update: 1833 ticks
+==============================

@@ -400,7 +400,7 @@ NEOM9N_status_t receive_nmea(NEOM9N_t *packet, uint32_t max_wait, uint32_t max_i
             break;
         default:
             // Not the desired sentence type - continue
-            printf("Not the desired sentence type - continue\n");
+            printf("Not the desired sentence type - %s\r\n", header);
     }
     
     if (result == NEOM9N_OK) {
