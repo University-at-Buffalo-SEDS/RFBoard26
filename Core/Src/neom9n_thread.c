@@ -66,7 +66,7 @@
 #endif
 
 // Set to 1 to enable config, 0 to disable
-#define GPS_ENABLE_RUNTIME_CONFIG 0
+#define GPS_ENABLE_RUNTIME_CONFIG 1
 
 #define UNUSED_FUNCTION __attribute__((unused))
 
