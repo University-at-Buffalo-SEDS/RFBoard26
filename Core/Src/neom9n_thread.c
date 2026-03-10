@@ -238,7 +238,6 @@ void neom9n_thread_entry(ULONG initial_input)
                         gps_packet.hours, gps_packet.minutes, gps_packet.seconds, gps_packet.milliseconds);
 
                 /* Unix Epoch */
-                gps_epoch_ms = get_datetime_data(&gps_packet);
                 printf("FC Time: %lu ms since 1/1/1970\n", (unsigned long)gps_epoch_ms);
                 
                 /* Status */

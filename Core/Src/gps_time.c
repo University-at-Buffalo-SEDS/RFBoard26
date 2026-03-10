@@ -32,23 +32,28 @@ int is_leap_year(int year) {
 }
 
 void gps_offset_update_ms(int64_t measured_offset_ms) {
-    if (measured_offset_ms > GPS_OFFSET_MAX_STEP_MS || measured_offset_ms < -GPS_OFFSET_MAX_STEP_MS) {
+    /** FIRST: accept any value */
+    if (!g_gps_time_offset_valid) {
+        g_gps_time_offset_ms = measured_offset_ms;
+        g_gps_time_offset_valid = 1;
         return;
     }
 
-    // Smooth: new = old + measured/Div
+    /** OTHER: guard against large jumps */
+    if (measured_offset_ms > GPS_OFFSET_MAX_STEP_MS || 
+        measured_offset_ms < -GPS_OFFSET_MAX_STEP_MS) {
+        return;
+    }
+
     int64_t step = measured_offset_ms / (int64_t)GPS_OFFSET_SMOOTH_DIV;
     if (step == 0) {
         if (measured_offset_ms > 0) {
             step = 1;
-        }
-        else if (measured_offset_ms < 0) {
+        } else if (measured_offset_ms < 0) {
             step = -1;
         }
     }
-
     g_gps_time_offset_ms += step;
-    g_gps_time_offset_valid = 1;
 }
 
 uint64_t utc_to_epoch_ms(uint8_t day,
