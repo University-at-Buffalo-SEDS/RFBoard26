@@ -32,28 +32,23 @@ int is_leap_year(int year) {
 }
 
 void gps_offset_update_ms(int64_t measured_offset_ms) {
-    /** FIRST: accept any value */
-    if (!g_gps_time_offset_valid) {
-        g_gps_time_offset_ms = measured_offset_ms;
-        g_gps_time_offset_valid = 1;
+    if (measured_offset_ms > GPS_OFFSET_MAX_STEP_MS || measured_offset_ms < -GPS_OFFSET_MAX_STEP_MS) {
         return;
     }
 
-    /** OTHER: guard against large jumps */
-    if (measured_offset_ms > GPS_OFFSET_MAX_STEP_MS || 
-        measured_offset_ms < -GPS_OFFSET_MAX_STEP_MS) {
-        return;
-    }
-
+    // Smooth: new = old + measured/Div
     int64_t step = measured_offset_ms / (int64_t)GPS_OFFSET_SMOOTH_DIV;
     if (step == 0) {
         if (measured_offset_ms > 0) {
             step = 1;
-        } else if (measured_offset_ms < 0) {
+        }
+        else if (measured_offset_ms < 0) {
             step = -1;
         }
     }
+
     g_gps_time_offset_ms += step;
+    g_gps_time_offset_valid = 1;
 }
 
 uint64_t utc_to_epoch_ms(uint8_t day,
@@ -84,7 +79,7 @@ uint64_t utc_to_epoch_ms(uint8_t day,
     total_days += (day - 1);
 
     // Convert everything to milliseconds
-    uint64_t total_ms = total_days * 86400000ULL; // days → ms
+    uint64_t total_ms = total_days * 86400000ULL; // days -> ms
     total_ms += hours * 3600000ULL;
     total_ms += minutes * 60000ULL;
     total_ms += seconds * 1000ULL;
