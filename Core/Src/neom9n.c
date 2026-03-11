@@ -50,11 +50,10 @@ uint64_t get_datetime_data(const NEOM9N_t *packet) {
  * Format: Pack as little-endian floats
  * Total: 12 bytes
  */
-void pack_gps_data(const NEOM9N_t *packet, uint8_t *buffer) {
-    float *float_ptr = (float *)buffer;
-    float_ptr[0] = packet->lat;
-    float_ptr[1] = packet->lon;
-    float_ptr[2] = packet->altitude_msl;
+void pack_gps_data(const NEOM9N_t *packet, float *buffer) {
+    buffer[0] = packet->lat;
+    buffer[1] = packet->lon;
+    buffer[2] = packet->altitude_msl;
 }
 
 

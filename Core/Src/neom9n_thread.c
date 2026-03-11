@@ -129,7 +129,7 @@ void neom9n_thread_entry(ULONG initial_input)
     gps_init(&gps_packet, &hspi1);
 
     // Binary buffers for telemetry
-    uint8_t gps_data_buffer[12]; // 3 floats (lat, lon, alt)
+    float gps_data_buffer[3]; // 3 floats (lat, lon, alt)
 
     // GPS time in milliseconds since UNIX epoch
     uint64_t gps_epoch_ms = 0;
