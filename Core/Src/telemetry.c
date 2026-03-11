@@ -132,8 +132,15 @@ void telemetry_set_unix_time_ms(uint64_t unix_ms)
 {
 #if TELEMETRY_TIME_MASTER
   const int64_t now = (int64_t)telemetry_now_ms_locked();
-  g_unix_base_ms = (int64_t)unix_ms - now;
-  g_unix_valid = 1;
+  if (unix_ms == 0ULL || unix_ms > (uint64_t)INT64_MAX)
+    return;
+
+  const int64_t new_base = (int64_t)unix_ms - now;
+  if (new_base == 0)
+    return; // zero base is reserved to indicate invalid/unset unix time
+
+  g_unix_base_ms = new_base;
+  g_unix_valid = 1U;
 #else
   (void)unix_ms;
 #endif
