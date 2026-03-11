@@ -1,6 +1,6 @@
-#GPS Log Plotting Guide
+# GPS Log Plotting Guide
 
-Convert a `gps.log` from the NEO-M9N debug output into a map visualization using QGIS (Open Source GPX Plot).
+Convert a `gps.log` from the NEO-M9N debug output into a map visualization using QGIS.
 
 ---
 
@@ -20,6 +20,8 @@ python3 gps_log_to_gpx.py gps.log
 ```
 
 This produces `gps.gpx` in the same directory.
+
+> **NOTE:** You can name `.log` anything you want, at any path, and `.gpx` will have same name and path.
 
 ---
 

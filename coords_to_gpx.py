@@ -13,12 +13,12 @@ from pathlib import Path
 from xml.etree.ElementTree import Element, SubElement, ElementTree, indent
 
 # Regex patterns
-RE_LAT  = re.compile(r'Lat:\s*([\d.]+)[^\d\s]*\s*([NS])')
-RE_LON  = re.compile(r'Lon:\s*(-?[\d.]+)[^\d\s]*\s*([EW])')
-RE_ALT  = re.compile(r'Alt:\s*([\d.]+)\s*m MSL')
+RE_LAT = re.compile(r'Lat:\s*([\d.]+)[^\d\s]*\s*([NS])')
+RE_LON = re.compile(r'Lon:\s*(-?[\d.]+)[^\d\s]*\s*([EW])')
+RE_ALT = re.compile(r'Alt:\s*([\d.]+)\s*m MSL')
 RE_DATE = re.compile(r'Date:\s*(\d{2})/(\d{2})/(\d{4})')  
 RE_TIME = re.compile(r'Time:\s*(\d{2}):(\d{2}):(\d{2})\.(\d{3})\s*UTC')
-RE_FIX  = re.compile(r'Fix:\s*(VALID|NO FIX)')
+RE_FIX = re.compile(r'Fix:\s*(VALID|NO FIX)')
 
 
 def parse_log(log_path: Path) -> list[dict]:
@@ -78,7 +78,7 @@ def parse_log(log_path: Path) -> list[dict]:
 def build_gpx(records: list[dict]) -> ElementTree:
     gpx = Element('gpx', attrib={
         'version': '1.1',
-        'creator': 'gps_log_to_gpx.py',
+        'creator': 'John Welgoss',
         'xmlns': 'http://www.topografix.com/GPX/1/1',
         'xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance',
         'xsi:schemaLocation': (

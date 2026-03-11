@@ -38,6 +38,7 @@
 #define TELEMETRY_TEST_MODE 0
 #endif
 
+#if TELEMETRY_TEST_MODE
 #ifndef TELEMETRY_TEST_EPOCH_MS
 // Feb 23, 2026 00:00:00 UTC
 #define TELEMETRY_TEST_EPOCH_MS 1771804800000ULL
@@ -52,6 +53,7 @@
 #ifndef TELEMETRY_TEST_ALT_M
 #define TELEMETRY_TEST_ALT_M 100.0f
 #endif
+#endif
 
 
 /* -- GPS TEST MODE --------------------------------- */
@@ -64,7 +66,7 @@
 #define PRODUCTION_MODE ((!TELEMETRY_TEST_MODE) && (!GPS_TEST_MODE))
 
 
-/* External SPI handle */
+/* -- External SPI handle --------------------------- */
 extern SPI_HandleTypeDef hspi1;
 
 #ifndef TX_TIMER_TICKS_PER_SECOND
