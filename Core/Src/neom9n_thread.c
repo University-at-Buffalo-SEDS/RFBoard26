@@ -244,6 +244,7 @@ void neom9n_thread_entry(ULONG initial_input)
                 
                 /* Status */
                 printf("Status:\n");
+                printf("  Satellites: %d\n", gps_packet.num_satellites);
                 printf("  Fix: %s\n", gps_packet.valid_fix ? "VALID" : "NO FIX");
                 printf("  Last Update: %lu ticks\n", (unsigned long)gps_packet.last_update_tick);
                 

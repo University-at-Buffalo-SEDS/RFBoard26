@@ -70,6 +70,9 @@ typedef struct {
     uint8_t minutes;
     uint8_t seconds;
     uint16_t milliseconds;
+
+    // N sats
+    uint8_t num_satellites;
      
     // Status
     bool valid_fix;             // True if GPS has valid fix

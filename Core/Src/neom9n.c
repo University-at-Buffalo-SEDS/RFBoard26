@@ -283,7 +283,18 @@ NEOM9N_status_t read_nmea_gga(NEOM9N_t *packet, uint32_t max_wait) {
         packet->valid_fix = (fix_quality > 0);
     }
     
-    skip_field(packet, max_wait);    // Number of satalites
+    // Number of satellites
+    status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
+    if (status == NEOM9N_OK) {
+        uint8_t val = 0;
+        for (int i = 0; packet->field_buffer[i] != '\0'; i++) {
+            if (isdigit(packet->field_buffer[i])) {
+                val = val * 10 + (packet->field_buffer[i] - '0');
+            }
+        }
+        packet->num_satellites = val;
+    }
+
     skip_field(packet, max_wait);    // HDOP
     
     // Alt
@@ -398,9 +409,11 @@ NEOM9N_status_t receive_nmea(NEOM9N_t *packet, uint32_t max_wait, uint32_t max_i
         case NEOM9N_RMC:
             result = read_nmea_rmc(packet, max_wait);
             break;
+#if GPS_TEST_MODE
         default:
             // Not the desired sentence type - continue
             printf("Not the desired sentence type - %s\r\n", header);
+#endif
     }
     
     if (result == NEOM9N_OK) {
