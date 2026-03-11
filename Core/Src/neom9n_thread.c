@@ -178,8 +178,8 @@ void neom9n_thread_entry(ULONG initial_input)
 #if PRODUCTION_MODE
                 log_telemetry_asynchronous(SEDS_DT_GPS_DATA,
                                            gps_data_buffer,
-                                           sizeof(float),
-                                           3);
+                                           3,
+                                           sizeof(float));
 #endif
                 /** 
                  * Pack GPS time-of-day.
