@@ -240,8 +240,10 @@ void neom9n_thread_entry(ULONG initial_input)
                         gps_packet.hours, gps_packet.minutes, gps_packet.seconds, gps_packet.milliseconds);
 
                 /* Unix Epoch */
-                printf("FC Time: %llu ms since 1/1/1970\n", (unsigned long long)gps_epoch_ms);
-                
+                uint32_t epoch_hi = (uint32_t)(gps_epoch_ms / 1000000000ULL);
+                uint32_t epoch_lo = (uint32_t)(gps_epoch_ms % 1000000000ULL);
+                printf("FC Time: %lu%09lu ms since 1/1/1970\n", (unsigned long)epoch_hi, (unsigned long)epoch_lo);    
+
                 /* Status */
                 printf("Status:\n");
                 printf("  Satellites: %d\n", gps_packet.num_satellites);
@@ -274,7 +276,7 @@ void neom9n_thread_entry(ULONG initial_input)
         {
             consecutive_errors ++;
 
-            if (consecutive_errors >= 5) {
+            if (consecutive_errors >= 20) {
                 const char *error_type;
 
                 switch (status)
