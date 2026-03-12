@@ -197,9 +197,8 @@ static SedsResult tx_send_radio(const uint8_t *bytes, size_t len, void *user)
   if (!bytes || len == 0)
     return SEDS_BAD_ARG;
 
-  return SEDS_OK;
 
-  // return (radio_uart_send_bytes(bytes, len) == HAL_OK) ? SEDS_OK : SEDS_IO;
+  return (radio_uart_send_bytes(bytes, len) == HAL_OK) ? SEDS_OK : SEDS_IO;
 }
 
 /* Backward-compatible symbol for external references; maps to CAN side. */
