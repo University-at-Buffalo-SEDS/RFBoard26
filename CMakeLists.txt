@@ -96,6 +96,8 @@ set(SEDSPRINTF_RS_ENV_STARTING_RECENT_RX_IDS "16" CACHE STRING "" FORCE)
 set(SEDSPRINTF_RS_ENV_PAYLOAD_COMPRESS_THRESHOLD "30" CACHE STRING "" FORCE)
 add_subdirectory(${CMAKE_SOURCE_DIR}/sedsprintf_rs)
 target_link_libraries(${CMAKE_PROJECT_NAME} sedsprintf_rs)
+set(TELEMETRY_TIMESYNC_MASTER_PRIO "-1" CACHE STRING
+    "Timesync source priority. Values < 0 make this board a consumer; values >= 0 make it a source with that priority.")
 
 # Option defaults to ON
 option(ENABLE_TELEMETRY "Enable the telemetry subsystem" OFF)
