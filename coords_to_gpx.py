@@ -127,7 +127,7 @@ def write_gpx(tree: ElementTree, out_path: Path):
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print("Usage: python gps_log_to_gpx.py <input.log> [output.gpx]")
+        print("Usage: python3 coords_to_gpx.py <input.log> [output.gpx]")
         sys.exit(1)
 
     log_path = Path(sys.argv[1])
