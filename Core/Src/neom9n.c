@@ -9,6 +9,10 @@
 #include "main.h"
 #include <stdio.h>
 
+#ifndef NEOM9N_STDIO_DEBUG
+#define NEOM9N_STDIO_DEBUG 0
+#endif
+
 static uint8_t GLOBAL_HIGH_TX[NMEA_MAX_SENTENCE_LENGTH] = {
     [0 ... NMEA_MAX_SENTENCE_LENGTH-1] = 0xFF
 };  // Static TX buffer filled with 0xFF for SPI reads
@@ -339,10 +343,9 @@ NEOM9N_status_t read_nmea_rmc(NEOM9N_t *packet, uint32_t max_wait) {
     // Time
     status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
     if (status == NEOM9N_OK) {
-        #define GPS_TEST_MODE 1
-        #if GPS_TEST_MODE
+#if NEOM9N_STDIO_DEBUG
         printf("RAW TIME FIELD: [%s] len=%d\r\n", packet->field_buffer, strlen((char*)packet->field_buffer));
-        #endif 
+#endif
         parse_time(packet->field_buffer, &packet->hours, &packet->minutes, &packet->seconds, &packet->milliseconds);
     }
     
@@ -433,11 +436,13 @@ NEOM9N_status_t receive_nmea(NEOM9N_t *packet, uint32_t max_wait, uint32_t max_i
         case NEOM9N_RMC:
             result = read_nmea_rmc(packet, max_wait);
             break;
-#if GPS_TEST_MODE
         default:
-            // Not the desired sentence type - continue
+            // Ignore sentence types we do not parse.
+#if NEOM9N_STDIO_DEBUG
             printf("Not the desired sentence type - %s\r\n", header);
 #endif
+            result = NEOM9N_PARSE_ERR;
+            break;
     }
     
     if (result == NEOM9N_OK) {

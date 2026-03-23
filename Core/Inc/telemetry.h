@@ -63,6 +63,8 @@ uint8_t  telemetry_unix_is_valid(void);
 
 // Master / GPS thread calls this:
 void telemetry_set_unix_time_ms(uint64_t unix_ms);
+void telemetry_set_utc_datetime(int32_t year, uint8_t month, uint8_t day, uint8_t hour,
+                                uint8_t minute, uint8_t second);
 
 
 void die(const char *fmt, ...);

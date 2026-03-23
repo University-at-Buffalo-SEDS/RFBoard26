@@ -5,6 +5,10 @@
 #include <string.h>
 #include "main.h"
 
+#ifndef TELEMETRY_STDIO_DEBUG
+#define TELEMETRY_STDIO_DEBUG 0
+#endif
+
 static TX_BYTE_POOL *rust_byte_pool_external = NULL;
 static TX_MUTEX g_telemetry_mutex;
 static UINT g_telemetry_mutex_ready = 0U;
@@ -197,7 +201,9 @@ void seds_error_msg(const char *str, size_t len)
         g_last_err_mutex_hint = (uint8_t)(
             str_contains_ci_n(str, len, "mutex") ||
             str_contains_ci_n(str, len, "lock"));
+#if TELEMETRY_STDIO_DEBUG
         printf("%.*s\r\n", (int)len, str);
+#endif
     }
 }
 

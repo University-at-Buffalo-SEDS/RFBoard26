@@ -13,6 +13,16 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifndef TELEMETRY_STDIO_DEBUG
+#define TELEMETRY_STDIO_DEBUG 0
+#endif
+
+#if TELEMETRY_STDIO_DEBUG
+#define TELEMETRY_DEBUG_PRINTF(...) printf(__VA_ARGS__)
+#else
+#define TELEMETRY_DEBUG_PRINTF(...) ((void)0)
+#endif
+
 #ifndef TELEMETRY_ENABLED
 static void print_data_no_telem(void *data, size_t len) {
   (void)data;
@@ -130,6 +140,53 @@ static bool telemetry_unix_ms_to_utc(uint64_t unix_ms, int32_t *year, uint8_t *m
   }
 }
 
+static uint8_t telemetry_is_leap_year(int32_t year) {
+  const uint32_t y = (uint32_t)year;
+  return ((y % 4U) == 0U && ((y % 100U) != 0U || (y % 400U) == 0U)) ? 1U : 0U;
+}
+
+static bool telemetry_utc_to_unix_ms(int32_t year, uint8_t month, uint8_t day, uint8_t hour,
+                                     uint8_t minute, uint8_t second,
+                                     uint16_t millisecond, uint64_t *out_unix_ms) {
+  static const uint8_t days_in_month[12] = {31U, 28U, 31U, 30U, 31U, 30U,
+                                            31U, 31U, 30U, 31U, 30U, 31U};
+  uint64_t days = 0ULL;
+
+  if (!out_unix_ms || year < 1970 || month < 1U || month > 12U || day < 1U || hour > 23U ||
+      minute > 59U || second > 59U || millisecond > 999U) {
+    return false;
+  }
+
+  {
+    uint8_t dim = days_in_month[month - 1U];
+    if (month == 2U && telemetry_is_leap_year(year)) {
+      dim = 29U;
+    }
+    if (day > dim) {
+      return false;
+    }
+  }
+
+  for (int32_t y = 1970; y < year; ++y) {
+    days += telemetry_is_leap_year(y) ? 366ULL : 365ULL;
+  }
+
+  for (uint8_t m = 1U; m < month; ++m) {
+    days += (uint64_t)days_in_month[m - 1U];
+    if (m == 2U && telemetry_is_leap_year(year)) {
+      days += 1ULL;
+    }
+  }
+
+  days += (uint64_t)(day - 1U);
+
+  *out_unix_ms = (((days * 24ULL + (uint64_t)hour) * 60ULL + (uint64_t)minute) * 60ULL +
+                  (uint64_t)second) *
+                     1000ULL +
+                 (uint64_t)millisecond;
+  return true;
+}
+
 static SedsResult telemetry_apply_local_unix_time_locked(SedsRouter *router) {
   int32_t year = 0;
   uint8_t month = 0;
@@ -202,6 +259,27 @@ void telemetry_set_unix_time_ms(uint64_t unix_ms) {
 #ifdef TELEMETRY_ENABLED
   if (g_router.r != NULL) {
     (void)telemetry_apply_local_unix_time_locked(g_router.r);
+  }
+#endif
+}
+
+void telemetry_set_utc_datetime(int32_t year, uint8_t month, uint8_t day, uint8_t hour,
+                                uint8_t minute, uint8_t second) {
+  uint64_t unix_ms = 0ULL;
+
+  if (!telemetry_utc_to_unix_ms(year, month, day, hour, minute, second, 0U, &unix_ms)) {
+    g_local_unix_ms = 0ULL;
+    g_local_unix_valid = 0U;
+    return;
+  }
+
+  g_local_unix_ms = unix_ms;
+  g_local_unix_valid = 1U;
+
+#ifdef TELEMETRY_ENABLED
+  if (g_router.r != NULL) {
+    (void)seds_router_set_local_network_datetime(g_router.r, year, month, day, hour, minute,
+                                                 second);
   }
 #endif
 }
@@ -327,7 +405,7 @@ SedsResult init_telemetry_router(void) {
     if (can_bus_subscribe_rx(telemetry_can_rx, NULL) == HAL_OK) {
       g_can_rx_subscribed = 1U;
     } else {
-      printf("Error: can_bus_subscribe_rx failed\r\n");
+      TELEMETRY_DEBUG_PRINTF("Error: can_bus_subscribe_rx failed\r\n");
     }
   }
 
@@ -335,13 +413,13 @@ SedsResult init_telemetry_router(void) {
     if (radio_uart_subscribe_rx(telemetry_radio_rx, NULL) == HAL_OK) {
       g_radio_rx_subscribed = 1U;
     } else {
-      printf("Error: radio_uart_subscribe_rx failed\r\n");
+      TELEMETRY_DEBUG_PRINTF("Error: radio_uart_subscribe_rx failed\r\n");
     }
   }
 
   r = seds_router_new(Seds_RM_Relay, node_now_since_ms, NULL, NULL, 0U);
   if (!r) {
-    printf("Error: failed to create router\r\n");
+    TELEMETRY_DEBUG_PRINTF("Error: failed to create router\r\n");
     g_router.r = NULL;
     g_router.created = 0U;
     g_can_side_id = -1;
@@ -350,19 +428,19 @@ SedsResult init_telemetry_router(void) {
 
   g_can_side_id = seds_router_add_side_serialized(r, "can", 3U, tx_send, NULL, false);
   if (g_can_side_id < 0) {
-    printf("Error: failed to add CAN side: %ld\r\n", (long)g_can_side_id);
+    TELEMETRY_DEBUG_PRINTF("Error: failed to add CAN side: %ld\r\n", (long)g_can_side_id);
     g_can_side_id = -1;
   }
 
   g_radio_side_id = seds_router_add_side_serialized(r, "radio", 5U, tx_send_radio, NULL, false);
   if (g_radio_side_id < 0) {
-    printf("Error: failed to add RADIO side: %ld\r\n", (long)g_radio_side_id);
+    TELEMETRY_DEBUG_PRINTF("Error: failed to add RADIO side: %ld\r\n", (long)g_radio_side_id);
     g_radio_side_id = -1;
   }
 
   result = telemetry_configure_timesync_locked(r);
   if (result != SEDS_OK) {
-    printf("Error: failed to configure telemetry timesync: %d\r\n", (int)result);
+    TELEMETRY_DEBUG_PRINTF("Error: failed to configure telemetry timesync: %d\r\n", (int)result);
     seds_router_free(r);
     g_router.r = NULL;
     g_router.created = 0U;
@@ -615,7 +693,7 @@ SedsResult print_telemetry_error(const int32_t error_code) {
   char buf[(size_t)need];
   SedsResult res = seds_error_to_string(error_code, buf, sizeof(buf));
   if (res == SEDS_OK) {
-    printf("Error: %s\r\n", buf);
+    TELEMETRY_DEBUG_PRINTF("Error: %s\r\n", buf);
   } else {
     (void)log_error_asynchronous("Error: seds_error_to_string failed: %d\r\n", (int)res);
   }
@@ -633,7 +711,9 @@ void die(const char *fmt, ...) {
   va_end(args);
 
   while (1) {
+#if TELEMETRY_STDIO_DEBUG
     printf("FATAL: %s\r\n", buf);
+#endif
     HAL_Delay(1000);
   }
 }

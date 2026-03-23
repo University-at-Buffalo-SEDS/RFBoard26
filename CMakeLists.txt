@@ -97,14 +97,29 @@ set(SEDSPRINTF_RS_ENV_PAYLOAD_COMPRESS_THRESHOLD "30" CACHE STRING "" FORCE)
 add_subdirectory(${CMAKE_SOURCE_DIR}/sedsprintf_rs)
 target_link_libraries(${CMAKE_PROJECT_NAME} sedsprintf_rs)
 set(TELEMETRY_TIMESYNC_MASTER_PRIO "1" CACHE STRING "Timesync source priority. Values < 0 make this board a consumer; values >= 0 make it a source with that priority." FORCE)
+set(TELEMETRY_TIMESYNC_SOURCE_TIMEOUT_MS "5000" CACHE STRING "Time sync source timeout in milliseconds." FORCE)
+set(TELEMETRY_TIMESYNC_ANNOUNCE_INTERVAL_MS "2000" CACHE STRING "Time sync announce interval in milliseconds." FORCE)
+set(TELEMETRY_TIMESYNC_REQUEST_INTERVAL_MS "2000" CACHE STRING "Time sync request interval in milliseconds." FORCE)
 
 # Option defaults to ON
 option(ENABLE_TELEMETRY "Enable the telemetry subsystem" OFF)
 
 # Print its state for debugging
 message(STATUS "Telemetry enabled: ${ENABLE_TELEMETRY}")
+if(TELEMETRY_TIMESYNC_MASTER_PRIO LESS 0)
+    message(STATUS "Telemetry time sync role: CONSUMER (priority ${TELEMETRY_TIMESYNC_MASTER_PRIO})")
+else()
+    message(STATUS "Telemetry time sync role: SOURCE/PRODUCER (priority ${TELEMETRY_TIMESYNC_MASTER_PRIO})")
+endif()
 
 # Define or undefine the macro globally
+add_compile_definitions(
+    TELEMETRY_TIMESYNC_MASTER_PRIO=${TELEMETRY_TIMESYNC_MASTER_PRIO}
+    TELEMETRY_TIMESYNC_SOURCE_TIMEOUT_MS=${TELEMETRY_TIMESYNC_SOURCE_TIMEOUT_MS}U
+    TELEMETRY_TIMESYNC_ANNOUNCE_INTERVAL_MS=${TELEMETRY_TIMESYNC_ANNOUNCE_INTERVAL_MS}U
+    TELEMETRY_TIMESYNC_REQUEST_INTERVAL_MS=${TELEMETRY_TIMESYNC_REQUEST_INTERVAL_MS}U
+)
+
 if(ENABLE_TELEMETRY)
     add_compile_definitions(TELEMETRY_ENABLED)
 else()
