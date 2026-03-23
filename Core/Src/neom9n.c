@@ -204,25 +204,48 @@ void parse_date(const uint8_t *field, uint8_t *d, uint8_t *m, uint8_t *y) {
 
 
 /**
- * @brief Parse UTC time field (hhmmss.sss)
+ * @brief Parse UTC time field (hhmmss.ss or hhmmss.sss)
+ *
+ * Handles fields where a leading zero may have been stripped,
+ * e.g. "22803.00" instead of "022803.00".
+ * Finds the decimal point (or end of string), then
+ * read ss, mm, hh backwards from that anchor.
  */
 void parse_time(const uint8_t *field, uint8_t *h, uint8_t *m, uint8_t *s, uint16_t *ms) {
-    if (strlen((char*)field) < 6) {
-        *h = 0;
-        *m = 0;
-        *s = 0;
-        *ms = 0;
-        return;
-    }
-    
-    *h = (field[0] - '0') * 10 + (field[1] - '0');
-    *m = (field[2] - '0') * 10 + (field[3] - '0');
-    *s = (field[4] - '0') * 10 + (field[5] - '0');
+    *h = *m = *s = 0;
     *ms = 0;
 
-    if (field[6] == '.' && strlen((char*)field) > 7) {
+    // Find decimal point or end of integer part
+    int dot_idx = -1;
+    int len = (int)strlen((char*)field);
+
+    for (int i = 0; i < len; i++) {
+        if (field[i] == '.') {
+            dot_idx = i;
+            break;
+        }
+    }
+
+    int int_end = (dot_idx >= 0) ? dot_idx : len;  // Index of first non-integer char
+
+    // Need at least 6 integer digits (hhmmss), but tolerate 5 (hmmss) if leading zero stripped
+    if (int_end < 5) return;
+
+    // Parse backwards from int_end: ss at [-2:-1], mm at [-4:-3], hh at [-6:-5]
+    *s = (field[int_end - 2] - '0') * 10 + (field[int_end - 1] - '0');
+    *m = (field[int_end - 4] - '0') * 10 + (field[int_end - 3] - '0');
+
+    if (int_end >= 6) {
+        *h = (field[int_end - 6] - '0') * 10 + (field[int_end - 5] - '0');
+    } else {
+        // Only 5 integer digits — leading zero was stripped, hour is single digit
+        *h = (field[0] - '0');
+    }
+
+    // Parse fractional seconds -> millis
+    if (dot_idx >= 0 && dot_idx + 1 < len) {
         uint16_t mult = 100;
-        for (int i = 7; field[i] != '\0' && i < 10; i++) {
+        for (int i = dot_idx + 1; i < len && i < dot_idx + 4; i++) {
             if (isdigit(field[i])) {
                 *ms += (field[i] - '0') * mult;
                 mult /= 10;
@@ -243,8 +266,7 @@ NEOM9N_status_t read_nmea_gga(NEOM9N_t *packet, uint32_t max_wait) {
     // Time
     status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
     if (status == NEOM9N_OK) {
-        parse_time(packet->field_buffer, &packet->hours, &packet->minutes, 
-                  &packet->seconds, &packet->milliseconds);
+        parse_time(packet->field_buffer, &packet->hours, &packet->minutes, &packet->seconds, &packet->milliseconds);
     }
     
     // Latt
@@ -317,8 +339,11 @@ NEOM9N_status_t read_nmea_rmc(NEOM9N_t *packet, uint32_t max_wait) {
     // Time
     status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
     if (status == NEOM9N_OK) {
-        parse_time(packet->field_buffer, &packet->hours, &packet->minutes,
-                  &packet->seconds, &packet->milliseconds);
+        #define GPS_TEST_MODE 1
+        #if GPS_TEST_MODE
+        printf("RAW TIME FIELD: [%s] len=%d\r\n", packet->field_buffer, strlen((char*)packet->field_buffer));
+        #endif 
+        parse_time(packet->field_buffer, &packet->hours, &packet->minutes, &packet->seconds, &packet->milliseconds);
     }
     
     // Status
