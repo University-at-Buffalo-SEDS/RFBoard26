@@ -59,7 +59,7 @@
 /* -- GPS TEST MODE --------------------------------- */
 #ifndef GPS_TEST_MODE
 // Set to 1 to force GPS test mode 
-#define GPS_TEST_MODE 1
+#define GPS_TEST_MODE 0
 #endif
 
 /* -- PRODUCTION MODE ------------------------------- */
