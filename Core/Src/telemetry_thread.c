@@ -20,6 +20,7 @@ void telemetry_thread_entry(ULONG initial_input)
         /* Poll hardware FIFO and then process reassembly + router queues. */
         radio_uart_process_rx();
         can_bus_process_rx();
+        (void)telemetry_poll_discovery();
         (void)process_all_queues_timeout(50);
         (void)telemetry_poll_timesync();
 
