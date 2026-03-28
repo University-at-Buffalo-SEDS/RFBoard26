@@ -152,9 +152,8 @@ void neom9n_thread_entry(ULONG initial_input)
             const int64_t measured_offset = (int64_t)gps_tod - (int64_t)local_tod;
             gps_offset_update_ms(measured_offset);
 
-            // Feed the telemetry library's network clock directly from GPS.
-            telemetry_set_utc_datetime(2026, 2, 23, 0, 0,
-                                       (uint8_t)((gps_epoch_ms / 1000ULL) % 60ULL));
+            // Feed the telemetry library's network clock directly from GPS epoch time.
+            telemetry_set_unix_time_ms(gps_epoch_ms);
 
             // Emit a fixed GPS position payload occasionally
             float fake[3] = {TELEMETRY_TEST_LAT, TELEMETRY_TEST_LON, TELEMETRY_TEST_ALT_M};
@@ -202,11 +201,9 @@ void neom9n_thread_entry(ULONG initial_input)
                 gps_offset_update_ms(measured_offset);
 
                 // Feed the telemetry library's network clock directly from
-                // the parsed GPS date/time fields. Seconds resolution for now.
+                // the parsed GPS epoch time.
 #if PRODUCTION_MODE
-                telemetry_set_utc_datetime(2000 + (int32_t)gps_packet.year, gps_packet.month,
-                                           gps_packet.day, gps_packet.hours,
-                                           gps_packet.minutes, gps_packet.seconds);
+                telemetry_set_unix_time_ms(gps_epoch_ms);
 #endif
 #if GPS_TEST_MODE
                 /** 
