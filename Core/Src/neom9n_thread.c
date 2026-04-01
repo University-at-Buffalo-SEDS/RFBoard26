@@ -59,7 +59,7 @@
 /* -- GPS TEST MODE --------------------------------- */
 #ifndef GPS_TEST_MODE
 // Set to 1 to force GPS test mode 
-#define GPS_TEST_MODE 1
+#define GPS_TEST_MODE 0
 #endif
 
 /* -- PRODUCTION MODE ------------------------------- */
@@ -203,7 +203,11 @@ void neom9n_thread_entry(ULONG initial_input)
                 // Feed the telemetry library's network clock directly from
                 // the parsed GPS epoch time.
 #if PRODUCTION_MODE
-                telemetry_set_unix_time_ms(gps_epoch_ms);
+                telemetry_set_unix_time_ms(gps_epoch_ms); //send time 
+                log_telemetry_asynchronous(SEDS_DT_GPS_SATELLITE_NUMBER, 
+                                            gps_packet.num_satellites, 
+                                            1, 
+                                            sizeof(uint8_t));  // send N sats
 #endif
 #if GPS_TEST_MODE
                 /** 
@@ -265,7 +269,7 @@ void neom9n_thread_entry(ULONG initial_input)
                     const char no_fix_txt[] = "GPS FATAL: No fix";
                     log_telemetry_asynchronous(SEDS_DT_WARNING,
                                                no_fix_txt,
-                                               sizeof(no_fix_txt), 
+                                               strlen(no_fix_txt), 
                                                1);
 #endif
                     no_fix_counter = 0;
