@@ -1,0 +1,2640 @@
+GPS configured: GGA+RMC enabled -> others disabled
+========== GPS DATA ==========
+Position:
+  Lat: 43.001992° N
+  Lon: -78.787168° W
+  Alt: 0.00 m MSL
+Date: 30/03/2026
+Time: 02:07:17.000 UTC
+FC Time: 1774836437000 ms since 1/1/1970
+Status:
+  Satellites: 0
+  Fix: VALID
+  Last Update: 12456 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001992° N
+  Lon: -78.787168° W
+  Alt: 213.40 m MSL
+Date: 30/03/2026
+Time: 02:07:17.000 UTC
+FC Time: 1774836437000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 12507 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001984° N
+  Lon: -78.787168° W
+  Alt: 213.40 m MSL
+Date: 30/03/2026
+Time: 02:07:18.000 UTC
+FC Time: 1774836438000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 13476 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001984° N
+  Lon: -78.787168° W
+  Alt: 211.90 m MSL
+Date: 30/03/2026
+Time: 02:07:18.000 UTC
+FC Time: 1774836438000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 13527 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001976° N
+  Lon: -78.787168° W
+  Alt: 211.90 m MSL
+Date: 30/03/2026
+Time: 02:07:19.000 UTC
+FC Time: 1774836439000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 14445 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001976° N
+  Lon: -78.787168° W
+  Alt: 212.00 m MSL
+Date: 30/03/2026
+Time: 02:07:19.000 UTC
+FC Time: 1774836439000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 14496 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001968° N
+  Lon: -78.787168° W
+  Alt: 212.00 m MSL
+Date: 30/03/2026
+Time: 02:07:20.000 UTC
+FC Time: 1774836440000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 15465 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001968° N
+  Lon: -78.787168° W
+  Alt: 212.50 m MSL
+Date: 30/03/2026
+Time: 02:07:20.000 UTC
+FC Time: 1774836440000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 15516 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787168° W
+  Alt: 212.50 m MSL
+Date: 30/03/2026
+Time: 02:07:21.000 UTC
+FC Time: 1774836441000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 16434 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787168° W
+  Alt: 212.50 m MSL
+Date: 30/03/2026
+Time: 02:07:21.000 UTC
+FC Time: 1774836441000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 16485 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787168° W
+  Alt: 212.50 m MSL
+Date: 30/03/2026
+Time: 02:07:22.000 UTC
+FC Time: 1774836442000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 17454 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787168° W
+  Alt: 211.80 m MSL
+Date: 30/03/2026
+Time: 02:07:22.000 UTC
+FC Time: 1774836442000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 17505 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001968° N
+  Lon: -78.787168° W
+  Alt: 211.80 m MSL
+Date: 30/03/2026
+Time: 02:07:23.000 UTC
+FC Time: 1774836443000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 18474 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001968° N
+  Lon: -78.787168° W
+  Alt: 211.40 m MSL
+Date: 30/03/2026
+Time: 02:07:23.000 UTC
+FC Time: 1774836443000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 18525 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787168° W
+  Alt: 211.40 m MSL
+Date: 30/03/2026
+Time: 02:07:24.000 UTC
+FC Time: 1774836444000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 19443 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001964° N
+  Lon: -78.787168° W
+  Alt: 211.50 m MSL
+Date: 30/03/2026
+Time: 02:07:24.000 UTC
+FC Time: 1774836444000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 19494 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001960° N
+  Lon: -78.787176° W
+  Alt: 211.50 m MSL
+Date: 30/03/2026
+Time: 02:07:25.000 UTC
+FC Time: 1774836445000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 20463 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001960° N
+  Lon: -78.787176° W
+  Alt: 211.10 m MSL
+Date: 30/03/2026
+Time: 02:07:25.000 UTC
+FC Time: 1774836445000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 20514 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001952° N
+  Lon: -78.787176° W
+  Alt: 211.10 m MSL
+Date: 30/03/2026
+Time: 02:07:26.000 UTC
+FC Time: 1774836446000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 21483 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001952° N
+  Lon: -78.787176° W
+  Alt: 210.50 m MSL
+Date: 30/03/2026
+Time: 02:07:26.000 UTC
+FC Time: 1774836446000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 21534 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001948° N
+  Lon: -78.787184° W
+  Alt: 210.50 m MSL
+Date: 30/03/2026
+Time: 02:07:27.000 UTC
+FC Time: 1774836447000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 22452 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001948° N
+  Lon: -78.787184° W
+  Alt: 210.20 m MSL
+Date: 30/03/2026
+Time: 02:07:27.000 UTC
+FC Time: 1774836447000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 22503 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001948° N
+  Lon: -78.787184° W
+  Alt: 210.20 m MSL
+Date: 30/03/2026
+Time: 02:07:28.000 UTC
+FC Time: 1774836448000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 23472 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001948° N
+  Lon: -78.787184° W
+  Alt: 211.10 m MSL
+Date: 30/03/2026
+Time: 02:07:28.000 UTC
+FC Time: 1774836448000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 23523 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001940° N
+  Lon: -78.787184° W
+  Alt: 211.10 m MSL
+Date: 30/03/2026
+Time: 02:07:29.000 UTC
+FC Time: 1774836449000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 24492 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001940° N
+  Lon: -78.787184° W
+  Alt: 210.40 m MSL
+Date: 30/03/2026
+Time: 02:07:29.000 UTC
+FC Time: 1774836449000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 24543 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001936° N
+  Lon: -78.787192° W
+  Alt: 210.40 m MSL
+Date: 30/03/2026
+Time: 02:07:30.000 UTC
+FC Time: 1774836450000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 25512 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001936° N
+  Lon: -78.787192° W
+  Alt: 209.00 m MSL
+Date: 30/03/2026
+Time: 02:07:30.000 UTC
+FC Time: 1774836450000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 25563 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787192° W
+  Alt: 209.00 m MSL
+Date: 30/03/2026
+Time: 02:07:31.000 UTC
+FC Time: 1774836451000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 26481 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001932° N
+  Lon: -78.787192° W
+  Alt: 208.10 m MSL
+Date: 30/03/2026
+Time: 02:07:31.000 UTC
+FC Time: 1774836451000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 26532 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787192° W
+  Alt: 208.10 m MSL
+Date: 30/03/2026
+Time: 02:07:32.000 UTC
+FC Time: 1774836452000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 27501 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001928° N
+  Lon: -78.787192° W
+  Alt: 208.40 m MSL
+Date: 30/03/2026
+Time: 02:07:32.000 UTC
+FC Time: 1774836452000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 27552 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001924° N
+  Lon: -78.787192° W
+  Alt: 208.40 m MSL
+Date: 30/03/2026
+Time: 02:07:33.000 UTC
+FC Time: 1774836453000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 28471 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001924° N
+  Lon: -78.787192° W
+  Alt: 208.10 m MSL
+Date: 30/03/2026
+Time: 02:07:33.000 UTC
+FC Time: 1774836453000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 28522 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001916° N
+  Lon: -78.787192° W
+  Alt: 208.10 m MSL
+Date: 30/03/2026
+Time: 02:07:34.000 UTC
+FC Time: 1774836454000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 29491 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001916° N
+  Lon: -78.787192° W
+  Alt: 207.80 m MSL
+Date: 30/03/2026
+Time: 02:07:34.000 UTC
+FC Time: 1774836454000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 29542 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001912° N
+  Lon: -78.787184° W
+  Alt: 207.80 m MSL
+Date: 30/03/2026
+Time: 02:07:35.000 UTC
+FC Time: 1774836455000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 30511 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001912° N
+  Lon: -78.787184° W
+  Alt: 207.30 m MSL
+Date: 30/03/2026
+Time: 02:07:35.000 UTC
+FC Time: 1774836455000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 30562 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001900° N
+  Lon: -78.787184° W
+  Alt: 207.30 m MSL
+Date: 30/03/2026
+Time: 02:07:36.000 UTC
+FC Time: 1774836456000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 31531 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001900° N
+  Lon: -78.787184° W
+  Alt: 206.10 m MSL
+Date: 30/03/2026
+Time: 02:07:36.000 UTC
+FC Time: 1774836456000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 31582 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001888° N
+  Lon: -78.787176° W
+  Alt: 206.10 m MSL
+Date: 30/03/2026
+Time: 02:07:37.000 UTC
+FC Time: 1774836457000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 32500 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001888° N
+  Lon: -78.787176° W
+  Alt: 205.10 m MSL
+Date: 30/03/2026
+Time: 02:07:37.000 UTC
+FC Time: 1774836457000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 32551 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001884° N
+  Lon: -78.787184° W
+  Alt: 205.10 m MSL
+Date: 30/03/2026
+Time: 02:07:38.000 UTC
+FC Time: 1774836458000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 33520 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001884° N
+  Lon: -78.787184° W
+  Alt: 203.50 m MSL
+Date: 30/03/2026
+Time: 02:07:38.000 UTC
+FC Time: 1774836458000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 33571 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001876° N
+  Lon: -78.787184° W
+  Alt: 203.50 m MSL
+Date: 30/03/2026
+Time: 02:07:39.000 UTC
+FC Time: 1774836459000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 34489 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001876° N
+  Lon: -78.787184° W
+  Alt: 202.60 m MSL
+Date: 30/03/2026
+Time: 02:07:39.000 UTC
+FC Time: 1774836459000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 34540 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001868° N
+  Lon: -78.787184° W
+  Alt: 202.60 m MSL
+Date: 30/03/2026
+Time: 02:07:40.000 UTC
+FC Time: 1774836460000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 35509 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001868° N
+  Lon: -78.787184° W
+  Alt: 201.60 m MSL
+Date: 30/03/2026
+Time: 02:07:40.000 UTC
+FC Time: 1774836460000 ms since 1/1/1970
+Status:
+  Satellites: 11
+  Fix: VALID
+  Last Update: 35560 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001868° N
+  Lon: -78.787184° W
+  Alt: 201.60 m MSL
+Date: 30/03/2026
+Time: 02:07:41.000 UTC
+FC Time: 1774836461000 ms since 1/1/1970
+Status:
+  Satellites: 11
+  Fix: VALID
+  Last Update: 36529 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001868° N
+  Lon: -78.787184° W
+  Alt: 201.50 m MSL
+Date: 30/03/2026
+Time: 02:07:41.000 UTC
+FC Time: 1774836461000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 36580 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001864° N
+  Lon: -78.787184° W
+  Alt: 201.50 m MSL
+Date: 30/03/2026
+Time: 02:07:42.000 UTC
+FC Time: 1774836462000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 37549 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001864° N
+  Lon: -78.787184° W
+  Alt: 201.00 m MSL
+Date: 30/03/2026
+Time: 02:07:42.000 UTC
+FC Time: 1774836462000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 37600 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001872° N
+  Lon: -78.787184° W
+  Alt: 201.00 m MSL
+Date: 30/03/2026
+Time: 02:07:43.000 UTC
+FC Time: 1774836463000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 38518 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001872° N
+  Lon: -78.787184° W
+  Alt: 200.70 m MSL
+Date: 30/03/2026
+Time: 02:07:43.000 UTC
+FC Time: 1774836463000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 38569 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001872° N
+  Lon: -78.787192° W
+  Alt: 200.70 m MSL
+Date: 30/03/2026
+Time: 02:07:44.000 UTC
+FC Time: 1774836464000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 39538 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001872° N
+  Lon: -78.787192° W
+  Alt: 199.50 m MSL
+Date: 30/03/2026
+Time: 02:07:44.000 UTC
+FC Time: 1774836464000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 39589 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001868° N
+  Lon: -78.787192° W
+  Alt: 199.50 m MSL
+Date: 30/03/2026
+Time: 02:07:45.000 UTC
+FC Time: 1774836465000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 40507 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001868° N
+  Lon: -78.787192° W
+  Alt: 199.30 m MSL
+Date: 30/03/2026
+Time: 02:07:45.000 UTC
+FC Time: 1774836465000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 40558 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001864° N
+  Lon: -78.787192° W
+  Alt: 199.30 m MSL
+Date: 30/03/2026
+Time: 02:07:46.000 UTC
+FC Time: 1774836466000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 41527 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001864° N
+  Lon: -78.787192° W
+  Alt: 198.70 m MSL
+Date: 30/03/2026
+Time: 02:07:46.000 UTC
+FC Time: 1774836466000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 41578 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001864° N
+  Lon: -78.787192° W
+  Alt: 198.70 m MSL
+Date: 30/03/2026
+Time: 02:07:47.000 UTC
+FC Time: 1774836467000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 42547 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001864° N
+  Lon: -78.787192° W
+  Alt: 198.80 m MSL
+Date: 30/03/2026
+Time: 02:07:47.000 UTC
+FC Time: 1774836467000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 42598 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001852° N
+  Lon: -78.787192° W
+  Alt: 198.80 m MSL
+Date: 30/03/2026
+Time: 02:07:48.000 UTC
+FC Time: 1774836468000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 43567 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001852° N
+  Lon: -78.787192° W
+  Alt: 198.40 m MSL
+Date: 30/03/2026
+Time: 02:07:48.000 UTC
+FC Time: 1774836468000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 43618 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001848° N
+  Lon: -78.787192° W
+  Alt: 198.40 m MSL
+Date: 30/03/2026
+Time: 02:07:49.000 UTC
+FC Time: 1774836469000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 44536 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001848° N
+  Lon: -78.787192° W
+  Alt: 197.30 m MSL
+Date: 30/03/2026
+Time: 02:07:49.000 UTC
+FC Time: 1774836469000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 44587 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001844° N
+  Lon: -78.787192° W
+  Alt: 197.30 m MSL
+Date: 30/03/2026
+Time: 02:07:50.000 UTC
+FC Time: 1774836470000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 45556 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001844° N
+  Lon: -78.787192° W
+  Alt: 197.00 m MSL
+Date: 30/03/2026
+Time: 02:07:50.000 UTC
+FC Time: 1774836470000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 45607 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001844° N
+  Lon: -78.787192° W
+  Alt: 197.00 m MSL
+Date: 30/03/2026
+Time: 02:07:51.000 UTC
+FC Time: 1774836471000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 46525 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001844° N
+  Lon: -78.787192° W
+  Alt: 197.30 m MSL
+Date: 30/03/2026
+Time: 02:07:51.000 UTC
+FC Time: 1774836471000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 46576 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001840° N
+  Lon: -78.787192° W
+  Alt: 197.30 m MSL
+Date: 30/03/2026
+Time: 02:07:52.000 UTC
+FC Time: 1774836472000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 47545 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001840° N
+  Lon: -78.787192° W
+  Alt: 196.30 m MSL
+Date: 30/03/2026
+Time: 02:07:52.000 UTC
+FC Time: 1774836472000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 47596 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001836° N
+  Lon: -78.787192° W
+  Alt: 196.30 m MSL
+Date: 30/03/2026
+Time: 02:07:53.000 UTC
+FC Time: 1774836473000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 48565 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001836° N
+  Lon: -78.787192° W
+  Alt: 196.60 m MSL
+Date: 30/03/2026
+Time: 02:07:53.000 UTC
+FC Time: 1774836473000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 48616 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001824° N
+  Lon: -78.787192° W
+  Alt: 196.60 m MSL
+Date: 30/03/2026
+Time: 02:07:54.000 UTC
+FC Time: 1774836474000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 49585 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001824° N
+  Lon: -78.787192° W
+  Alt: 196.40 m MSL
+Date: 30/03/2026
+Time: 02:07:54.000 UTC
+FC Time: 1774836474000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 49636 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001816° N
+  Lon: -78.787184° W
+  Alt: 196.40 m MSL
+Date: 30/03/2026
+Time: 02:07:55.000 UTC
+FC Time: 1774836475000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 50554 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001816° N
+  Lon: -78.787184° W
+  Alt: 196.20 m MSL
+Date: 30/03/2026
+Time: 02:07:55.000 UTC
+FC Time: 1774836475000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 50605 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001820° N
+  Lon: -78.787184° W
+  Alt: 196.20 m MSL
+Date: 30/03/2026
+Time: 02:07:56.000 UTC
+FC Time: 1774836476000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 51574 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001820° N
+  Lon: -78.787184° W
+  Alt: 197.60 m MSL
+Date: 30/03/2026
+Time: 02:07:56.000 UTC
+FC Time: 1774836476000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 51625 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001824° N
+  Lon: -78.787184° W
+  Alt: 197.60 m MSL
+Date: 30/03/2026
+Time: 02:07:57.000 UTC
+FC Time: 1774836477000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 52543 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001824° N
+  Lon: -78.787184° W
+  Alt: 197.60 m MSL
+Date: 30/03/2026
+Time: 02:07:57.000 UTC
+FC Time: 1774836477000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 52594 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001820° N
+  Lon: -78.787184° W
+  Alt: 197.60 m MSL
+Date: 30/03/2026
+Time: 02:07:58.000 UTC
+FC Time: 1774836478000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 53563 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001820° N
+  Lon: -78.787184° W
+  Alt: 196.90 m MSL
+Date: 30/03/2026
+Time: 02:07:58.000 UTC
+FC Time: 1774836478000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 53614 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001816° N
+  Lon: -78.787184° W
+  Alt: 196.90 m MSL
+Date: 30/03/2026
+Time: 02:07:59.000 UTC
+FC Time: 1774836479000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 54583 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001816° N
+  Lon: -78.787184° W
+  Alt: 196.80 m MSL
+Date: 30/03/2026
+Time: 02:07:59.000 UTC
+FC Time: 1774836479000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 54634 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001804° N
+  Lon: -78.787184° W
+  Alt: 196.80 m MSL
+Date: 30/03/2026
+Time: 02:08:00.000 UTC
+FC Time: 1774836480000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 55603 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001804° N
+  Lon: -78.787184° W
+  Alt: 195.90 m MSL
+Date: 30/03/2026
+Time: 02:08:00.000 UTC
+FC Time: 1774836480000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 55654 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001796° N
+  Lon: -78.787184° W
+  Alt: 195.90 m MSL
+Date: 30/03/2026
+Time: 02:08:01.000 UTC
+FC Time: 1774836481000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 56572 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001796° N
+  Lon: -78.787184° W
+  Alt: 195.10 m MSL
+Date: 30/03/2026
+Time: 02:08:01.000 UTC
+FC Time: 1774836481000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 56623 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001792° N
+  Lon: -78.787184° W
+  Alt: 195.10 m MSL
+Date: 30/03/2026
+Time: 02:08:02.000 UTC
+FC Time: 1774836482000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 57592 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001792° N
+  Lon: -78.787184° W
+  Alt: 195.50 m MSL
+Date: 30/03/2026
+Time: 02:08:02.000 UTC
+FC Time: 1774836482000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 57643 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001788° N
+  Lon: -78.787184° W
+  Alt: 195.50 m MSL
+Date: 30/03/2026
+Time: 02:08:03.000 UTC
+FC Time: 1774836483000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 58561 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001788° N
+  Lon: -78.787184° W
+  Alt: 196.20 m MSL
+Date: 30/03/2026
+Time: 02:08:03.000 UTC
+FC Time: 1774836483000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 58612 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001780° N
+  Lon: -78.787184° W
+  Alt: 196.20 m MSL
+Date: 30/03/2026
+Time: 02:08:04.000 UTC
+FC Time: 1774836484000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 59581 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001780° N
+  Lon: -78.787184° W
+  Alt: 196.30 m MSL
+Date: 30/03/2026
+Time: 02:08:04.000 UTC
+FC Time: 1774836484000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 59632 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001768° N
+  Lon: -78.787176° W
+  Alt: 196.30 m MSL
+Date: 30/03/2026
+Time: 02:08:05.000 UTC
+FC Time: 1774836485000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 60601 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001768° N
+  Lon: -78.787176° W
+  Alt: 197.00 m MSL
+Date: 30/03/2026
+Time: 02:08:05.000 UTC
+FC Time: 1774836485000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 60652 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001752° N
+  Lon: -78.787176° W
+  Alt: 197.00 m MSL
+Date: 30/03/2026
+Time: 02:08:06.000 UTC
+FC Time: 1774836486000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 61571 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001752° N
+  Lon: -78.787176° W
+  Alt: 197.00 m MSL
+Date: 30/03/2026
+Time: 02:08:06.000 UTC
+FC Time: 1774836486000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 61622 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001748° N
+  Lon: -78.787168° W
+  Alt: 197.00 m MSL
+Date: 30/03/2026
+Time: 02:08:07.000 UTC
+FC Time: 1774836487000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 62591 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001748° N
+  Lon: -78.787168° W
+  Alt: 198.60 m MSL
+Date: 30/03/2026
+Time: 02:08:07.000 UTC
+FC Time: 1774836487000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 62642 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001756° N
+  Lon: -78.787160° W
+  Alt: 198.60 m MSL
+Date: 30/03/2026
+Time: 02:08:08.000 UTC
+FC Time: 1774836488000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 63611 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001756° N
+  Lon: -78.787160° W
+  Alt: 199.80 m MSL
+Date: 30/03/2026
+Time: 02:08:08.000 UTC
+FC Time: 1774836488000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 63662 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001748° N
+  Lon: -78.787160° W
+  Alt: 199.80 m MSL
+Date: 30/03/2026
+Time: 02:08:09.000 UTC
+FC Time: 1774836489000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 64580 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001748° N
+  Lon: -78.787160° W
+  Alt: 199.80 m MSL
+Date: 30/03/2026
+Time: 02:08:09.000 UTC
+FC Time: 1774836489000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 64631 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001744° N
+  Lon: -78.787160° W
+  Alt: 199.80 m MSL
+Date: 30/03/2026
+Time: 02:08:10.000 UTC
+FC Time: 1774836490000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 65600 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001744° N
+  Lon: -78.787160° W
+  Alt: 199.40 m MSL
+Date: 30/03/2026
+Time: 02:08:10.000 UTC
+FC Time: 1774836490000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 65651 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001744° N
+  Lon: -78.787160° W
+  Alt: 199.40 m MSL
+Date: 30/03/2026
+Time: 02:08:11.000 UTC
+FC Time: 1774836491000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 66620 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001744° N
+  Lon: -78.787160° W
+  Alt: 198.80 m MSL
+Date: 30/03/2026
+Time: 02:08:11.000 UTC
+FC Time: 1774836491000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 66671 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001740° N
+  Lon: -78.787152° W
+  Alt: 198.80 m MSL
+Date: 30/03/2026
+Time: 02:08:12.000 UTC
+FC Time: 1774836492000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 67640 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001740° N
+  Lon: -78.787152° W
+  Alt: 200.00 m MSL
+Date: 30/03/2026
+Time: 02:08:12.000 UTC
+FC Time: 1774836492000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 67691 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001736° N
+  Lon: -78.787152° W
+  Alt: 200.00 m MSL
+Date: 30/03/2026
+Time: 02:08:13.000 UTC
+FC Time: 1774836493000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 68609 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001736° N
+  Lon: -78.787152° W
+  Alt: 200.50 m MSL
+Date: 30/03/2026
+Time: 02:08:13.000 UTC
+FC Time: 1774836493000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 68660 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001736° N
+  Lon: -78.787152° W
+  Alt: 200.50 m MSL
+Date: 30/03/2026
+Time: 02:08:14.000 UTC
+FC Time: 1774836494000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 69629 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001736° N
+  Lon: -78.787152° W
+  Alt: 200.20 m MSL
+Date: 30/03/2026
+Time: 02:08:14.000 UTC
+FC Time: 1774836494000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 69680 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001740° N
+  Lon: -78.787152° W
+  Alt: 200.20 m MSL
+Date: 30/03/2026
+Time: 02:08:15.000 UTC
+FC Time: 1774836495000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 70598 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001740° N
+  Lon: -78.787152° W
+  Alt: 200.00 m MSL
+Date: 30/03/2026
+Time: 02:08:15.000 UTC
+FC Time: 1774836495000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 70649 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001740° N
+  Lon: -78.787152° W
+  Alt: 200.00 m MSL
+Date: 30/03/2026
+Time: 02:08:16.000 UTC
+FC Time: 1774836496000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 71618 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001740° N
+  Lon: -78.787152° W
+  Alt: 199.70 m MSL
+Date: 30/03/2026
+Time: 02:08:16.000 UTC
+FC Time: 1774836496000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 71669 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001744° N
+  Lon: -78.787152° W
+  Alt: 199.70 m MSL
+Date: 30/03/2026
+Time: 02:08:17.000 UTC
+FC Time: 1774836497000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 72638 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001744° N
+  Lon: -78.787152° W
+  Alt: 199.40 m MSL
+Date: 30/03/2026
+Time: 02:08:17.000 UTC
+FC Time: 1774836497000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 72689 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001748° N
+  Lon: -78.787144° W
+  Alt: 199.40 m MSL
+Date: 30/03/2026
+Time: 02:08:18.000 UTC
+FC Time: 1774836498000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 73658 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001748° N
+  Lon: -78.787144° W
+  Alt: 198.70 m MSL
+Date: 30/03/2026
+Time: 02:08:18.000 UTC
+FC Time: 1774836498000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 73709 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001748° N
+  Lon: -78.787144° W
+  Alt: 198.70 m MSL
+Date: 30/03/2026
+Time: 02:08:19.000 UTC
+FC Time: 1774836499000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 74627 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001748° N
+  Lon: -78.787144° W
+  Alt: 199.20 m MSL
+Date: 30/03/2026
+Time: 02:08:19.000 UTC
+FC Time: 1774836499000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 74678 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001756° N
+  Lon: -78.787136° W
+  Alt: 199.20 m MSL
+Date: 30/03/2026
+Time: 02:08:20.000 UTC
+FC Time: 1774836500000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 75647 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001756° N
+  Lon: -78.787136° W
+  Alt: 200.20 m MSL
+Date: 30/03/2026
+Time: 02:08:20.000 UTC
+FC Time: 1774836500000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 75698 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001764° N
+  Lon: -78.787136° W
+  Alt: 200.20 m MSL
+Date: 30/03/2026
+Time: 02:08:21.000 UTC
+FC Time: 1774836501000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 76617 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001764° N
+  Lon: -78.787136° W
+  Alt: 200.60 m MSL
+Date: 30/03/2026
+Time: 02:08:21.000 UTC
+FC Time: 1774836501000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 76668 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001772° N
+  Lon: -78.787136° W
+  Alt: 200.60 m MSL
+Date: 30/03/2026
+Time: 02:08:22.000 UTC
+FC Time: 1774836502000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 77637 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001772° N
+  Lon: -78.787136° W
+  Alt: 200.70 m MSL
+Date: 30/03/2026
+Time: 02:08:22.000 UTC
+FC Time: 1774836502000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 77688 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001776° N
+  Lon: -78.787136° W
+  Alt: 200.70 m MSL
+Date: 30/03/2026
+Time: 02:08:23.000 UTC
+FC Time: 1774836503000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 78657 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001776° N
+  Lon: -78.787136° W
+  Alt: 200.60 m MSL
+Date: 30/03/2026
+Time: 02:08:23.000 UTC
+FC Time: 1774836503000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 78708 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001772° N
+  Lon: -78.787144° W
+  Alt: 200.60 m MSL
+Date: 30/03/2026
+Time: 02:08:24.000 UTC
+FC Time: 1774836504000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 79677 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001772° N
+  Lon: -78.787144° W
+  Alt: 200.90 m MSL
+Date: 30/03/2026
+Time: 02:08:24.000 UTC
+FC Time: 1774836504000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 79728 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001772° N
+  Lon: -78.787136° W
+  Alt: 200.90 m MSL
+Date: 30/03/2026
+Time: 02:08:25.000 UTC
+FC Time: 1774836505000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 80646 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001772° N
+  Lon: -78.787136° W
+  Alt: 201.30 m MSL
+Date: 30/03/2026
+Time: 02:08:25.000 UTC
+FC Time: 1774836505000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 80697 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001764° N
+  Lon: -78.787136° W
+  Alt: 201.30 m MSL
+Date: 30/03/2026
+Time: 02:08:26.000 UTC
+FC Time: 1774836506000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 81666 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001764° N
+  Lon: -78.787136° W
+  Alt: 201.80 m MSL
+Date: 30/03/2026
+Time: 02:08:26.000 UTC
+FC Time: 1774836506000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 81717 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001768° N
+  Lon: -78.787136° W
+  Alt: 201.80 m MSL
+Date: 30/03/2026
+Time: 02:08:27.000 UTC
+FC Time: 1774836507000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 82635 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001768° N
+  Lon: -78.787136° W
+  Alt: 201.90 m MSL
+Date: 30/03/2026
+Time: 02:08:27.000 UTC
+FC Time: 1774836507000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 82686 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001768° N
+  Lon: -78.787136° W
+  Alt: 201.90 m MSL
+Date: 30/03/2026
+Time: 02:08:28.000 UTC
+FC Time: 1774836508000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 83655 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001768° N
+  Lon: -78.787136° W
+  Alt: 202.50 m MSL
+Date: 30/03/2026
+Time: 02:08:28.000 UTC
+FC Time: 1774836508000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 83706 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001768° N
+  Lon: -78.787144° W
+  Alt: 202.50 m MSL
+Date: 30/03/2026
+Time: 02:08:29.000 UTC
+FC Time: 1774836509000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 84675 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001768° N
+  Lon: -78.787144° W
+  Alt: 202.00 m MSL
+Date: 30/03/2026
+Time: 02:08:29.000 UTC
+FC Time: 1774836509000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 84726 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001768° N
+  Lon: -78.787144° W
+  Alt: 202.00 m MSL
+Date: 30/03/2026
+Time: 02:08:30.000 UTC
+FC Time: 1774836510000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 85695 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001768° N
+  Lon: -78.787144° W
+  Alt: 202.40 m MSL
+Date: 30/03/2026
+Time: 02:08:30.000 UTC
+FC Time: 1774836510000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 85746 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001764° N
+  Lon: -78.787144° W
+  Alt: 202.40 m MSL
+Date: 30/03/2026
+Time: 02:08:31.000 UTC
+FC Time: 1774836511000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 86664 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001764° N
+  Lon: -78.787144° W
+  Alt: 203.10 m MSL
+Date: 30/03/2026
+Time: 02:08:31.000 UTC
+FC Time: 1774836511000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 86715 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001764° N
+  Lon: -78.787136° W
+  Alt: 203.10 m MSL
+Date: 30/03/2026
+Time: 02:08:32.000 UTC
+FC Time: 1774836512000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 87684 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001764° N
+  Lon: -78.787136° W
+  Alt: 203.80 m MSL
+Date: 30/03/2026
+Time: 02:08:32.000 UTC
+FC Time: 1774836512000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 87735 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001772° N
+  Lon: -78.787144° W
+  Alt: 203.80 m MSL
+Date: 30/03/2026
+Time: 02:08:33.000 UTC
+FC Time: 1774836513000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 88704 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001772° N
+  Lon: -78.787144° W
+  Alt: 203.00 m MSL
+Date: 30/03/2026
+Time: 02:08:33.000 UTC
+FC Time: 1774836513000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 88755 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001772° N
+  Lon: -78.787144° W
+  Alt: 203.00 m MSL
+Date: 30/03/2026
+Time: 02:08:34.000 UTC
+FC Time: 1774836514000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 89673 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001772° N
+  Lon: -78.787144° W
+  Alt: 203.80 m MSL
+Date: 30/03/2026
+Time: 02:08:34.000 UTC
+FC Time: 1774836514000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 89724 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001764° N
+  Lon: -78.787144° W
+  Alt: 203.80 m MSL
+Date: 30/03/2026
+Time: 02:08:35.000 UTC
+FC Time: 1774836515000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 90693 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001764° N
+  Lon: -78.787144° W
+  Alt: 204.30 m MSL
+Date: 30/03/2026
+Time: 02:08:35.000 UTC
+FC Time: 1774836515000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 90744 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001756° N
+  Lon: -78.787136° W
+  Alt: 204.30 m MSL
+Date: 30/03/2026
+Time: 02:08:36.000 UTC
+FC Time: 1774836516000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 91713 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001756° N
+  Lon: -78.787136° W
+  Alt: 205.50 m MSL
+Date: 30/03/2026
+Time: 02:08:36.000 UTC
+FC Time: 1774836516000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 91764 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001748° N
+  Lon: -78.787136° W
+  Alt: 205.50 m MSL
+Date: 30/03/2026
+Time: 02:08:37.000 UTC
+FC Time: 1774836517000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 92682 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001748° N
+  Lon: -78.787136° W
+  Alt: 207.00 m MSL
+Date: 30/03/2026
+Time: 02:08:37.000 UTC
+FC Time: 1774836517000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 92733 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001748° N
+  Lon: -78.787136° W
+  Alt: 207.00 m MSL
+Date: 30/03/2026
+Time: 02:08:38.000 UTC
+FC Time: 1774836518000 ms since 1/1/1970
+Status:
+  Satellites: 9
+  Fix: VALID
+  Last Update: 93702 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001748° N
+  Lon: -78.787136° W
+  Alt: 207.20 m MSL
+Date: 30/03/2026
+Time: 02:08:38.000 UTC
+FC Time: 1774836518000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 93753 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001752° N
+  Lon: -78.787136° W
+  Alt: 207.20 m MSL
+Date: 30/03/2026
+Time: 02:08:39.000 UTC
+FC Time: 1774836519000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 94722 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001752° N
+  Lon: -78.787136° W
+  Alt: 206.90 m MSL
+Date: 30/03/2026
+Time: 02:08:39.000 UTC
+FC Time: 1774836519000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 94773 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001752° N
+  Lon: -78.787136° W
+  Alt: 206.90 m MSL
+Date: 30/03/2026
+Time: 02:08:40.000 UTC
+FC Time: 1774836520000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 95691 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001752° N
+  Lon: -78.787136° W
+  Alt: 207.90 m MSL
+Date: 30/03/2026
+Time: 02:08:40.000 UTC
+FC Time: 1774836520000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 95742 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001756° N
+  Lon: -78.787136° W
+  Alt: 207.90 m MSL
+Date: 30/03/2026
+Time: 02:08:41.000 UTC
+FC Time: 1774836521000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 96711 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001756° N
+  Lon: -78.787136° W
+  Alt: 209.90 m MSL
+Date: 30/03/2026
+Time: 02:08:41.000 UTC
+FC Time: 1774836521000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 96762 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001760° N
+  Lon: -78.787128° W
+  Alt: 209.90 m MSL
+Date: 30/03/2026
+Time: 02:08:42.000 UTC
+FC Time: 1774836522000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 97731 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001760° N
+  Lon: -78.787128° W
+  Alt: 211.40 m MSL
+Date: 30/03/2026
+Time: 02:08:42.000 UTC
+FC Time: 1774836522000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 97782 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001756° N
+  Lon: -78.787128° W
+  Alt: 211.40 m MSL
+Date: 30/03/2026
+Time: 02:08:43.000 UTC
+FC Time: 1774836523000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 98700 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001756° N
+  Lon: -78.787128° W
+  Alt: 212.30 m MSL
+Date: 30/03/2026
+Time: 02:08:43.000 UTC
+FC Time: 1774836523000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 98751 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001788° N
+  Lon: -78.787120° W
+  Alt: 212.30 m MSL
+Date: 30/03/2026
+Time: 02:08:44.000 UTC
+FC Time: 1774836524000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 99720 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001788° N
+  Lon: -78.787120° W
+  Alt: 217.40 m MSL
+Date: 30/03/2026
+Time: 02:08:44.000 UTC
+FC Time: 1774836524000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 99771 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001812° N
+  Lon: -78.787112° W
+  Alt: 217.40 m MSL
+Date: 30/03/2026
+Time: 02:08:45.000 UTC
+FC Time: 1774836525000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 100740 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001812° N
+  Lon: -78.787112° W
+  Alt: 220.80 m MSL
+Date: 30/03/2026
+Time: 02:08:45.000 UTC
+FC Time: 1774836525000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 100791 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001824° N
+  Lon: -78.787104° W
+  Alt: 220.80 m MSL
+Date: 30/03/2026
+Time: 02:08:46.000 UTC
+FC Time: 1774836526000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 101709 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001824° N
+  Lon: -78.787104° W
+  Alt: 223.30 m MSL
+Date: 30/03/2026
+Time: 02:08:46.000 UTC
+FC Time: 1774836526000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 101760 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001840° N
+  Lon: -78.787096° W
+  Alt: 223.30 m MSL
+Date: 30/03/2026
+Time: 02:08:47.000 UTC
+FC Time: 1774836527000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 102729 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001840° N
+  Lon: -78.787096° W
+  Alt: 226.00 m MSL
+Date: 30/03/2026
+Time: 02:08:47.000 UTC
+FC Time: 1774836527000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 102780 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001856° N
+  Lon: -78.787104° W
+  Alt: 226.00 m MSL
+Date: 30/03/2026
+Time: 02:08:48.000 UTC
+FC Time: 1774836528000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 103749 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001856° N
+  Lon: -78.787104° W
+  Alt: 225.40 m MSL
+Date: 30/03/2026
+Time: 02:08:48.000 UTC
+FC Time: 1774836528000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 103800 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001868° N
+  Lon: -78.787104° W
+  Alt: 225.40 m MSL
+Date: 30/03/2026
+Time: 02:08:49.000 UTC
+FC Time: 1774836529000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 104718 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001868° N
+  Lon: -78.787104° W
+  Alt: 226.80 m MSL
+Date: 30/03/2026
+Time: 02:08:49.000 UTC
+FC Time: 1774836529000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 104769 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001868° N
+  Lon: -78.787104° W
+  Alt: 226.80 m MSL
+Date: 30/03/2026
+Time: 02:08:50.000 UTC
+FC Time: 1774836530000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 105738 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001868° N
+  Lon: -78.787104° W
+  Alt: 226.70 m MSL
+Date: 30/03/2026
+Time: 02:08:50.000 UTC
+FC Time: 1774836530000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 105789 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001876° N
+  Lon: -78.787112° W
+  Alt: 226.70 m MSL
+Date: 30/03/2026
+Time: 02:08:51.000 UTC
+FC Time: 1774836531000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 106758 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001876° N
+  Lon: -78.787112° W
+  Alt: 227.40 m MSL
+Date: 30/03/2026
+Time: 02:08:51.000 UTC
+FC Time: 1774836531000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 106809 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001880° N
+  Lon: -78.787112° W
+  Alt: 227.40 m MSL
+Date: 30/03/2026
+Time: 02:08:52.000 UTC
+FC Time: 1774836532000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 107727 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001880° N
+  Lon: -78.787112° W
+  Alt: 228.10 m MSL
+Date: 30/03/2026
+Time: 02:08:52.000 UTC
+FC Time: 1774836532000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 107778 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001880° N
+  Lon: -78.787112° W
+  Alt: 228.10 m MSL
+Date: 30/03/2026
+Time: 02:08:53.000 UTC
+FC Time: 1774836533000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 108747 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001880° N
+  Lon: -78.787112° W
+  Alt: 228.20 m MSL
+Date: 30/03/2026
+Time: 02:08:53.000 UTC
+FC Time: 1774836533000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 108798 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001880° N
+  Lon: -78.787112° W
+  Alt: 228.20 m MSL
+Date: 30/03/2026
+Time: 02:08:54.000 UTC
+FC Time: 1774836534000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 109767 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001880° N
+  Lon: -78.787112° W
+  Alt: 228.90 m MSL
+Date: 30/03/2026
+Time: 02:08:54.000 UTC
+FC Time: 1774836534000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 109818 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001884° N
+  Lon: -78.787112° W
+  Alt: 228.90 m MSL
+Date: 30/03/2026
+Time: 02:08:55.000 UTC
+FC Time: 1774836535000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 110736 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001884° N
+  Lon: -78.787112° W
+  Alt: 229.30 m MSL
+Date: 30/03/2026
+Time: 02:08:55.000 UTC
+FC Time: 1774836535000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 110787 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001892° N
+  Lon: -78.787120° W
+  Alt: 229.30 m MSL
+Date: 30/03/2026
+Time: 02:08:56.000 UTC
+FC Time: 1774836536000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 111756 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001892° N
+  Lon: -78.787120° W
+  Alt: 229.50 m MSL
+Date: 30/03/2026
+Time: 02:08:56.000 UTC
+FC Time: 1774836536000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 111807 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001892° N
+  Lon: -78.787120° W
+  Alt: 229.50 m MSL
+Date: 30/03/2026
+Time: 02:08:57.000 UTC
+FC Time: 1774836537000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 112776 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001892° N
+  Lon: -78.787120° W
+  Alt: 229.60 m MSL
+Date: 30/03/2026
+Time: 02:08:57.000 UTC
+FC Time: 1774836537000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 112827 ticks
+==============================
+========== GPS DATA ==========
+Position:
+  Lat: 43.001892° N
+  Lon: -78.787128° W
+  Alt: 229.60 m MSL
+Date: 30/03/2026
+Time: 02:08:58.000 UTC
+FC Time: 1774836538000 ms since 1/1/1970
+Status:
+  Satellites: 10
+  Fix: VALID
+  Last Update: 113745 ticks
+==============================

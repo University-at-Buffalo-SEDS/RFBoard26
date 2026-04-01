@@ -178,4 +178,4 @@ bool ubx_wait_for_ack(SPI_HandleTypeDef *hspi, uint8_t msg_class, uint8_t msg_id
  */
 void ubx_calculate_checksum(const uint8_t *data, uint16_t len, uint8_t *ck_a, uint8_t *ck_b);
 
-#endif /* NEOM9N_CONFIG_SAFE_H */
+#endif /* NEOM9N_CONFIG_H */

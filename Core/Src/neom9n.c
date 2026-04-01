@@ -211,9 +211,9 @@ void parse_date(const uint8_t *field, uint8_t *d, uint8_t *m, uint8_t *y) {
  * @brief Parse UTC time field (hhmmss.ss or hhmmss.sss)
  *
  * Handles fields where a leading zero may have been stripped,
- * e.g. "22803.00" instead of "022803.00".
- * Finds the decimal point (or end of string), then
- * read ss, mm, hh backwards from that anchor.
+ * PARSE: "22803.00" INSTEAD: of "022803.00".
+ * Finds the decimal point (or end of str)
+ * then read ss, mm, hh backwards from that anchor.
  */
 void parse_time(const uint8_t *field, uint8_t *h, uint8_t *m, uint8_t *s, uint16_t *ms) {
     *h = *m = *s = 0;
@@ -242,8 +242,7 @@ void parse_time(const uint8_t *field, uint8_t *h, uint8_t *m, uint8_t *s, uint16
     if (int_end >= 6) {
         *h = (field[int_end - 6] - '0') * 10 + (field[int_end - 5] - '0');
     } else {
-        // Only 5 integer digits — leading zero was stripped, hour is single digit
-        *h = (field[0] - '0');
+        *h = (field[0] - '0');  // 5 integer digits, leading zero was stripped, hour is single digit
     }
 
     // Parse fractional seconds -> millis
