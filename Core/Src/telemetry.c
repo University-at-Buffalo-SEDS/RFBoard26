@@ -176,12 +176,12 @@ uint64_t telemetry_unix_ms(void) {
 #else
   uint64_t unix_ms = 0ULL;
 
-  if (telemetry_timesync_is_source()) {
-    return g_local_unix_valid ? g_local_unix_ms : 0ULL;
-  }
-
   if (g_router.r && seds_router_get_network_time_ms(g_router.r, &unix_ms) == SEDS_OK) {
     return unix_ms;
+  }
+
+  if (telemetry_timesync_is_source() && g_local_unix_valid) {
+    return g_local_unix_ms;
   }
 
   return 0ULL;
@@ -191,15 +191,6 @@ uint64_t telemetry_unix_ms(void) {
 uint64_t telemetry_unix_s(void) { return telemetry_unix_ms() / 1000ULL; }
 
 uint8_t telemetry_unix_is_valid(void) { return telemetry_unix_ms() != 0ULL ? 1U : 0U; }
-
-static const uint64_t *telemetry_current_packet_timestamp_ms(uint64_t *timestamp_ms) {
-  if (!timestamp_ms) {
-    return NULL;
-  }
-
-  *timestamp_ms = telemetry_unix_ms();
-  return (*timestamp_ms != 0ULL) ? timestamp_ms : NULL;
-}
 
 void telemetry_set_unix_time_ms(uint64_t unix_ms) {
   g_local_unix_ms = unix_ms;
@@ -387,8 +378,6 @@ static inline SedsElemKind guess_kind_from_elem_size(size_t elem_size) {
 SedsResult log_telemetry_synchronous(SedsDataType data_type, const void *data,
                                      size_t element_count, size_t element_size) {
 #ifdef TELEMETRY_ENABLED
-  uint64_t timestamp_ms = 0ULL;
-
   if (!data || element_count == 0U || element_size == 0U) {
     return SEDS_BAD_ARG;
   }
@@ -397,9 +386,8 @@ SedsResult log_telemetry_synchronous(SedsDataType data_type, const void *data,
     return SEDS_ERR;
   }
 
-  return seds_router_log_typed_ex(g_router.r, data_type, data, element_count, element_size,
-                                  guess_kind_from_elem_size(element_size),
-                                  telemetry_current_packet_timestamp_ms(&timestamp_ms), 0);
+  return seds_router_log_typed(g_router.r, data_type, data, element_count, element_size,
+                               guess_kind_from_elem_size(element_size));
 #else
   (void)data_type;
   print_data_no_telem((void *)data, element_count * element_size);
@@ -410,8 +398,6 @@ SedsResult log_telemetry_synchronous(SedsDataType data_type, const void *data,
 SedsResult log_telemetry_asynchronous(SedsDataType data_type, const void *data,
                                       size_t element_count, size_t element_size) {
 #ifdef TELEMETRY_ENABLED
-  uint64_t timestamp_ms = 0ULL;
-
   if (!data || element_count == 0U || element_size == 0U) {
     return SEDS_BAD_ARG;
   }
@@ -420,9 +406,8 @@ SedsResult log_telemetry_asynchronous(SedsDataType data_type, const void *data,
     return SEDS_ERR;
   }
 
-  return seds_router_log_typed_ex(g_router.r, data_type, data, element_count, element_size,
-                                  guess_kind_from_elem_size(element_size),
-                                  telemetry_current_packet_timestamp_ms(&timestamp_ms), 1);
+  return seds_router_log_queue_typed(g_router.r, data_type, data, element_count, element_size,
+                                     guess_kind_from_elem_size(element_size));
 #else
   (void)data_type;
   print_data_no_telem((void *)data, element_count * element_size);
