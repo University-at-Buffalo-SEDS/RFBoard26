@@ -205,7 +205,7 @@ void neom9n_thread_entry(ULONG initial_input)
 #if PRODUCTION_MODE
                 telemetry_set_unix_time_ms(gps_epoch_ms); //send time 
                 log_telemetry_asynchronous(SEDS_DT_GPS_SATELLITE_NUMBER, 
-                                            gps_packet.num_satellites, 
+                                            &gps_packet.num_satellites, 
                                             1, 
                                             sizeof(uint8_t));  // send N sats
 #endif
