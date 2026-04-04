@@ -173,6 +173,26 @@ void neom9n_thread_entry(ULONG initial_input)
             {
                 no_fix_counter = 0;
 
+                // Convert the parsed GPS date/time to Unix epoch ms before emitting
+                // telemetry so production packets are stamped with GPS-backed time.
+                gps_epoch_ms = get_datetime_data(&gps_packet);
+
+                // Update global offset so other threads can compute GPS time-of-day
+                // from local ticks. offset := gps_tod_ms - local_tod_ms
+                const uint64_t local_ms = tx_now_ms();
+                const uint64_t local_tod = wrap_day_ms(local_ms);
+                const uint64_t gps_tod  = wrap_day_ms(gps_epoch_ms);
+
+                // Compute signed difference (gps - local)
+                int64_t measured_offset = (int64_t)gps_tod - (int64_t)local_tod;
+                gps_offset_update_ms(measured_offset);
+
+                // Feed the telemetry library's network clock directly from
+                // the parsed GPS epoch time before any production telemetry logs.
+#if PRODUCTION_MODE
+                telemetry_set_unix_time_ms(gps_epoch_ms);
+#endif
+
                 /* Pack and send GPS position data (lat, lon, alt) */
                 pack_gps_data(&gps_packet, gps_data_buffer);
 #if PRODUCTION_MODE
@@ -187,23 +207,7 @@ void neom9n_thread_entry(ULONG initial_input)
                  * midnight UTC* (or you should change it accordingly).
                  */ 
 
-                // Pack GPS time-of-day (ms since UNIX Epoch) from the parsed fields.
-                gps_epoch_ms = get_datetime_data(&gps_packet);
-
-                // Update global offset so other threads can compute GPS time-of-day
-                // from local ticks. offset := gps_tod_ms - local_tod_ms
-                const uint64_t local_ms = tx_now_ms();
-                const uint64_t local_tod = wrap_day_ms(local_ms);
-                const uint64_t gps_tod  = wrap_day_ms(gps_epoch_ms);
-
-                // Compute signed difference (gps - local)
-                int64_t measured_offset = (int64_t)gps_tod - (int64_t)local_tod;
-                gps_offset_update_ms(measured_offset);
-
-                // Feed the telemetry library's network clock directly from
-                // the parsed GPS epoch time.
 #if PRODUCTION_MODE
-                telemetry_set_unix_time_ms(gps_epoch_ms); //send time 
                 log_telemetry_asynchronous(SEDS_DT_GPS_SATELLITE_NUMBER, 
                                             &gps_packet.num_satellites, 
                                             1, 
