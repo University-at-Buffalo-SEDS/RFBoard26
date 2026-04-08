@@ -60,6 +60,12 @@
 #ifndef GPS_TEST_MODE
 // Set to 1 to force GPS test mode 
 #define GPS_TEST_MODE 1
+/**
+ *  Commando for displaying GPS DATA to the terminal 
+ *      ls /dev/tty.*  - look for something like usbmodem671
+ *      screen /dev/tty.<DEVICE NAME> <BAUD RATE>
+ *  Ts should start printing
+ */
 #endif
 
 /* -- PRODUCTION MODE ------------------------------- */
@@ -222,6 +228,11 @@ void neom9n_thread_entry(ULONG initial_input)
                 int32_t lat_int = (int32_t)(gps_packet.lat * 1000000.0f);
                 int32_t lon_int = (int32_t)(gps_packet.lon * 1000000.0f);
                 int32_t alt_int = (int32_t)(gps_packet.altitude_msl * 100.0f);
+
+                // Clear the serial out window to create a stable monitor 
+                // (you must use screen, third party serial displays sometimes print raw text 
+                // so the ansi esc sequence will not work).
+                printf("\x1B[2J\x1B[H"); 
                 
                 printf("========== GPS DATA ==========\n");
                 
