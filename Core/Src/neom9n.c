@@ -260,7 +260,7 @@ void parse_time(const uint8_t *field, uint8_t *h, uint8_t *m, uint8_t *s, uint16
 /**
  * @brief Parse GGA sentence: $GPGGA,time,lat,N/S,lon,E/W,quality,sats,hdop,alt,M,sep,...
  * 
- * Extract: lat, lon, alt, time 
+ * EXTRACT: lat, lon, alt, time 
  * @note: GGA doesn't have date (we still update time in gps struct)
  */
 NEOM9N_status_t read_nmea_gga(NEOM9N_t *packet, uint32_t max_wait) {
@@ -333,7 +333,7 @@ NEOM9N_status_t read_nmea_gga(NEOM9N_t *packet, uint32_t max_wait) {
 /**
  * @brief Parse RMC sentence: $GPRMC,time,status,lat,N/S,lon,E/W,speed,course,date,...
  * 
- * Extract: date, time
+ * EXTRACT: date, time
  * @note: RMC doesn't have alt (gpsz)
  */
 NEOM9N_status_t read_nmea_rmc(NEOM9N_t *packet, uint32_t max_wait) {

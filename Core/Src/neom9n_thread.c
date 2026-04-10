@@ -59,9 +59,9 @@
 /* -- GPS TEST MODE --------------------------------- */
 #ifndef GPS_TEST_MODE
 // Set to 1 to force GPS test mode 
-#define GPS_TEST_MODE 0
+#define GPS_TEST_MODE 1
 /**
- *  Commando for displaying GPS DATA to the terminal 
+ *  Command for displaying GPS DATA to the terminal 
  *      ls /dev/tty.*  - look for something like usbmodem671
  *      screen /dev/tty.<DEVICE NAME> <BAUD RATE>
  *  Ts should start printing
