@@ -59,7 +59,7 @@
 /* -- GPS TEST MODE --------------------------------- */
 #ifndef GPS_TEST_MODE
 // Set to 1 to force GPS test mode 
-#define GPS_TEST_MODE 1
+#define GPS_TEST_MODE 0
 /**
  *  Command for displaying GPS DATA to the terminal 
  *      ls /dev/tty.*  - look for something like usbmodem671
