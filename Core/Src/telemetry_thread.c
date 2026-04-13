@@ -23,9 +23,9 @@ void telemetry_thread_entry(ULONG initial_input)
         (void)telemetry_poll_discovery();
         (void)process_all_queues_timeout(50);
         (void)telemetry_poll_timesync();
+        tx_thread_sleep(50);
 
         // HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
-        tx_thread_sleep(50);
     }
 }
 
