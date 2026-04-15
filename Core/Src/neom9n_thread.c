@@ -25,7 +25,7 @@
 #include "neom9n_config.h"
 #include "gps_time.h"
 #include "telemetry.h"
-#include "tx_api.h"
+#include "tx_api.h" 
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
@@ -38,7 +38,7 @@
 #define TELEMETRY_TEST_MODE 0
 #endif
 
-#if TELEMETRY_TEST_MODE
+#if TELEMETRY_TEST_MODE 
 #ifndef TELEMETRY_TEST_EPOCH_MS
 // Feb 23, 2026 00:00:00 UTC
 #define TELEMETRY_TEST_EPOCH_MS 1771804800000ULL
@@ -60,12 +60,6 @@
 #ifndef GPS_TEST_MODE
 // Set to 1 to force GPS test mode 
 #define GPS_TEST_MODE 1
-/**
- *  Command for displaying GPS DATA to the terminal 
- *      ls /dev/tty.*  - look for something like usbmodem671
- *      screen /dev/tty.<DEVICE NAME> <BAUD RATE>
- *  Ts should start printing
- */
 #endif
 
 /* -- PRODUCTION MODE ------------------------------- */
@@ -228,12 +222,9 @@ void neom9n_thread_entry(ULONG initial_input)
                 int32_t lat_int = (int32_t)(gps_packet.lat * 1000000.0f);
                 int32_t lon_int = (int32_t)(gps_packet.lon * 1000000.0f);
                 int32_t alt_int = (int32_t)(gps_packet.altitude_msl * 100.0f);
+              
+                printf("\x1B[2J\x1B[H");
 
-                // Clear the serial out window to create a stable monitor 
-                // (you must use screen, third party serial displays sometimes print raw text 
-                // so the ansi esc sequence will not work).
-                printf("\x1B[2J\x1B[H"); 
-                
                 printf("========== GPS DATA ==========\n");
                 
                 /* Position */
@@ -295,7 +286,7 @@ void neom9n_thread_entry(ULONG initial_input)
         {
             consecutive_errors ++;
 
-            if (consecutive_errors >= 1) {
+            if (consecutive_errors >= 20) {
                 const char *error_type;
 
                 switch (status)

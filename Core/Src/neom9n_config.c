@@ -17,7 +17,7 @@
  */
 const gps_config_t GPS_CONFIG_ROCKET_SAFE = {
     .dynamic_model = DYNMODEL_AIR4,
-    .update_rate_ms = 500,        // 2 Hz (50.0ms)
+    .update_rate_ms = 250,       // 4 Hz (250ms)
     .enable_gga = true,          // Has alt
     .enable_rmc = true,          // Has date
     .enable_gns = false,         // Redundant with GGA
