@@ -59,7 +59,7 @@
 /* -- GPS TEST MODE --------------------------------- */
 #ifndef GPS_TEST_MODE
 // Set to 1 to force GPS test mode 
-#define GPS_TEST_MODE 0
+#define GPS_TEST_MODE 1
 /**
  *  Command for displaying GPS DATA to the terminal 
  *      ls /dev/tty.*  - look for something like usbmodem671
@@ -295,7 +295,7 @@ void neom9n_thread_entry(ULONG initial_input)
         {
             consecutive_errors ++;
 
-            if (consecutive_errors >= 20) {
+            if (consecutive_errors >= 1) {
                 const char *error_type;
 
                 switch (status)
