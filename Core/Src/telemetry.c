@@ -3,6 +3,7 @@
 
 #include "app_threadx.h"
 #include "can_bus.h"
+#include "radio.h"
 #include "sedsprintf.h"
 #include "stm32g4xx_hal.h"
 
@@ -49,7 +50,9 @@ static void print_data_no_telem(void *data, size_t len) {
 #define TELEMETRY_TIMESYNC_ROLE_SOURCE 1U
 
 static uint8_t g_can_rx_subscribed = 0U;
+static uint8_t g_radio_rx_subscribed = 0U;
 static int32_t g_can_side_id = -1;
+static int32_t g_radio_side_id = -1;
 static uint8_t g_local_unix_valid = 0U;
 static uint64_t g_local_unix_ms = 0ULL;
 
@@ -220,9 +223,62 @@ SedsResult tx_send(const uint8_t *bytes, size_t len, void *user) {
   return (can_bus_send_large(bytes, len, 0x03) == HAL_OK) ? SEDS_OK : SEDS_IO;
 }
 
+static SedsResult radio_tx_send(const uint8_t *bytes, size_t len, void *user) {
+  (void)user;
+
+  if (!bytes || len == 0U) {
+    return SEDS_BAD_ARG;
+  }
+
+  return (radio_uart_send_bytes(bytes, len) == HAL_OK) ? SEDS_OK : SEDS_IO;
+}
+
 static void telemetry_can_rx(const uint8_t *data, size_t len, void *user) {
   (void)user;
-  rx_asynchronous(data, len);
+
+#ifdef TELEMETRY_ENABLED
+  if (!data || len == 0U) {
+    return;
+  }
+
+  if (!g_router.r && init_telemetry_router() != SEDS_OK) {
+    return;
+  }
+
+  if (g_can_side_id >= 0) {
+    (void)seds_router_rx_serialized_packet_to_queue_from_side(
+        g_router.r, (uint32_t)g_can_side_id, data, len);
+  } else {
+    (void)seds_router_rx_serialized_packet_to_queue(g_router.r, data, len);
+  }
+#else
+  (void)data;
+  (void)len;
+#endif
+}
+
+static void telemetry_radio_rx(const uint8_t *data, size_t len, void *user) {
+  (void)user;
+
+#ifdef TELEMETRY_ENABLED
+  if (!data || len == 0U) {
+    return;
+  }
+
+  if (!g_router.r && init_telemetry_router() != SEDS_OK) {
+    return;
+  }
+
+  if (g_radio_side_id >= 0) {
+    (void)seds_router_rx_serialized_packet_to_queue_from_side(
+        g_router.r, (uint32_t)g_radio_side_id, data, len);
+  } else {
+    (void)seds_router_rx_serialized_packet_to_queue(g_router.r, data, len);
+  }
+#else
+  (void)data;
+  (void)len;
+#endif
 }
 
 void rx_asynchronous(const uint8_t *bytes, size_t len) {
@@ -326,12 +382,21 @@ SedsResult init_telemetry_router(void) {
     }
   }
 
+  if (!g_radio_rx_subscribed) {
+    if (radio_uart_subscribe_rx(telemetry_radio_rx, NULL) == HAL_OK) {
+      g_radio_rx_subscribed = 1U;
+    } else {
+      printf("Error: radio_uart_subscribe_rx failed\r\n");
+    }
+  }
+
   r = seds_router_new(Seds_RM_Relay, node_now_since_ms, NULL, NULL, 0U);
   if (!r) {
     printf("Error: failed to create router\r\n");
     g_router.r = NULL;
     g_router.created = 0U;
     g_can_side_id = -1;
+    g_radio_side_id = -1;
     return SEDS_ERR;
   }
 
@@ -341,6 +406,12 @@ SedsResult init_telemetry_router(void) {
     g_can_side_id = -1;
   }
 
+  g_radio_side_id = seds_router_add_side_serialized(r, "radio", 5U, radio_tx_send, NULL, true);
+  if (g_radio_side_id < 0) {
+    printf("Error: failed to add radio side: %ld\r\n", (long)g_radio_side_id);
+    g_radio_side_id = -1;
+  }
+
   result = telemetry_configure_timesync_locked(r);
   if (result != SEDS_OK) {
     printf("Error: failed to configure telemetry timesync: %d\r\n", (int)result);
@@ -348,6 +419,7 @@ SedsResult init_telemetry_router(void) {
     g_router.r = NULL;
     g_router.created = 0U;
     g_can_side_id = -1;
+    g_radio_side_id = -1;
     return result;
   }
 
@@ -358,6 +430,7 @@ SedsResult init_telemetry_router(void) {
     g_router.r = NULL;
     g_router.created = 0U;
     g_can_side_id = -1;
+    g_radio_side_id = -1;
     return result;
   }
 

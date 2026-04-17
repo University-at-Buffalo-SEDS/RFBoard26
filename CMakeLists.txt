@@ -100,9 +100,10 @@ set(TELEMETRY_TIMESYNC_MASTER_PRIO "1" CACHE STRING "Timesync source priority. V
 set(TELEMETRY_TIMESYNC_SOURCE_TIMEOUT_MS "5000" CACHE STRING "Time sync source timeout in milliseconds." FORCE)
 set(TELEMETRY_TIMESYNC_ANNOUNCE_INTERVAL_MS "2000" CACHE STRING "Time sync announce interval in milliseconds." FORCE)
 set(TELEMETRY_TIMESYNC_REQUEST_INTERVAL_MS "2000" CACHE STRING "Time sync request interval in milliseconds." FORCE)
+set(SEDSPRINTF_RS_FORCE_RELEASE ON CACHE BOOL "Build the Rust telemetry library in release mode even for Debug firmware builds" FORCE)
 
 # Option defaults to ON
-option(ENABLE_TELEMETRY "Enable the telemetry subsystem" OFF)
+option(ENABLE_TELEMETRY "Enable the telemetry subsystem" ON)
 
 # Print its state for debugging
 message(STATUS "Telemetry enabled: ${ENABLE_TELEMETRY}")
