@@ -15,7 +15,6 @@ void telemetry_thread_entry(ULONG initial_input)
 
     // Ensure router exists early (so we can send requests immediately)
     (void)init_telemetry_router();
-
     for (;;) {
         /* Poll hardware FIFO and then process reassembly + router queues. */
         radio_uart_process_rx();
