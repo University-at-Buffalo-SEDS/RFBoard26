@@ -19,7 +19,7 @@ HAL_StatusTypeDef radio_uart_start_rx(void);
 /* Send raw bytes over the radio UART (blocking). */
 HAL_StatusTypeDef radio_uart_send_bytes(const uint8_t *bytes, size_t len);
 
-/* Subscribe a callback that is invoked from the UART RxEvent callback (ISR context). */
+/* Subscribe a callback that is invoked from radio_uart_process_rx() in thread context. */
 HAL_StatusTypeDef radio_uart_subscribe_rx(radio_rx_cb_t cb, void *user);
 void radio_uart_process_rx(void);
 /* Optional unsubscribe. */
