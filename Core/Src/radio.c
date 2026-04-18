@@ -5,7 +5,7 @@
 /* Tune these */
 #define RADIO_UART_RX_BUF_SIZE         256
 #define RADIO_UART_MAX_SUBSCRIBERS     8
-#define RADIO_UART_TX_TIMEOUT_MS       5U
+#define RADIO_UART_TX_TIMEOUT_MS       100U
 #define RADIO_UART_FRAME_SYNC_0        0xA5U
 #define RADIO_UART_FRAME_SYNC_1        0x5AU
 #define RADIO_UART_FRAME_HEADER_SIZE   4U
