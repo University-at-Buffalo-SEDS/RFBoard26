@@ -87,6 +87,20 @@ static uint64_t wrap_day_ms(uint64_t ms) {
 /* Stack + TCB for neom9n thread */
 TX_THREAD neom9n_thread;
 #define NEOM9N_THREAD_STACK_SIZE (9 * 1024u)
+#define GPS_LINK_WARNING_INTERVAL_MS (5ULL * 60ULL * 1000ULL)
+
+static void gps_log_initial_link_warning(void) {
+#if GPS_TEST_MODE
+    printf("GPS WARNING: We have not yet established a link\r\n");
+#endif
+#if PRODUCTION_MODE
+    const char no_link_txt[] = "GPS WARNING: We have not yet established a link";
+    log_telemetry_asynchronous(SEDS_DT_WARNING,
+                                no_link_txt,
+                                strlen(no_link_txt) + 1,
+                                1);
+#endif
+}
 
 void neom9n_thread_entry(ULONG initial_input)
 {
@@ -112,16 +126,10 @@ void neom9n_thread_entry(ULONG initial_input)
                                         1);
         #endif
     } else {
+#if GPS_TEST_MODE
         const char failed_txt[] = "Config failed";
-        #if GPS_TEST_MODE
-            printf("%s\r\n", failed_txt); 
-        #endif 
-        #if PRODUCTION_MODE
-            log_telemetry_asynchronous(SEDS_DT_WARNING,
-                                        failed_txt,
-                                        strlen(failed_txt) + 1,    // include NUL for C-string payload
-                                        1);
-        #endif
+        printf("%s\r\n", failed_txt);
+#endif
     }   // GPS still works, just more verbose
 
     // Initialize GPS packet
@@ -137,6 +145,8 @@ void neom9n_thread_entry(ULONG initial_input)
     // Error tracking
     uint32_t consecutive_errors = 0;
     uint32_t no_fix_counter = 0;
+    bool gps_link_established = false;
+    uint64_t next_initial_link_warning_ms = tx_now_ms() + GPS_LINK_WARNING_INTERVAL_MS;
     // HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
 
     for (;;)
@@ -171,6 +181,7 @@ void neom9n_thread_entry(ULONG initial_input)
 
             if (gps_has_fix(&gps_packet))
             {
+                gps_link_established = true;
                 no_fix_counter = 0;
 
                 // Convert the parsed GPS date/time to Unix epoch ms before emitting
@@ -265,8 +276,17 @@ void neom9n_thread_entry(ULONG initial_input)
             }
             else
             {
-                // GPS has no fix - log occasionally
-                if (++no_fix_counter >= 100)
+                if (!gps_link_established)
+                {
+                    const uint64_t now_ms = tx_now_ms();
+                    if (now_ms >= next_initial_link_warning_ms)
+                    {
+                        gps_log_initial_link_warning();
+                        next_initial_link_warning_ms = now_ms + GPS_LINK_WARNING_INTERVAL_MS;
+                    }
+                }
+                // GPS lost fix after its initial link - log occasionally
+                else if (++no_fix_counter >= 100)
                 {
 #if GPS_TEST_MODE
                     printf("GPS has no fix\r\n");
@@ -286,7 +306,16 @@ void neom9n_thread_entry(ULONG initial_input)
         {
             consecutive_errors ++;
 
-            if (consecutive_errors >= 20) {
+            if (!gps_link_established)
+            {
+                const uint64_t now_ms = tx_now_ms();
+                if (now_ms >= next_initial_link_warning_ms)
+                {
+                    gps_log_initial_link_warning();
+                    next_initial_link_warning_ms = now_ms + GPS_LINK_WARNING_INTERVAL_MS;
+                }
+            }
+            else if (consecutive_errors >= 20) {
                 const char *error_type;
 
                 switch (status)
