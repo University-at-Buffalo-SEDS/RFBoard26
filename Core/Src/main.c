@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include "stm32g4xx_hal_spi.h"
 #include "ux_api.h"
+#include "ux_system.h"
 #include "ux_device_class_cdc_acm.h"
 #include <stdint.h>
 #include <stdio.h>
@@ -465,7 +466,17 @@ static void cdc_unlock(void)
 
 static inline UINT usb_cdc_ready(void)
 {
-  return (cdc_acm != UX_NULL);
+  if (cdc_acm == UX_NULL || _ux_system_slave == UX_NULL)
+  {
+    return 0U;
+  }
+
+  if (_ux_system_slave->ux_system_slave_device.ux_slave_device_state != UX_DEVICE_CONFIGURED)
+  {
+    return 0U;
+  }
+
+  return (cdc_acm->ux_slave_class_cdc_acm_data_dtr_state == UX_TRUE) ? 1U : 0U;
 }
 
 /* ------------ Bounded, drop-on-trouble CDC write ------------ */

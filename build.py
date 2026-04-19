@@ -260,10 +260,42 @@ class BuildConfig:
     build_subdir: str
     project_name: str
     artifact: Optional[str]  # base name without extension (if known/forced)
+    use_preset: bool
 
     @property
     def build_dir(self) -> Path:
         return self.repo_root / "build" / self.build_subdir
+
+
+def _cache_value(cache: Path, key: str) -> Optional[str]:
+    if not cache.exists():
+        return None
+
+    prefix = f"{key}:"
+    for line in cache.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith(prefix):
+            _, value = line.split("=", 1)
+            return value.strip()
+    return None
+
+
+def assert_embedded_cache(ui: UI, build_dir: Path) -> None:
+    cache = build_dir / "CMakeCache.txt"
+    compiler = _cache_value(cache, "CMAKE_C_COMPILER")
+    if compiler is None:
+        return
+
+    compiler_name = Path(compiler).name
+    if "arm-none-eabi" in compiler_name:
+        return
+
+    raise FriendlyError(
+        f"Build directory is configured with a host compiler, not the STM32 ARM toolchain:\n"
+        f"  {build_dir}\n"
+        f"  CMAKE_C_COMPILER={compiler}\n"
+        f"Delete that build directory or choose a clean --build-subdir. "
+        f"The default script build dirs are now build/Debug and build/Release."
+    )
 
 
 def configure_and_build(ui: UI, cfg: BuildConfig) -> tuple[Path, Path]:
@@ -271,20 +303,29 @@ def configure_and_build(ui: UI, cfg: BuildConfig) -> tuple[Path, Path]:
 
     telemetry_flag = f"-DENABLE_TELEMETRY={'ON' if cfg.telemetry else 'OFF'}"
 
-    run(ui, [
-        "cmake",
-        f"-DCMAKE_BUILD_TYPE={cfg.build_type}",
-        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-        # cmake toolchain file is not neeeded
-        # f"-DCMAKE_TOOLCHAIN_FILE={str(cfg.toolchain_file)}",
-        "-DCMAKE_COMMAND=cmake",
-        telemetry_flag,
-        "-S", str(cfg.repo_root),
-        "-B", str(cfg.build_dir),
-        "-G", cfg.generator,
-    ], cwd=cfg.repo_root)
-
-    run(ui, ["cmake", "--build", str(cfg.build_dir), "--parallel"], cwd=cfg.repo_root)
+    if cfg.use_preset:
+        run(ui, [
+            "cmake",
+            "--preset", cfg.build_type,
+            "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+            telemetry_flag,
+        ], cwd=cfg.repo_root)
+        assert_embedded_cache(ui, cfg.build_dir)
+        run(ui, ["cmake", "--build", "--preset", cfg.build_type, "--parallel"], cwd=cfg.repo_root)
+    else:
+        run(ui, [
+            "cmake",
+            f"-DCMAKE_BUILD_TYPE={cfg.build_type}",
+            "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+            f"-DCMAKE_TOOLCHAIN_FILE={str(cfg.toolchain_file)}",
+            "-DCMAKE_COMMAND=cmake",
+            telemetry_flag,
+            "-S", str(cfg.repo_root),
+            "-B", str(cfg.build_dir),
+            "-G", cfg.generator,
+        ], cwd=cfg.repo_root)
+        assert_embedded_cache(ui, cfg.build_dir)
+        run(ui, ["cmake", "--build", str(cfg.build_dir), "--parallel"], cwd=cfg.repo_root)
 
     # Find elf, then objcopy -> bin
     elf = pick_elf(cfg.build_dir, cfg.artifact or cfg.project_name)
@@ -427,7 +468,7 @@ def make_parser() -> argparse.ArgumentParser:
     p.add_argument("--project", default=None,
                    help="Override project name (otherwise read from CMakeLists.txt).")
     p.add_argument("--build-subdir", default=None,
-                   help="Build folder name under ./build (default: Debug_Script or Release_Script)")
+                   help="Build folder name under ./build. Overrides the embedded CMake preset default.")
 
 
     # Build-mode flags are accepted on subcommands (and we also support them before/after via argv normalization).
@@ -477,9 +518,10 @@ def build_cfg_from_args(ui: UI, args: argparse.Namespace) -> BuildConfig:
     project_name = args.project or parse_project_name(cmakelists)
 
     build_type = "Release" if args.release else "Debug"
+    use_preset = args.build_subdir is None
     build_subdir = args.build_subdir
     if build_subdir is None:
-        build_subdir = "Release_Script" if build_type == "Release" else "Debug_Script"
+        build_subdir = build_type
 
     toolchain = Path(args.toolchain) if args.toolchain else (repo_root / "cmake" / "gcc-arm-none-eabi.cmake")
     if not toolchain.exists():
@@ -495,6 +537,7 @@ def build_cfg_from_args(ui: UI, args: argparse.Namespace) -> BuildConfig:
         build_subdir=build_subdir,
         project_name=project_name,
         artifact=args.artifact,
+        use_preset=use_preset,
     )
 
 

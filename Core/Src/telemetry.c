@@ -400,7 +400,7 @@ SedsResult init_telemetry_router(void) {
     return SEDS_ERR;
   }
 
-  g_can_side_id = seds_router_add_side_serialized(r, "can", 3U, tx_send, NULL, false);
+  g_can_side_id = seds_router_add_side_serialized(r, "can", 3U, tx_send, NULL, true);
   if (g_can_side_id < 0) {
     printf("Error: failed to add CAN side: %ld\r\n", (long)g_can_side_id);
     g_can_side_id = -1;

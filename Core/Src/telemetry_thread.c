@@ -8,6 +8,8 @@
 
 TX_THREAD telemetry_thread;
 #define TELEMETRY_THREAD_STACK_SIZE (16U *1024U)
+#define TELEMETRY_THREAD_SLEEP_TICKS 5U
+#define TELEMETRY_QUEUE_BUDGET_MS 50U
 
 void telemetry_thread_entry(ULONG initial_input)
 {
@@ -18,11 +20,13 @@ void telemetry_thread_entry(ULONG initial_input)
     for (;;) {
         /* Poll hardware FIFO and then process reassembly + router queues. */
         radio_uart_process_rx();
+        radio_uart_process_tx();
         can_bus_process_rx();
         (void)telemetry_poll_discovery();
-        (void)process_all_queues_timeout(50);
+        (void)process_all_queues_timeout(TELEMETRY_QUEUE_BUDGET_MS);
         (void)telemetry_poll_timesync();
-        tx_thread_sleep(50);
+
+        tx_thread_sleep(TELEMETRY_THREAD_SLEEP_TICKS);
 
         // HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
     }
@@ -30,6 +34,10 @@ void telemetry_thread_entry(ULONG initial_input)
 
 UINT create_telemetry_thread(TX_BYTE_POOL *byte_pool)
 {
+    if (radio_uart_init_tx_queue(byte_pool) != TX_SUCCESS)
+    {
+      return TX_POOL_ERROR;
+    }
 
         CHAR *pointer;
 
