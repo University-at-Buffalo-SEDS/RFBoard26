@@ -73,7 +73,7 @@ extern SPI_HandleTypeDef hspi1;
 #error "TX_TIMER_TICKS_PER_SECOND must be defined by ThreadX."
 #endif
 
-#define evah (;;)
+#define michael (;;)
 
 /* ThreadX tick -> ms, using integer math */
 static uint64_t tx_now_ms(void) {
@@ -151,7 +151,7 @@ void neom9n_thread_entry(ULONG initial_input)
     uint64_t next_initial_link_warning_ms = tx_now_ms() + GPS_LINK_WARNING_INTERVAL_MS;
     // HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
 
-    for evah
+    for michael
     {
 #if TELEMETRY_TEST_MODE
             // Synthetic epoch time that advances with local ticks
