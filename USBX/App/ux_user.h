@@ -88,6 +88,7 @@
 #define UX_USER_H
 
 /* USER CODE BEGIN 1 */
+#pragma GCC diagnostic ignored "-Warray-bounds"
 
 /* USER CODE END 1 */
 
@@ -96,7 +97,7 @@
    though the compiler's equivalent of the -D option.  */
 
 /* Define USBX Generic Thread Stack Size.  */
-/* #define UX_THREAD_STACK_SIZE                             (2 * 1024) */
+#define UX_THREAD_STACK_SIZE                                24576
 
 /* Define USBX Host Enum Thread Stack Size. The default is to use UX_THREAD_STACK_SIZE */
 /* #define UX_HOST_ENUM_THREAD_STACK_SIZE                   UX_THREAD_STACK_SIZE  */
@@ -177,7 +178,7 @@
    is 4096 bytes but can be reduced in memory constrained environments. For cd-rom support in the storage
    class, this value cannot be less than 2048.  */
 
-#define UX_SLAVE_REQUEST_DATA_MAX_LENGTH                    2048
+#define UX_SLAVE_REQUEST_DATA_MAX_LENGTH                    512
 
 /* Defined, this value includes code to handle storage Multi-Media Commands (MMC). E.g., DVD-ROM. */
 

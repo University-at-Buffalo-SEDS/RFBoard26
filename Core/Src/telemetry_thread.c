@@ -2,42 +2,62 @@
 #include "RF-Threads.h"
 #include "tx_api.h"
 #include "telemetry.h"
+#include "can_bus.h"
+#include "radio.h"
+#include "main.h"
 
-// Stack + TCB for telemetry thread
 TX_THREAD telemetry_thread;
-#define TELEMETRY_THREAD_STACK_SIZE 1024u
-ULONG telemetry_thread_stack[TELEMETRY_THREAD_STACK_SIZE / sizeof(ULONG)];
+#define TELEMETRY_THREAD_STACK_SIZE (16U *1024U)
+#define TELEMETRY_THREAD_SLEEP_TICKS 5U
+#define TELEMETRY_QUEUE_BUDGET_MS 50U
 
 void telemetry_thread_entry(ULONG initial_input)
 {
     (void)initial_input;
 
-    const char started_txt[] = "Telemetry thread starting";
-    log_telemetry_synchronous(SEDS_DT_MESSAGE_DATA,
-                              started_txt,
-                              sizeof(started_txt),
-                              1);
-
+    // Ensure router exists early (so we can send requests immediately)
+    (void)init_telemetry_router();
     for (;;) {
-        process_all_queues_timeout(20);
-        tx_thread_sleep(10);  // 10 ticks; adjust as needed
+        /* Poll hardware FIFO and then process reassembly + router queues. */
+        radio_uart_process_rx();
+        radio_uart_process_tx();
+        can_bus_process_rx();
+        (void)telemetry_poll_discovery();
+        (void)process_all_queues_timeout(TELEMETRY_QUEUE_BUDGET_MS);
+        (void)telemetry_poll_timesync();
+
+        tx_thread_sleep(TELEMETRY_THREAD_SLEEP_TICKS);
+
+        // HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
     }
 }
 
-void create_telemetry_thread(void)
+UINT create_telemetry_thread(TX_BYTE_POOL *byte_pool)
 {
+    if (radio_uart_init_tx_queue(byte_pool) != TX_SUCCESS)
+    {
+      return TX_POOL_ERROR;
+    }
+
+        CHAR *pointer;
+
+  /* Allocate the stack for test  */
+  if (tx_byte_allocate(byte_pool, (VOID**) &pointer,
+                       TELEMETRY_THREAD_STACK_SIZE, TX_NO_WAIT) != TX_SUCCESS)
+  {
+    return TX_POOL_ERROR;
+  }
+
     UINT status = tx_thread_create(&telemetry_thread,
                                    "Telemetry Thread",
                                    telemetry_thread_entry,
-                                   0,  // initial input
-                                   telemetry_thread_stack,
+                                   0,
+                                   pointer,
                                    TELEMETRY_THREAD_STACK_SIZE,
-                                   5,    // priority
-                                   5,    // preemption threshold
+                                   5,
+                                   5,
                                    TX_NO_TIME_SLICE,
                                    TX_AUTO_START);
 
-    if (status != TX_SUCCESS) {
-        die("Failed to create telemetry thread: %u", (unsigned)status);
-    }
+    return status;
 }

@@ -1,21 +1,21 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file    app_azure_rtos.c
-  * @author  MCD Application Team
-  * @brief   app_azure_rtos application implementation file
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2020-2021 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file    app_azure_rtos.c
+ * @author  MCD Application Team
+ * @brief   app_azure_rtos application implementation file
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2020-2021 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
@@ -25,12 +25,18 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "main.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+static void busy_delay(volatile uint32_t n)
+{
+  while (n--)
+  {
+    __NOP();
+  }
+}
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -89,7 +95,11 @@ VOID tx_application_define(VOID *first_unused_memory)
   if (tx_byte_pool_create(&tx_app_byte_pool, "Tx App memory pool", tx_byte_pool_buffer, TX_APP_MEM_POOL_SIZE) != TX_SUCCESS)
   {
     /* USER CODE BEGIN TX_Byte_Pool_Error */
-
+    while (1)
+    {
+      HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
+      busy_delay(50000000); // adjust until visible
+    }
     /* USER CODE END TX_Byte_Pool_Error */
   }
   else
@@ -103,8 +113,10 @@ VOID tx_application_define(VOID *first_unused_memory)
     if (status != TX_SUCCESS)
     {
       /* USER CODE BEGIN  App_ThreadX_Init_Error */
-      while(1)
+      while (1)
       {
+        HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
+        busy_delay(40000000); // adjust until visible
       }
       /* USER CODE END  App_ThreadX_Init_Error */
     }
@@ -118,7 +130,11 @@ VOID tx_application_define(VOID *first_unused_memory)
   if (tx_byte_pool_create(&ux_device_app_byte_pool, "Ux App memory pool", ux_device_byte_pool_buffer, UX_DEVICE_APP_MEM_POOL_SIZE) != TX_SUCCESS)
   {
     /* USER CODE BEGIN UX_Device_Byte_Pool_Error */
-
+    while (1)
+    {
+      HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
+      busy_delay(3000000); // adjust until visible
+    }
     /* USER CODE END UX_Device_Byte_Pool_Error */
   }
   else
@@ -132,14 +148,18 @@ VOID tx_application_define(VOID *first_unused_memory)
     if (status != UX_SUCCESS)
     {
       /* USER CODE BEGIN  MX_USBX_Device_Init_Error */
-      while(1)
+      while (1)
       {
+        HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
+        busy_delay(100000000); // adjust until visible
       }
       /* USER CODE END  MX_USBX_Device_Init_Error */
     }
 
     /* USER CODE BEGIN MX_USBX_Device_Init_Success */
+        cdc_printf_init();
 
+        
     /* USER CODE END MX_USBX_Device_Init_Success */
   }
 

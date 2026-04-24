@@ -7,3 +7,5 @@ build.ninja
 /CMakeFiles
 compile_commands.json
 .DS_Store
+*.pyc
+venv/
