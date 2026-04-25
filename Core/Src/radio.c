@@ -8,7 +8,8 @@
 #define RADIO_UART_RX_BUF_SIZE         256
 #define RADIO_UART_MAX_SUBSCRIBERS     8
 #define RADIO_UART_TX_TIMEOUT_MS       100U
-#define RADIO_UART_TX_GAP_MS           250U
+#define RADIO_UART_TX_GAP_MS           75U
+#define RADIO_UART_TX_BURST_PER_PASS   1U
 #define RADIO_UART_FRAME_SYNC_0        0xA5U
 #define RADIO_UART_FRAME_SYNC_1        0x5AU
 #define RADIO_UART_COMMAND_SYNC_0      0xA6U
@@ -88,9 +89,9 @@ static HAL_StatusTypeDef radio_uart_enqueue_frame(const uint8_t *data, uint16_t 
   if (radio_uart_lock_tx_queue() != HAL_OK) return HAL_ERROR;
 
   if (g_tx_count >= RADIO_UART_TX_QUEUE_DEPTH) {
-    g_tx_head = (g_tx_head + 1U) % RADIO_UART_TX_QUEUE_DEPTH;
-    g_tx_count--;
     g_tx_drops++;
+    radio_uart_unlock_tx_queue();
+    return HAL_BUSY;
   }
 
   g_tx_queue[g_tx_tail].len = len;
@@ -173,6 +174,7 @@ void radio_uart_process_tx(void)
   radio_tx_item_t item;
   uint64_t now_ms;
   HAL_StatusTypeDef status;
+  uint32_t sent_count = 0U;
 
   if (!g_huart) {
     return;
@@ -183,13 +185,18 @@ void radio_uart_process_tx(void)
     return;
   }
 
-  if (!radio_uart_dequeue_frame(&item)) {
-    return;
+  while (sent_count < RADIO_UART_TX_BURST_PER_PASS && radio_uart_dequeue_frame(&item)) {
+    status = HAL_UART_Transmit(g_huart, item.data, item.len, RADIO_UART_TX_TIMEOUT_MS);
+    if (status != HAL_OK) {
+      break;
+    }
+
+    HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
+    sent_count++;
+    now_ms = ((uint64_t)tx_time_get() * 1000ULL) / (uint64_t)TX_TIMER_TICKS_PER_SECOND;
   }
 
-  status = HAL_UART_Transmit(g_huart, item.data, item.len, RADIO_UART_TX_TIMEOUT_MS);
-  if (status == HAL_OK) {
-    HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
+  if (sent_count > 0U) {
     g_tx_next_allowed_ms = now_ms + RADIO_UART_TX_GAP_MS;
   }
 }
