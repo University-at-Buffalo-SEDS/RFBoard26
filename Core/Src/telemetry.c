@@ -225,12 +225,18 @@ SedsResult tx_send(const uint8_t *bytes, size_t len, void *user) {
 
 static SedsResult radio_tx_send(const uint8_t *bytes, size_t len, void *user) {
   (void)user;
+  HAL_StatusTypeDef status;
 
   if (!bytes || len == 0U) {
     return SEDS_BAD_ARG;
   }
 
-  return (radio_uart_send_bytes(bytes, len) == HAL_OK) ? SEDS_OK : SEDS_IO;
+  status = radio_uart_send_bytes(bytes, len);
+  if (status == HAL_BUSY && !radio_uart_tx_ready()) {
+    return SEDS_OK;
+  }
+
+  return (status == HAL_OK) ? SEDS_OK : SEDS_IO;
 }
 
 static void telemetry_can_rx(const uint8_t *data, size_t len, void *user) {

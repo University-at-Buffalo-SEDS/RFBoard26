@@ -216,6 +216,34 @@ static volatile uint8_t g_rx_fifo0_pending = 0;
 static volatile uint8_t g_rx_fifo1_pending = 0;
 static volatile uint8_t g_txevt_pending = 0;
 
+static HAL_StatusTypeDef can_bus_recover_if_bus_off(void)
+{
+  if (!g_hfdcan)
+    return HAL_ERROR;
+
+  FDCAN_ProtocolStatusTypeDef status;
+  if (HAL_FDCAN_GetProtocolStatus(g_hfdcan, &status) != HAL_OK)
+    return HAL_ERROR;
+
+  if (status.BusOff == 0U)
+  {
+    if (__HAL_FDCAN_GET_FLAG(g_hfdcan, FDCAN_FLAG_BUS_OFF) != 0U)
+      __HAL_FDCAN_CLEAR_FLAG(g_hfdcan, FDCAN_FLAG_BUS_OFF);
+    return HAL_OK;
+  }
+
+  if (HAL_FDCAN_Stop(g_hfdcan) != HAL_OK)
+    return HAL_ERROR;
+
+  if (HAL_FDCAN_Start(g_hfdcan) != HAL_OK)
+    return HAL_ERROR;
+
+  if (__HAL_FDCAN_GET_FLAG(g_hfdcan, FDCAN_FLAG_BUS_OFF) != 0U)
+    __HAL_FDCAN_CLEAR_FLAG(g_hfdcan, FDCAN_FLAG_BUS_OFF);
+
+  return HAL_OK;
+}
+
 static HAL_StatusTypeDef can_bus_enqueue_tx_frame(const FDCAN_TxHeaderTypeDef *hdr,
                                                   const uint8_t *data)
 {
@@ -225,8 +253,7 @@ static HAL_StatusTypeDef can_bus_enqueue_tx_frame(const FDCAN_TxHeaderTypeDef *h
   const uint32_t t0 = HAL_GetTick();
   for (;;)
   {
-    /* Fail fast if controller is bus-off. */
-    if (__HAL_FDCAN_GET_FLAG(g_hfdcan, FDCAN_FLAG_BUS_OFF) != 0U)
+    if (can_bus_recover_if_bus_off() != HAL_OK)
       return HAL_ERROR;
 
     if (HAL_FDCAN_GetTxFifoFreeLevel(g_hfdcan) > 0U)

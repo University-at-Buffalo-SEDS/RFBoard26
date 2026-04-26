@@ -14,6 +14,7 @@ TX_THREAD telemetry_thread;
 void telemetry_thread_entry(ULONG initial_input)
 {
     (void)initial_input;
+    uint8_t startup_discovery_sent = 0U;
 
     // Ensure router exists early (so we can send requests immediately)
     (void)init_telemetry_router();
@@ -22,9 +23,14 @@ void telemetry_thread_entry(ULONG initial_input)
         radio_uart_process_rx();
         radio_uart_process_tx();
         can_bus_process_rx();
+        if (!startup_discovery_sent && radio_uart_tx_ready()) {
+            (void)telemetry_announce_discovery();
+            startup_discovery_sent = 1U;
+        }
         (void)telemetry_poll_discovery();
         (void)process_all_queues_timeout(TELEMETRY_QUEUE_BUDGET_MS);
         (void)telemetry_poll_timesync();
+        radio_uart_process_tx();
 
         tx_thread_sleep(TELEMETRY_THREAD_SLEEP_TICKS);
 
