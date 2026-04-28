@@ -88,8 +88,23 @@ static uint64_t wrap_day_ms(uint64_t ms) {
 
 /* Stack + TCB for neom9n thread */
 TX_THREAD neom9n_thread;
+volatile uint8_t g_neom9n_has_fix = 0U;
 #define NEOM9N_THREAD_STACK_SIZE (9 * 1024u)
 #define GPS_LINK_WARNING_INTERVAL_MS (5ULL * 60ULL * 1000ULL)
+
+static void gps_emit_satellite_count(uint8_t satellite_count) {
+#if PRODUCTION_MODE
+    SedsResult result = log_telemetry_asynchronous(SEDS_DT_GPS_SATELLITE_NUMBER,
+                                                   &satellite_count,
+                                                   1,
+                                                   sizeof(uint8_t));
+    printf("GPS telemetry queued satellites=%u result=%ld\r\n",
+           (unsigned)satellite_count,
+           (long)result);
+#else
+    (void)satellite_count;
+#endif
+}
 
 static void gps_log_initial_link_warning(void) {
 #if GPS_TEST_MODE
@@ -183,6 +198,7 @@ void neom9n_thread_entry(ULONG initial_input)
 
             if (gps_has_fix(&gps_packet))
             {
+                g_neom9n_has_fix = 1U;
                 gps_link_established = true;
                 no_fix_counter = 0;
 
@@ -221,10 +237,7 @@ void neom9n_thread_entry(ULONG initial_input)
                  */ 
 
 #if PRODUCTION_MODE
-                log_telemetry_asynchronous(SEDS_DT_GPS_SATELLITE_NUMBER, 
-                                            &gps_packet.num_satellites, 
-                                            1, 
-                                            sizeof(uint8_t));  // send N sats
+                gps_emit_satellite_count(gps_packet.num_satellites);  // send N sats
 #endif
 #if GPS_TEST_MODE
                 /** 
@@ -278,6 +291,8 @@ void neom9n_thread_entry(ULONG initial_input)
             }
             else
             {
+                g_neom9n_has_fix = 0U;
+
                 if (!gps_link_established)
                 {
                     const uint64_t now_ms = tx_now_ms();
@@ -307,6 +322,7 @@ void neom9n_thread_entry(ULONG initial_input)
         else
         {
             consecutive_errors ++;
+            g_neom9n_has_fix = 0U;
 
             if (!gps_link_established)
             {

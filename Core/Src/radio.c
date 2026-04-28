@@ -222,6 +222,29 @@ HAL_StatusTypeDef radio_uart_send_plaintext(const uint8_t *bytes, size_t len) {
   return radio_uart_enqueue_frame(bytes, (uint16_t)len);
 }
 
+HAL_StatusTypeDef radio_uart_send_command_frame(const uint8_t *bytes, size_t len) {
+  uint8_t framed[RADIO_UART_FRAME_BUF_SIZE];
+
+  if (!g_huart) return HAL_ERROR;
+  if (!bytes || len == 0U || len > RADIO_UART_MAX_PAYLOAD_SIZE) return HAL_ERROR;
+  if (!radio_uart_tx_ready()) {
+    g_tx_startup_drops++;
+    return HAL_BUSY;
+  }
+
+  framed[0] = RADIO_UART_COMMAND_SYNC_0;
+  framed[1] = RADIO_UART_COMMAND_SYNC_1;
+  framed[2] = (uint8_t)(len & 0xFFU);
+  framed[3] = (uint8_t)((len >> 8U) & 0xFFU);
+  memcpy(&framed[RADIO_UART_FRAME_HEADER_SIZE], bytes, len);
+
+  return HAL_UART_Transmit(
+      g_huart,
+      framed,
+      (uint16_t)(RADIO_UART_FRAME_HEADER_SIZE + len),
+      radio_uart_tx_timeout_ms((uint16_t)(RADIO_UART_FRAME_HEADER_SIZE + len)));
+}
+
 void radio_uart_process_tx(void)
 {
   radio_tx_item_t item;
