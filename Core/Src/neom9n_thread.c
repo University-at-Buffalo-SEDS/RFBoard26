@@ -91,6 +91,10 @@ TX_THREAD neom9n_thread;
 volatile uint8_t g_neom9n_has_fix = 0U;
 #define NEOM9N_THREAD_STACK_SIZE (9 * 1024u)
 #define GPS_LINK_WARNING_INTERVAL_MS (5ULL * 60ULL * 1000ULL)
+#define GPS_DATA_LOG_INTERVAL_MS 750ULL
+#define GPS_ERROR_LOG_INTERVAL_MS (5ULL * 60ULL * 1000ULL)
+#define GPS_CONSECUTIVE_ERROR_THRESHOLD 20U
+#define GPS_NO_FIX_ERROR_THRESHOLD 100U
 
 static void gps_emit_satellite_count(uint8_t satellite_count) {
 #if PRODUCTION_MODE
@@ -117,6 +121,34 @@ static void gps_log_initial_link_warning(void) {
                                 strlen(no_link_txt) + 1,
                                 1);
 #endif
+}
+
+static size_t gps_error_index(NEOM9N_status_t status) {
+    switch (status)
+    {
+    case NEOM9N_TIMEOUT:
+        return 0U;
+    case NEOM9N_SPI_ERR:
+        return 1U;
+    case NEOM9N_PARSE_ERR:
+        return 2U;
+    default:
+        return 3U;
+    }
+}
+
+static const char *gps_error_text(NEOM9N_status_t status) {
+    switch (status)
+    {
+    case NEOM9N_TIMEOUT:
+        return "GPS ERROR: Timeout";
+    case NEOM9N_SPI_ERR:
+        return "GPS ERROR: SPI Error";
+    case NEOM9N_PARSE_ERR:
+        return "GPS ERROR: Parse Error";
+    default:
+        return "GPS ERROR: Undefined";
+    }
 }
 
 void neom9n_thread_entry(ULONG initial_input)
@@ -164,6 +196,9 @@ void neom9n_thread_entry(ULONG initial_input)
     uint32_t no_fix_counter = 0;
     bool gps_link_established = false;
     uint64_t next_initial_link_warning_ms = tx_now_ms() + GPS_LINK_WARNING_INTERVAL_MS;
+    uint64_t next_gps_data_log_ms = 0ULL;
+    uint64_t next_no_fix_error_log_ms = 0ULL;
+    uint64_t next_gps_error_log_ms[4] = {0ULL, 0ULL, 0ULL, 0ULL};
     // HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
 
     for michael
@@ -183,10 +218,13 @@ void neom9n_thread_entry(ULONG initial_input)
             telemetry_set_unix_time_ms(gps_epoch_ms);
 
             // Emit a fixed GPS position payload occasionally
-            float fake[3] = {TELEMETRY_TEST_LAT, TELEMETRY_TEST_LON, TELEMETRY_TEST_ALT_M};
-            log_telemetry_asynchronous(SEDS_DT_GPS_DATA, fake, 3, sizeof(float));
-            printf("GPS TEST MODE: emitted fake GPS data\r\n");
-            tx_thread_sleep(200);
+            if (now_local_ms >= next_gps_data_log_ms) {
+                float fake[3] = {TELEMETRY_TEST_LAT, TELEMETRY_TEST_LON, TELEMETRY_TEST_ALT_M};
+                log_telemetry_asynchronous(SEDS_DT_GPS_DATA, fake, 3, sizeof(float));
+                printf("GPS TEST MODE: emitted fake GPS data\r\n");
+                next_gps_data_log_ms = now_local_ms + GPS_DATA_LOG_INTERVAL_MS;
+            }
+            tx_thread_sleep(50);
 
             continue;
 #endif
@@ -224,11 +262,14 @@ void neom9n_thread_entry(ULONG initial_input)
 
                 /* Pack and send GPS position data (lat, lon, alt) */
                 pack_gps_data(&gps_packet, gps_data_buffer);
+                const bool gps_data_log_due = (local_ms >= next_gps_data_log_ms);
 #if PRODUCTION_MODE
-                log_telemetry_asynchronous(SEDS_DT_GPS_DATA,
-                                           gps_data_buffer,
-                                           3,
-                                           sizeof(float));
+                if (gps_data_log_due) {
+                    log_telemetry_asynchronous(SEDS_DT_GPS_DATA,
+                                               gps_data_buffer,
+                                               3,
+                                               sizeof(float));
+                }
 #endif
                 /** 
                  * Pack GPS time-of-day.
@@ -240,6 +281,7 @@ void neom9n_thread_entry(ULONG initial_input)
                 gps_emit_satellite_count(gps_packet.num_satellites);  // send N sats
 #endif
 #if GPS_TEST_MODE
+                if (gps_data_log_due) {
                 /** 
                  * Print GPS data using fixed-point formatting because floating
                  * point printf (%f) is disabled. Lat/lon use 6 fractional
@@ -287,7 +329,11 @@ void neom9n_thread_entry(ULONG initial_input)
                 printf("  Last Update: %lu ticks\n", (unsigned long)gps_packet.last_update_tick);
                 
                 printf("==============================\n");
+                }
 #endif
+                if (gps_data_log_due) {
+                    next_gps_data_log_ms = local_ms + GPS_DATA_LOG_INTERVAL_MS;
+                }
             }
             else
             {
@@ -303,25 +349,31 @@ void neom9n_thread_entry(ULONG initial_input)
                     }
                 }
                 // GPS lost fix after its initial link - log occasionally
-                else if (++no_fix_counter >= 100)
+                else if (++no_fix_counter >= GPS_NO_FIX_ERROR_THRESHOLD)
                 {
+                    const uint64_t now_ms = tx_now_ms();
+                    if (now_ms >= next_no_fix_error_log_ms) {
 #if GPS_TEST_MODE
-                    printf("GPS has no fix\r\n");
+                        printf("GPS has no fix\r\n");
 #endif
 #if PRODUCTION_MODE
-                    const char no_fix_txt[] = "GPS FATAL: No fix";
-                    log_telemetry_asynchronous(SEDS_DT_WARNING,
-                                               no_fix_txt,
-                                               strlen(no_fix_txt), 
-                                               1);
+                        const char no_fix_txt[] = "GPS FATAL: No fix";
+                        log_telemetry_asynchronous(SEDS_DT_WARNING,
+                                                   no_fix_txt,
+                                                   strlen(no_fix_txt) + 1, 
+                                                   1);
 #endif
+                        next_no_fix_error_log_ms = now_ms + GPS_ERROR_LOG_INTERVAL_MS;
+                    }
                     no_fix_counter = 0;
                 }
             }
         }
         else
         {
-            consecutive_errors ++;
+            if (consecutive_errors < GPS_CONSECUTIVE_ERROR_THRESHOLD) {
+                consecutive_errors++;
+            }
             g_neom9n_has_fix = 0U;
 
             if (!gps_link_established)
@@ -333,34 +385,23 @@ void neom9n_thread_entry(ULONG initial_input)
                     next_initial_link_warning_ms = now_ms + GPS_LINK_WARNING_INTERVAL_MS;
                 }
             }
-            else if (consecutive_errors >= 20) {
-                const char *error_type;
+            else if (consecutive_errors >= GPS_CONSECUTIVE_ERROR_THRESHOLD) {
+                const char *error_type = gps_error_text(status);
+                const size_t error_index = gps_error_index(status);
+                const uint64_t now_ms = tx_now_ms();
 
-                switch (status)
-                {
-                case NEOM9N_TIMEOUT:
-                    error_type = "GPS ERROR: Timeout";
-                    break;
-                case NEOM9N_SPI_ERR:
-                    error_type = "GPS ERROR: SPI Error";
-                    break;
-                case NEOM9N_PARSE_ERR:
-                    error_type = "GPS ERROR: Parse Error";
-                    break;
-                default:
-                    error_type = "GPS ERROR: Undefined";
-                    break;
-                }
+                if (now_ms >= next_gps_error_log_ms[error_index]) {
 #if PRODUCTION_MODE
-                log_telemetry_asynchronous(SEDS_DT_WARNING,
-                                            error_type,
-                                            strlen(error_type) + 1, // include NUL for C-string payload
-                                            1);
+                    log_telemetry_asynchronous(SEDS_DT_WARNING,
+                                                error_type,
+                                                strlen(error_type) + 1, // include NUL for C-string payload
+                                                1);
 #endif
 #if GPS_TEST_MODE
-                printf("%s\r\n", error_type);
+                    printf("%s\r\n", error_type);
 #endif
-                consecutive_errors = 0;
+                    next_gps_error_log_ms[error_index] = now_ms + GPS_ERROR_LOG_INTERVAL_MS;
+                }
             }
         }
         tx_thread_sleep(50);
