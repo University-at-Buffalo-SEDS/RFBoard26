@@ -9,9 +9,7 @@
 #define RADIO_UART_MAX_SUBSCRIBERS     8
 #define RADIO_UART_TX_TIMEOUT_FLOOR_MS 100U
 #define RADIO_UART_TX_TIMEOUT_MARGIN_MS 100U
-#define RADIO_UART_TX_GAP_MS           10U
 #define RADIO_UART_TX_STARTUP_DELAY_MS 5000U
-#define RADIO_UART_TX_BURST_PER_PASS   1U
 #define RADIO_UART_FRAME_SYNC_0        0xA5U
 #define RADIO_UART_FRAME_SYNC_1        0x5AU
 #define RADIO_UART_COMMAND_SYNC_0      0xA6U
@@ -21,6 +19,9 @@
 #define RADIO_UART_FRAME_HEADER_SIZE   4U
 #define RADIO_UART_MAX_PAYLOAD_SIZE    256U
 #define RADIO_UART_FRAME_BUF_SIZE      (RADIO_UART_FRAME_HEADER_SIZE + RADIO_UART_MAX_PAYLOAD_SIZE)
+#define RADIO_UART_SCHED_FALLBACK_FLOW 0U
+#define RADIO_UART_SCHED_CONTROL_FLOW  0xFFFFFFFFUL
+#define RADIO_UART_SCHED_EP_BITMAP_LEN 2U
 
 /* How many RX chunks we can queue from ISR */
 #ifndef RADIO_UART_RX_RING_DEPTH
@@ -43,6 +44,7 @@ typedef struct {
 
 typedef struct {
   uint16_t len;
+  uint32_t flow_id;
   uint8_t data[RADIO_UART_FRAME_BUF_SIZE];
 } radio_tx_item_t;
 
@@ -80,7 +82,97 @@ static volatile uint32_t g_tx_timeouts = 0U;
 static volatile uint32_t g_tx_busy = 0U;
 static volatile uint32_t g_tx_startup_delays = 0U;
 static volatile uint32_t g_tx_startup_drops = 0U;
-static uint64_t g_tx_next_allowed_ms = 0U;
+static uint32_t g_tx_last_flow_id = RADIO_UART_SCHED_FALLBACK_FLOW;
+
+static uint32_t radio_hash_bytes(const uint8_t *data, size_t len) {
+  uint32_t hash = 2166136261UL;
+  for (size_t i = 0U; i < len; i++) {
+    hash ^= (uint32_t)data[i];
+    hash *= 16777619UL;
+  }
+  return (hash == RADIO_UART_SCHED_FALLBACK_FLOW) ? 1UL : hash;
+}
+
+static uint8_t radio_read_uleb128(const uint8_t *data, size_t len,
+                                  size_t *offset, uint64_t *out) {
+  uint64_t value = 0ULL;
+  uint32_t shift = 0U;
+
+  if (!data || !offset || !out || *offset >= len) {
+    return 0U;
+  }
+
+  for (uint32_t i = 0U; i < 10U && *offset < len; i++) {
+    uint8_t byte = data[(*offset)++];
+    value |= ((uint64_t)(byte & 0x7FU)) << shift;
+    if ((byte & 0x80U) == 0U) {
+      *out = value;
+      return 1U;
+    }
+    shift += 7U;
+  }
+
+  return 0U;
+}
+
+static uint32_t radio_uart_flow_id_from_payload(const uint8_t *payload, size_t len) {
+  size_t offset = 0U;
+  uint64_t ignored = 0ULL;
+  uint64_t sender_len = 0ULL;
+  uint64_t sender_wire_len = 0ULL;
+
+  if (!payload || len < (2U + RADIO_UART_SCHED_EP_BITMAP_LEN)) {
+    return RADIO_UART_SCHED_FALLBACK_FLOW;
+  }
+
+  const uint8_t flags = payload[offset++];
+  offset++; /* selected endpoint count */
+
+  if (!radio_read_uleb128(payload, len, &offset, &ignored) ||
+      !radio_read_uleb128(payload, len, &offset, &ignored) ||
+      !radio_read_uleb128(payload, len, &offset, &ignored) ||
+      !radio_read_uleb128(payload, len, &offset, &sender_len)) {
+    return RADIO_UART_SCHED_FALLBACK_FLOW;
+  }
+
+  if ((flags & 0x02U) != 0U) {
+    if (!radio_read_uleb128(payload, len, &offset, &sender_wire_len)) {
+      return RADIO_UART_SCHED_FALLBACK_FLOW;
+    }
+  } else {
+    sender_wire_len = sender_len;
+  }
+
+  if (sender_wire_len == 0ULL ||
+      sender_wire_len > 64ULL ||
+      offset + RADIO_UART_SCHED_EP_BITMAP_LEN + (size_t)sender_wire_len > len) {
+    return RADIO_UART_SCHED_FALLBACK_FLOW;
+  }
+
+  offset += RADIO_UART_SCHED_EP_BITMAP_LEN;
+  return radio_hash_bytes(&payload[offset], (size_t)sender_wire_len);
+}
+
+static uint32_t radio_uart_flow_id_from_frame(const uint8_t *data, uint16_t len) {
+  uint16_t payload_len;
+
+  if (!data || len < RADIO_UART_FRAME_HEADER_SIZE) {
+    return RADIO_UART_SCHED_FALLBACK_FLOW;
+  }
+
+  if (data[0] != RADIO_UART_FRAME_SYNC_0 || data[1] != RADIO_UART_FRAME_SYNC_1) {
+    return RADIO_UART_SCHED_CONTROL_FLOW;
+  }
+
+  payload_len = (uint16_t)data[2] | ((uint16_t)data[3] << 8U);
+  if (payload_len == 0U ||
+      payload_len > RADIO_UART_MAX_PAYLOAD_SIZE ||
+      (uint16_t)(payload_len + RADIO_UART_FRAME_HEADER_SIZE) > len) {
+    return RADIO_UART_SCHED_FALLBACK_FLOW;
+  }
+
+  return radio_uart_flow_id_from_payload(&data[RADIO_UART_FRAME_HEADER_SIZE], payload_len);
+}
 
 static HAL_StatusTypeDef radio_uart_lock_tx_queue(void) {
   if (!g_radio_tx_queue_mutex_ready) {
@@ -107,11 +199,26 @@ static HAL_StatusTypeDef radio_uart_enqueue_frame(const uint8_t *data, uint16_t 
   }
 
   g_tx_queue[g_tx_tail].len = len;
+  g_tx_queue[g_tx_tail].flow_id = radio_uart_flow_id_from_frame(data, len);
   memcpy(g_tx_queue[g_tx_tail].data, data, len);
   g_tx_tail = (g_tx_tail + 1U) % RADIO_UART_TX_QUEUE_DEPTH;
   g_tx_count++;
   radio_uart_unlock_tx_queue();
   return HAL_OK;
+}
+
+static uint32_t radio_uart_queue_index_at_offset(uint32_t offset) {
+  return (g_tx_head + offset) % RADIO_UART_TX_QUEUE_DEPTH;
+}
+
+static void radio_uart_remove_queue_index(uint32_t index) {
+  while (index != g_tx_head) {
+    uint32_t prev = (index == 0U) ? (RADIO_UART_TX_QUEUE_DEPTH - 1U) : (index - 1U);
+    g_tx_queue[index] = g_tx_queue[prev];
+    index = prev;
+  }
+  g_tx_head = (g_tx_head + 1U) % RADIO_UART_TX_QUEUE_DEPTH;
+  g_tx_count--;
 }
 
 static uint8_t radio_uart_dequeue_frame(radio_tx_item_t *out) {
@@ -120,9 +227,18 @@ static uint8_t radio_uart_dequeue_frame(radio_tx_item_t *out) {
   if (radio_uart_lock_tx_queue() != HAL_OK) return 0U;
 
   if (g_tx_count > 0U) {
-    *out = g_tx_queue[g_tx_head];
-    g_tx_head = (g_tx_head + 1U) % RADIO_UART_TX_QUEUE_DEPTH;
-    g_tx_count--;
+    uint32_t selected = g_tx_head;
+    for (uint32_t i = 0U; i < g_tx_count; i++) {
+      uint32_t idx = radio_uart_queue_index_at_offset(i);
+      if (g_tx_queue[idx].flow_id != g_tx_last_flow_id) {
+        selected = idx;
+        break;
+      }
+    }
+
+    *out = g_tx_queue[selected];
+    radio_uart_remove_queue_index(selected);
+    g_tx_last_flow_id = out->flow_id;
     have = 1U;
   }
   radio_uart_unlock_tx_queue();
@@ -248,25 +364,18 @@ HAL_StatusTypeDef radio_uart_send_command_frame(const uint8_t *bytes, size_t len
 void radio_uart_process_tx(void)
 {
   radio_tx_item_t item;
-  uint64_t now_ms;
   HAL_StatusTypeDef status;
-  uint32_t sent_count = 0U;
 
   if (!g_huart) {
     return;
   }
 
-  now_ms = ((uint64_t)tx_time_get() * 1000ULL) / (uint64_t)TX_TIMER_TICKS_PER_SECOND;
   if (!radio_uart_tx_ready()) {
     g_tx_startup_delays++;
     return;
   }
 
-  if (now_ms < g_tx_next_allowed_ms) {
-    return;
-  }
-
-  while (sent_count < RADIO_UART_TX_BURST_PER_PASS && radio_uart_dequeue_frame(&item)) {
+  while (radio_uart_dequeue_frame(&item)) {
     status = HAL_UART_Transmit(g_huart, item.data, item.len,
                                radio_uart_tx_timeout_ms(item.len));
     if (status != HAL_OK) {
@@ -282,12 +391,6 @@ void radio_uart_process_tx(void)
 
     HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
     g_tx_ok++;
-    sent_count++;
-    now_ms = ((uint64_t)tx_time_get() * 1000ULL) / (uint64_t)TX_TIMER_TICKS_PER_SECOND;
-  }
-
-  if (sent_count > 0U) {
-    g_tx_next_allowed_ms = now_ms + RADIO_UART_TX_GAP_MS;
   }
 }
 

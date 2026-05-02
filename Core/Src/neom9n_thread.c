@@ -92,12 +92,23 @@ volatile uint8_t g_neom9n_has_fix = 0U;
 #define NEOM9N_THREAD_STACK_SIZE (9 * 1024u)
 #define GPS_LINK_WARNING_INTERVAL_MS (5ULL * 60ULL * 1000ULL)
 #define GPS_DATA_LOG_INTERVAL_MS 750ULL
+#define GPS_SATELLITE_LOG_INTERVAL_MS 1000ULL
+#define GPS_NO_DATA_SATELLITE_LOG_INTERVAL_MS 500ULL
 #define GPS_ERROR_LOG_INTERVAL_MS (5ULL * 60ULL * 1000ULL)
 #define GPS_CONSECUTIVE_ERROR_THRESHOLD 20U
+#define GPS_SPI_RECOVERY_ERROR_THRESHOLD 3U
+#define GPS_SPI_RECOVERY_INTERVAL_MS 5000ULL
 #define GPS_NO_FIX_ERROR_THRESHOLD 100U
 
-static void gps_emit_satellite_count(uint8_t satellite_count) {
+static void gps_emit_satellite_count(uint8_t satellite_count,
+                                     uint64_t now_ms,
+                                     uint64_t interval_ms,
+                                     uint64_t *next_emit_ms) {
 #if PRODUCTION_MODE
+    if (now_ms < *next_emit_ms) {
+        return;
+    }
+
     SedsResult result = log_telemetry_asynchronous(SEDS_DT_GPS_SATELLITE_NUMBER,
                                                    &satellite_count,
                                                    1,
@@ -105,8 +116,12 @@ static void gps_emit_satellite_count(uint8_t satellite_count) {
     printf("GPS telemetry queued satellites=%u result=%ld\r\n",
            (unsigned)satellite_count,
            (long)result);
+    *next_emit_ms = now_ms + interval_ms;
 #else
     (void)satellite_count;
+    (void)now_ms;
+    (void)interval_ms;
+    (void)next_emit_ms;
 #endif
 }
 
@@ -120,6 +135,19 @@ static void gps_log_initial_link_warning(void) {
                                 no_link_txt,
                                 strlen(no_link_txt) + 1,
                                 1);
+#endif
+}
+
+static void gps_log_no_fix_warning(void) {
+#if GPS_TEST_MODE
+    printf("GPS has no fix\r\n");
+#endif
+#if PRODUCTION_MODE
+    const char no_fix_txt[] = "GPS FATAL: No fix";
+    log_telemetry_asynchronous(SEDS_DT_WARNING,
+                               no_fix_txt,
+                               strlen(no_fix_txt) + 1,
+                               1);
 #endif
 }
 
@@ -149,6 +177,25 @@ static const char *gps_error_text(NEOM9N_status_t status) {
     default:
         return "GPS ERROR: Undefined";
     }
+}
+
+static bool gps_recover_spi(NEOM9N_t *packet) {
+    if (packet == NULL || packet->hspi == NULL) {
+        return false;
+    }
+
+    NEOGPS_CS_HIGH();
+    (void)HAL_SPI_Abort(packet->hspi);
+    (void)HAL_SPI_DeInit(packet->hspi);
+    tx_thread_sleep(1U);
+
+    if (HAL_SPI_Init(packet->hspi) != HAL_OK) {
+        NEOGPS_CS_HIGH();
+        return false;
+    }
+
+    NEOGPS_CS_HIGH();
+    return gps_config(packet->hspi, 1000U);
 }
 
 void neom9n_thread_entry(ULONG initial_input)
@@ -195,10 +242,14 @@ void neom9n_thread_entry(ULONG initial_input)
     uint32_t consecutive_errors = 0;
     uint32_t no_fix_counter = 0;
     bool gps_link_established = false;
+    bool gps_initial_link_warning_sent = false;
+    bool gps_no_fix_warning_sent = false;
     uint64_t next_initial_link_warning_ms = tx_now_ms() + GPS_LINK_WARNING_INTERVAL_MS;
     uint64_t next_gps_data_log_ms = 0ULL;
-    uint64_t next_no_fix_error_log_ms = 0ULL;
+    uint64_t next_gps_satellite_log_ms = 0ULL;
+    uint64_t next_no_gps_data_satellite_log_ms = 0ULL;
     uint64_t next_gps_error_log_ms[4] = {0ULL, 0ULL, 0ULL, 0ULL};
+    uint64_t next_gps_spi_recover_ms = 0ULL;
     // HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
 
     for michael
@@ -236,29 +287,33 @@ void neom9n_thread_entry(ULONG initial_input)
 
             if (gps_has_fix(&gps_packet))
             {
+                const uint64_t local_ms = tx_now_ms();
+
                 g_neom9n_has_fix = 1U;
                 gps_link_established = true;
+                gps_no_fix_warning_sent = false;
                 no_fix_counter = 0;
 
-                // Convert the parsed GPS date/time to Unix epoch ms before emitting
-                // telemetry so production packets are stamped with GPS-backed time.
-                gps_epoch_ms = get_datetime_data(&gps_packet);
+                if (gps_datetime_valid(&gps_packet)) {
+                    // Convert the parsed GPS date/time to Unix epoch ms before emitting
+                    // telemetry so production packets are stamped with GPS-backed time.
+                    gps_epoch_ms = get_datetime_data(&gps_packet);
 
-                // Update global offset so other threads can compute GPS time-of-day
-                // from local ticks. offset := gps_tod_ms - local_tod_ms
-                const uint64_t local_ms = tx_now_ms();
-                const uint64_t local_tod = wrap_day_ms(local_ms);
-                const uint64_t gps_tod  = wrap_day_ms(gps_epoch_ms);
+                    // Update global offset so other threads can compute GPS time-of-day
+                    // from local ticks. offset := gps_tod_ms - local_tod_ms
+                    const uint64_t local_tod = wrap_day_ms(local_ms);
+                    const uint64_t gps_tod  = wrap_day_ms(gps_epoch_ms);
 
-                // Compute signed difference (gps - local)
-                int64_t measured_offset = (int64_t)gps_tod - (int64_t)local_tod;
-                gps_offset_update_ms(measured_offset);
+                    // Compute signed difference (gps - local)
+                    int64_t measured_offset = (int64_t)gps_tod - (int64_t)local_tod;
+                    gps_offset_update_ms(measured_offset);
 
-                // Feed the telemetry library's network clock directly from
-                // the parsed GPS epoch time before any production telemetry logs.
+                    // Feed the telemetry library's network clock directly from
+                    // the parsed GPS epoch time before any production telemetry logs.
 #if PRODUCTION_MODE
-                telemetry_set_unix_time_ms(gps_epoch_ms);
+                    telemetry_set_unix_time_ms(gps_epoch_ms);
 #endif
+                }
 
                 /* Pack and send GPS position data (lat, lon, alt) */
                 pack_gps_data(&gps_packet, gps_data_buffer);
@@ -278,7 +333,10 @@ void neom9n_thread_entry(ULONG initial_input)
                  */ 
 
 #if PRODUCTION_MODE
-                gps_emit_satellite_count(gps_packet.num_satellites);  // send N sats
+                gps_emit_satellite_count(gps_packet.num_satellites,
+                                         local_ms,
+                                         GPS_SATELLITE_LOG_INTERVAL_MS,
+                                         &next_gps_satellite_log_ms);  // send N sats
 #endif
 #if GPS_TEST_MODE
                 if (gps_data_log_due) {
@@ -337,58 +395,61 @@ void neom9n_thread_entry(ULONG initial_input)
             }
             else
             {
+                const uint64_t now_ms = tx_now_ms();
                 g_neom9n_has_fix = 0U;
+                gps_emit_satellite_count(0U,
+                                         now_ms,
+                                         GPS_NO_DATA_SATELLITE_LOG_INTERVAL_MS,
+                                         &next_no_gps_data_satellite_log_ms);
 
                 if (!gps_link_established)
                 {
-                    const uint64_t now_ms = tx_now_ms();
-                    if (now_ms >= next_initial_link_warning_ms)
+                    if (!gps_initial_link_warning_sent && now_ms >= next_initial_link_warning_ms)
                     {
                         gps_log_initial_link_warning();
-                        next_initial_link_warning_ms = now_ms + GPS_LINK_WARNING_INTERVAL_MS;
+                        gps_initial_link_warning_sent = true;
                     }
                 }
-                // GPS lost fix after its initial link - log occasionally
-                else if (++no_fix_counter >= GPS_NO_FIX_ERROR_THRESHOLD)
+                // GPS lost fix after its initial link - log once per lost-lock episode.
+                else if (!gps_no_fix_warning_sent &&
+                         ++no_fix_counter >= GPS_NO_FIX_ERROR_THRESHOLD)
                 {
-                    const uint64_t now_ms = tx_now_ms();
-                    if (now_ms >= next_no_fix_error_log_ms) {
-#if GPS_TEST_MODE
-                        printf("GPS has no fix\r\n");
-#endif
-#if PRODUCTION_MODE
-                        const char no_fix_txt[] = "GPS FATAL: No fix";
-                        log_telemetry_asynchronous(SEDS_DT_WARNING,
-                                                   no_fix_txt,
-                                                   strlen(no_fix_txt) + 1, 
-                                                   1);
-#endif
-                        next_no_fix_error_log_ms = now_ms + GPS_ERROR_LOG_INTERVAL_MS;
-                    }
+                    gps_log_no_fix_warning();
+                    gps_no_fix_warning_sent = true;
                     no_fix_counter = 0;
                 }
             }
         }
         else
         {
+            const uint64_t now_ms = tx_now_ms();
             if (consecutive_errors < GPS_CONSECUTIVE_ERROR_THRESHOLD) {
                 consecutive_errors++;
             }
             g_neom9n_has_fix = 0U;
+            gps_emit_satellite_count(0U,
+                                     now_ms,
+                                     GPS_NO_DATA_SATELLITE_LOG_INTERVAL_MS,
+                                     &next_no_gps_data_satellite_log_ms);
+
+            if (status == NEOM9N_SPI_ERR &&
+                consecutive_errors >= GPS_SPI_RECOVERY_ERROR_THRESHOLD &&
+                now_ms >= next_gps_spi_recover_ms) {
+                (void)gps_recover_spi(&gps_packet);
+                next_gps_spi_recover_ms = now_ms + GPS_SPI_RECOVERY_INTERVAL_MS;
+            }
 
             if (!gps_link_established)
             {
-                const uint64_t now_ms = tx_now_ms();
-                if (now_ms >= next_initial_link_warning_ms)
+                if (!gps_initial_link_warning_sent && now_ms >= next_initial_link_warning_ms)
                 {
                     gps_log_initial_link_warning();
-                    next_initial_link_warning_ms = now_ms + GPS_LINK_WARNING_INTERVAL_MS;
+                    gps_initial_link_warning_sent = true;
                 }
             }
             else if (consecutive_errors >= GPS_CONSECUTIVE_ERROR_THRESHOLD) {
                 const char *error_type = gps_error_text(status);
                 const size_t error_index = gps_error_index(status);
-                const uint64_t now_ms = tx_now_ms();
 
                 if (now_ms >= next_gps_error_log_ms[error_index]) {
 #if PRODUCTION_MODE

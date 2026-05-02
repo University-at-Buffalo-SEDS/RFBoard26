@@ -16,7 +16,6 @@ TX_THREAD telemetry_thread;
 #define RADIO_WINDOW_UPLINK_OPEN 1U
 #define RADIO_DOWNLINK_WINDOW_MS 300U
 #define RADIO_UPLINK_WINDOW_MS 75U
-#define GPS_NO_FIX_SATELLITE_INTERVAL_MS 1000ULL
 #define TELEMETRY_DISCOVERY_ANNOUNCE_INTERVAL_MS 2000ULL
 #define TELEMETRY_THREAD_PRIORITY 3U
 
@@ -36,24 +35,6 @@ static void telemetry_emit_radio_window(uint8_t uplink_open, uint16_t duration_m
     (void)radio_uart_send_command_frame(payload, sizeof(payload));
 }
 
-static void telemetry_emit_no_gps_satellite_count(uint64_t now_ms,
-                                                  uint64_t *next_emit_ms)
-{
-    if (g_neom9n_has_fix != 0U || now_ms < *next_emit_ms || !radio_uart_tx_ready()) {
-        return;
-    }
-
-    const uint8_t satellite_count = 0U;
-    SedsResult result = log_telemetry_asynchronous(SEDS_DT_GPS_SATELLITE_NUMBER,
-                                                   &satellite_count,
-                                                   1,
-                                                   sizeof(satellite_count));
-    // printf("RF telemetry queued GPS satellites=%u result=%ld\r\n",
-        //    (unsigned)satellite_count,
-        //    (long)result);
-    *next_emit_ms = now_ms + GPS_NO_FIX_SATELLITE_INTERVAL_MS;
-}
-
 static void telemetry_announce_discovery_if_due(uint64_t now_ms,
                                                 uint64_t *next_emit_ms)
 {
@@ -71,7 +52,6 @@ void telemetry_thread_entry(ULONG initial_input)
     uint8_t radio_window_started = 0U;
     uint8_t radio_uplink_open = 0U;
     uint64_t radio_window_deadline_ms = 0U;
-    uint64_t next_no_gps_satellite_emit_ms = 0U;
     uint64_t next_discovery_announce_ms = 0U;
 
     // Ensure router exists early (so we can send requests immediately)
@@ -101,7 +81,6 @@ void telemetry_thread_entry(ULONG initial_input)
         }
         can_bus_process_rx();
         telemetry_announce_discovery_if_due(now_ms, &next_discovery_announce_ms);
-        telemetry_emit_no_gps_satellite_count(now_ms, &next_no_gps_satellite_emit_ms);
         (void)telemetry_poll_discovery();
         (void)process_all_queues_timeout(TELEMETRY_QUEUE_BUDGET_MS);
         (void)telemetry_poll_timesync();

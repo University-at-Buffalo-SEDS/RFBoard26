@@ -68,6 +68,21 @@ bool gps_has_fix(const NEOM9N_t *packet) {
     return packet->valid_fix;
 }
 
+bool gps_datetime_valid(const NEOM9N_t *packet) {
+    if (packet == NULL) {
+        return false;
+    }
+
+    if (packet->month < 1U || packet->month > 12U ||
+        packet->day < 1U || packet->day > 31U ||
+        packet->hours > 23U || packet->minutes > 59U ||
+        packet->seconds > 60U || packet->milliseconds > 999U) {
+        return false;
+    }
+
+    return true;
+}
+
 
 /**
  * @brief Read one NMEA field 
@@ -102,15 +117,20 @@ NEOM9N_status_t read_field(NEOM9N_t *packet, uint8_t *buffer, uint16_t max_len, 
 /**
  * @brief Skip to next comma or asterisk
  */
-void skip_field(NEOM9N_t *packet, uint32_t timeout) {
+NEOM9N_status_t skip_field(NEOM9N_t *packet, uint32_t timeout) {
     uint8_t byte;
+    uint16_t count = 0U;
 
-    while (1) {
-        HAL_SPI_TransmitReceive(packet->hspi, GLOBAL_HIGH_TX, &byte, 1, timeout);
+    while (count++ < NMEA_MAX_SENTENCE_LENGTH) {
+        if (HAL_SPI_TransmitReceive(packet->hspi, GLOBAL_HIGH_TX, &byte, 1, timeout) != HAL_OK) {
+            return NEOM9N_SPI_ERR;
+        }
         if (byte == ',' || byte == '*') {
-            break;
+            return NEOM9N_OK;
         }
     }
+
+    return NEOM9N_TIMEOUT;
 }
 
 
@@ -319,7 +339,11 @@ NEOM9N_status_t read_nmea_gga(NEOM9N_t *packet, uint32_t max_wait) {
         packet->num_satellites = val;
     }
 
-    skip_field(packet, max_wait);    // HDOP
+    status = skip_field(packet, max_wait);    // HDOP
+    if (status != NEOM9N_OK) {
+        packet->valid_fix = false;
+        return status;
+    }
     
     // Alt
     status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
@@ -376,8 +400,10 @@ NEOM9N_status_t read_nmea_rmc(NEOM9N_t *packet, uint32_t max_wait) {
         packet->lon = (packet->field_buffer[0] == 'E') ? lon : -lon;
     }
 
-    skip_field(packet, max_wait);   // Speed
-    skip_field(packet, max_wait);   // Course
+    status = skip_field(packet, max_wait);   // Speed
+    if (status != NEOM9N_OK) return status;
+    status = skip_field(packet, max_wait);   // Course
+    if (status != NEOM9N_OK) return status;
 
     // Date
     status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
@@ -417,14 +443,22 @@ NEOM9N_status_t receive_nmea(NEOM9N_t *packet, uint32_t max_wait, uint32_t max_i
     }
     
     // Read talkerID + sentence type ("GPGGA" or "GPRMC")
-    uint8_t header[6];
-    if (HAL_SPI_TransmitReceive(packet->hspi, GLOBAL_HIGH_TX, header, 6, max_wait) != HAL_OK) {
+    uint8_t header[6] = {0};
+    if (HAL_SPI_TransmitReceive(packet->hspi, GLOBAL_HIGH_TX, header, 5, max_wait) != HAL_OK) {
         NEOGPS_CS_HIGH();  // End transaction
         return NEOM9N_SPI_ERR;
     }
     
     NEOM9N_state_t sentence_type = (header[2] << 16) | (header[3] << 8) | header[4];  // Extract sentence type (last 3 characters)
-    HAL_SPI_TransmitReceive(packet->hspi, GLOBAL_HIGH_TX, &byte, 1, max_wait);  // Read comma after header
+    if (HAL_SPI_TransmitReceive(packet->hspi, GLOBAL_HIGH_TX, &byte, 1, max_wait) != HAL_OK) {
+        NEOGPS_CS_HIGH();
+        return NEOM9N_SPI_ERR;
+    }
+
+    if (byte != ',') {
+        NEOGPS_CS_HIGH();
+        return NEOM9N_PARSE_ERR;
+    }
     
     // Parse based on sentence type
     NEOM9N_status_t result;

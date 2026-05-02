@@ -90,11 +90,12 @@ uint64_t get_datetime_data(const NEOM9N_t *packet);
 NEOM9N_status_t read_nmea_gga(NEOM9N_t *packet, uint32_t max_wait);
 NEOM9N_status_t read_nmea_rmc(NEOM9N_t *packet, uint32_t max_wait);
 NEOM9N_status_t receive_nmea(NEOM9N_t *packet, uint32_t max_wait, uint32_t max_ignores);
+bool gps_datetime_valid(const NEOM9N_t *packet);
 
 
 // Helper Functions
 NEOM9N_status_t read_field(NEOM9N_t *packet, uint8_t *buffer, uint16_t max_len, uint32_t timeout);
-void skip_field(NEOM9N_t *packet, uint32_t timeout);
+NEOM9N_status_t skip_field(NEOM9N_t *packet, uint32_t timeout);
 float parse_coord(const uint8_t *field, uint8_t deg_digits);
 float parse_float(const uint8_t *field);
 void parse_date(const uint8_t *field, uint8_t *d, uint8_t *m, uint8_t *y);
