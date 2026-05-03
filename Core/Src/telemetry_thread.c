@@ -9,8 +9,8 @@
 
 TX_THREAD telemetry_thread;
 #define TELEMETRY_THREAD_STACK_SIZE (16U *1024U)
-#define TELEMETRY_THREAD_SLEEP_TICKS 5U
-#define TELEMETRY_QUEUE_BUDGET_MS 50U
+#define TELEMETRY_THREAD_SLEEP_TICKS 1U
+#define TELEMETRY_QUEUE_BUDGET_MS 5U
 #define RADIO_WINDOW_CONTROL_KIND 0x01U
 #define RADIO_WINDOW_DOWNLINK_OPEN 0U
 #define RADIO_WINDOW_UPLINK_OPEN 1U
@@ -67,7 +67,7 @@ void telemetry_thread_entry(ULONG initial_input)
                 radio_uplink_open = 0U;
                 radio_window_deadline_ms = now_ms + RADIO_DOWNLINK_WINDOW_MS;
                 telemetry_emit_radio_window(0U, RADIO_DOWNLINK_WINDOW_MS);
-            } else if (now_ms >= radio_window_deadline_ms) {
+            } else if (now_ms >= radio_window_deadline_ms && !radio_uart_tx_busy()) {
                 radio_uplink_open = !radio_uplink_open;
                 radio_window_deadline_ms =
                     now_ms + (radio_uplink_open ? RADIO_UPLINK_WINDOW_MS : RADIO_DOWNLINK_WINDOW_MS);

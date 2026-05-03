@@ -32,6 +32,10 @@
 #define RADIO_UART_TX_QUEUE_DEPTH   32
 #endif
 
+#ifndef RADIO_UART_TX_FRAMES_PER_SERVICE
+#define RADIO_UART_TX_FRAMES_PER_SERVICE 1U
+#endif
+
 typedef struct {
   radio_rx_cb_t cb;
   void *user;
@@ -76,6 +80,7 @@ static uint32_t g_tx_tail = 0U;
 static uint32_t g_tx_count = 0U;
 static uint32_t g_tx_drops = 0U;
 static uint32_t g_tx_drop_oldest = 0U;
+static uint32_t g_tx_drop_same_flow = 0U;
 static volatile uint32_t g_tx_ok = 0U;
 static volatile uint32_t g_tx_errors = 0U;
 static volatile uint32_t g_tx_timeouts = 0U;
@@ -83,6 +88,11 @@ static volatile uint32_t g_tx_busy = 0U;
 static volatile uint32_t g_tx_startup_delays = 0U;
 static volatile uint32_t g_tx_startup_drops = 0U;
 static uint32_t g_tx_last_flow_id = RADIO_UART_SCHED_FALLBACK_FLOW;
+static radio_tx_item_t g_tx_dma_item;
+static volatile uint8_t g_tx_dma_busy = 0U;
+static volatile uint32_t g_tx_dma_started = 0U;
+static volatile uint32_t g_tx_dma_complete = 0U;
+static volatile uint32_t g_tx_rx_restart_after_tx_errors = 0U;
 
 static uint32_t radio_hash_bytes(const uint8_t *data, size_t len) {
   uint32_t hash = 2166136261UL;
@@ -187,26 +197,6 @@ static void radio_uart_unlock_tx_queue(void) {
   }
 }
 
-static HAL_StatusTypeDef radio_uart_enqueue_frame(const uint8_t *data, uint16_t len) {
-  if (!data || len == 0U || len > RADIO_UART_FRAME_BUF_SIZE || g_tx_queue == NULL) return HAL_ERROR;
-  if (radio_uart_lock_tx_queue() != HAL_OK) return HAL_ERROR;
-
-  if (g_tx_count >= RADIO_UART_TX_QUEUE_DEPTH) {
-    g_tx_drops++;
-    g_tx_drop_oldest++;
-    g_tx_head = (g_tx_head + 1U) % RADIO_UART_TX_QUEUE_DEPTH;
-    g_tx_count--;
-  }
-
-  g_tx_queue[g_tx_tail].len = len;
-  g_tx_queue[g_tx_tail].flow_id = radio_uart_flow_id_from_frame(data, len);
-  memcpy(g_tx_queue[g_tx_tail].data, data, len);
-  g_tx_tail = (g_tx_tail + 1U) % RADIO_UART_TX_QUEUE_DEPTH;
-  g_tx_count++;
-  radio_uart_unlock_tx_queue();
-  return HAL_OK;
-}
-
 static uint32_t radio_uart_queue_index_at_offset(uint32_t offset) {
   return (g_tx_head + offset) % RADIO_UART_TX_QUEUE_DEPTH;
 }
@@ -219,6 +209,74 @@ static void radio_uart_remove_queue_index(uint32_t index) {
   }
   g_tx_head = (g_tx_head + 1U) % RADIO_UART_TX_QUEUE_DEPTH;
   g_tx_count--;
+}
+
+static uint32_t radio_uart_flow_count_locked(uint32_t flow_id) {
+  uint32_t count = 0U;
+
+  for (uint32_t i = 0U; i < g_tx_count; i++) {
+    uint32_t idx = radio_uart_queue_index_at_offset(i);
+    if (g_tx_queue[idx].flow_id == flow_id) {
+      count++;
+    }
+  }
+
+  return count;
+}
+
+static uint32_t radio_uart_select_drop_index_locked(uint32_t incoming_flow_id,
+                                                    uint8_t *drop_same_flow) {
+  if (drop_same_flow) {
+    *drop_same_flow = 0U;
+  }
+
+  for (uint32_t i = 0U; i < g_tx_count; i++) {
+    uint32_t idx = radio_uart_queue_index_at_offset(i);
+    if (g_tx_queue[idx].flow_id == incoming_flow_id) {
+      if (drop_same_flow) {
+        *drop_same_flow = 1U;
+      }
+      return idx;
+    }
+  }
+
+  for (uint32_t i = 0U; i < g_tx_count; i++) {
+    uint32_t idx = radio_uart_queue_index_at_offset(i);
+    if (radio_uart_flow_count_locked(g_tx_queue[idx].flow_id) > 1U) {
+      return idx;
+    }
+  }
+
+  return g_tx_head;
+}
+
+static HAL_StatusTypeDef radio_uart_enqueue_frame(const uint8_t *data, uint16_t len) {
+  uint32_t flow_id;
+
+  if (!data || len == 0U || len > RADIO_UART_FRAME_BUF_SIZE || g_tx_queue == NULL) return HAL_ERROR;
+  flow_id = radio_uart_flow_id_from_frame(data, len);
+  if (radio_uart_lock_tx_queue() != HAL_OK) return HAL_ERROR;
+
+  if (g_tx_count >= RADIO_UART_TX_QUEUE_DEPTH) {
+    uint8_t found_same_flow = 0U;
+    uint32_t drop = radio_uart_select_drop_index_locked(flow_id, &found_same_flow);
+
+    g_tx_drops++;
+    if (found_same_flow) {
+      g_tx_drop_same_flow++;
+    } else {
+      g_tx_drop_oldest++;
+    }
+    radio_uart_remove_queue_index(drop);
+  }
+
+  g_tx_queue[g_tx_tail].len = len;
+  g_tx_queue[g_tx_tail].flow_id = flow_id;
+  memcpy(g_tx_queue[g_tx_tail].data, data, len);
+  g_tx_tail = (g_tx_tail + 1U) % RADIO_UART_TX_QUEUE_DEPTH;
+  g_tx_count++;
+  radio_uart_unlock_tx_queue();
+  return HAL_OK;
 }
 
 static uint8_t radio_uart_dequeue_frame(radio_tx_item_t *out) {
@@ -278,6 +336,11 @@ uint8_t radio_uart_tx_ready(void)
   return (now_ms >= (uint64_t)RADIO_UART_TX_STARTUP_DELAY_MS) ? 1U : 0U;
 }
 
+uint8_t radio_uart_tx_busy(void)
+{
+  return g_tx_dma_busy;
+}
+
 void radio_uart_init(UART_HandleTypeDef *huart) {
   g_huart = huart;
 }
@@ -308,7 +371,14 @@ UINT radio_uart_init_tx_queue(TX_BYTE_POOL *byte_pool) {
 /* Arm RX-to-idle interrupt reception. */
 HAL_StatusTypeDef radio_uart_start_rx(void) {
   if (!g_huart) return HAL_ERROR;
-  return HAL_UARTEx_ReceiveToIdle_IT(g_huart, g_rx_buf, sizeof(g_rx_buf));
+  if (g_tx_dma_busy) return HAL_BUSY;
+
+  HAL_StatusTypeDef status =
+      HAL_UARTEx_ReceiveToIdle_DMA(g_huart, g_rx_buf, sizeof(g_rx_buf));
+  if (status == HAL_OK && g_huart->hdmarx != NULL) {
+    __HAL_DMA_DISABLE_IT(g_huart->hdmarx, DMA_IT_HT);
+  }
+  return status;
 }
 
 HAL_StatusTypeDef radio_uart_send_bytes(const uint8_t *bytes, size_t len) {
@@ -340,6 +410,7 @@ HAL_StatusTypeDef radio_uart_send_plaintext(const uint8_t *bytes, size_t len) {
 
 HAL_StatusTypeDef radio_uart_send_command_frame(const uint8_t *bytes, size_t len) {
   uint8_t framed[RADIO_UART_FRAME_BUF_SIZE];
+  HAL_StatusTypeDef status;
 
   if (!g_huart) return HAL_ERROR;
   if (!bytes || len == 0U || len > RADIO_UART_MAX_PAYLOAD_SIZE) return HAL_ERROR;
@@ -354,43 +425,61 @@ HAL_StatusTypeDef radio_uart_send_command_frame(const uint8_t *bytes, size_t len
   framed[3] = (uint8_t)((len >> 8U) & 0xFFU);
   memcpy(&framed[RADIO_UART_FRAME_HEADER_SIZE], bytes, len);
 
-  return HAL_UART_Transmit(
+  if (g_tx_dma_busy) {
+    return HAL_BUSY;
+  }
+
+  g_tx_dma_busy = 1U;
+  (void)HAL_UART_AbortReceive(g_huart);
+  status = HAL_UART_Transmit(
       g_huart,
       framed,
       (uint16_t)(RADIO_UART_FRAME_HEADER_SIZE + len),
       radio_uart_tx_timeout_ms((uint16_t)(RADIO_UART_FRAME_HEADER_SIZE + len)));
+  g_tx_dma_busy = 0U;
+  if (radio_uart_start_rx() != HAL_OK) {
+    g_tx_rx_restart_after_tx_errors++;
+  }
+
+  return status;
 }
 
 void radio_uart_process_tx(void)
 {
   radio_tx_item_t item;
   HAL_StatusTypeDef status;
+  uint32_t sent = 0U;
 
   if (!g_huart) {
     return;
   }
 
-  if (!radio_uart_tx_ready()) {
+  if (!radio_uart_tx_ready() || g_tx_dma_busy) {
     g_tx_startup_delays++;
     return;
   }
 
-  while (radio_uart_dequeue_frame(&item)) {
-    status = HAL_UART_Transmit(g_huart, item.data, item.len,
-                               radio_uart_tx_timeout_ms(item.len));
+  while (sent < RADIO_UART_TX_FRAMES_PER_SERVICE && radio_uart_dequeue_frame(&item)) {
+    g_tx_dma_item = item;
+    g_tx_dma_busy = 1U;
+    (void)HAL_UART_AbortReceive(g_huart);
+    status = HAL_UART_Transmit_DMA(g_huart, g_tx_dma_item.data, g_tx_dma_item.len);
     if (status != HAL_OK) {
+      g_tx_dma_busy = 0U;
       g_tx_errors++;
-      if (status == HAL_TIMEOUT) {
-        g_tx_timeouts++;
-      } else if (status == HAL_BUSY) {
+      if (status == HAL_BUSY) {
         g_tx_busy++;
       }
       (void)HAL_UART_AbortTransmit(g_huart);
+      if (radio_uart_start_rx() != HAL_OK) {
+        g_tx_rx_restart_after_tx_errors++;
+      }
       break;
     }
 
     HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
-    g_tx_ok++;
+    g_tx_dma_started++;
+    sent++;
   }
 }
 
@@ -589,6 +678,7 @@ void radio_uart_process_rx(void)
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
   if (!g_huart) return;
   if (huart->Instance != g_huart->Instance) return;
+  if (g_tx_dma_busy) return;
   g_rx_irq_events++;
 
   if (Size > 0) {
@@ -601,13 +691,28 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
   }
 }
 
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (!g_huart) return;
+  if (huart->Instance != g_huart->Instance) return;
+
+  g_tx_dma_busy = 0U;
+  g_tx_ok++;
+  g_tx_dma_complete++;
+  if (radio_uart_start_rx() != HAL_OK) {
+    g_tx_rx_restart_after_tx_errors++;
+  }
+}
+
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
   if (!g_huart) return;
   if (huart->Instance != g_huart->Instance) return;
 
   g_rx_errors++;
+  g_tx_dma_busy = 0U;
   (void)HAL_UART_AbortReceive(huart);
+  (void)HAL_UART_AbortTransmit(huart);
   if (radio_uart_start_rx() != HAL_OK) {
     g_rx_restart_errors++;
   }

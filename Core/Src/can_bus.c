@@ -440,21 +440,25 @@ static inline int rb_pop(can_bus_rx_frame_t *out)
 }
 
 // =========================
-// HW FIFO drain (thread-only)
+// HW FIFO drain
 // =========================
 
 /*
- * Drain hardware RX FIFOs (and TX event FIFO for debug) into the ISR->thread
- * rings.
+ * Drain hardware RX FIFOs (and TX event FIFO for debug) into the software
+ * rings. Interrupt callbacks do this immediately; the thread drain is a
+ * fallback for polling mode or any missed notification.
  *
  * IMPORTANT:
- *  - Call ONLY from thread/main-loop context.
- *  - ISRs must not drain HW FIFOs; they only set pending flags.
+ *  - Reassembly and subscriber callbacks still happen only in thread context.
+ *  - Thread-side fallback masks IRQs while touching the FIFO/ring so the ring
+ *    has a single producer at a time.
  */
 static void can_bus_drain_hw_to_ring_thread(void)
 {
   if (!g_hfdcan)
     return;
+
+  __disable_irq();
 
   /* RX FIFO0 */
   if (g_rx_fifo0_pending || (HAL_FDCAN_GetRxFifoFillLevel(g_hfdcan, FDCAN_RX_FIFO0) > 0))
@@ -480,6 +484,8 @@ static void can_bus_drain_hw_to_ring_thread(void)
 #else
   (void)g_txevt_pending;
 #endif
+
+  __enable_irq();
 }
 
 // =========================
@@ -1026,22 +1032,26 @@ void can_bus_process_rx(void)
 
 void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
 {
-  (void)hfdcan;
-  if ((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) == 0)
+  if ((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) == 0 ||
+      hfdcan == NULL ||
+      hfdcan != g_hfdcan)
     return;
 
   g_fdcan_irq_count++;
-  g_rx_fifo0_pending = 1;
+  can_bus_drain_rx_fifo(hfdcan, FDCAN_RX_FIFO0);
+  g_rx_fifo0_pending = 0;
 }
 
 void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo1ITs)
 {
-  (void)hfdcan;
-  if ((RxFifo1ITs & FDCAN_IT_RX_FIFO1_NEW_MESSAGE) == 0)
+  if ((RxFifo1ITs & FDCAN_IT_RX_FIFO1_NEW_MESSAGE) == 0 ||
+      hfdcan == NULL ||
+      hfdcan != g_hfdcan)
     return;
 
   g_fdcan_irq_count++;
-  g_rx_fifo1_pending = 1;
+  can_bus_drain_rx_fifo(hfdcan, FDCAN_RX_FIFO1);
+  g_rx_fifo1_pending = 0;
 }
 
 // TX event FIFO callback (called in ISR context). We read all new events
