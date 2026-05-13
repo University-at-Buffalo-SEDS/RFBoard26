@@ -113,9 +113,7 @@ static void gps_emit_satellite_count(uint8_t satellite_count,
                                                    &satellite_count,
                                                    1,
                                                    sizeof(uint8_t));
-    printf("GPS telemetry queued satellites=%u result=%ld\r\n",
-           (unsigned)satellite_count,
-           (long)result);
+    (void)result;
     *next_emit_ms = now_ms + interval_ms;
 #else
     (void)satellite_count;
