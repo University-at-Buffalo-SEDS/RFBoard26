@@ -65,6 +65,8 @@ HAL_StatusTypeDef radio_uart_send_plaintext(const uint8_t *bytes, size_t len);
 HAL_StatusTypeDef radio_uart_send_command_frame(const uint8_t *bytes, size_t len);
 uint8_t radio_uart_tx_ready(void);
 uint8_t radio_uart_tx_busy(void);
+uint8_t radio_uart_air_busy(void);
+uint32_t radio_uart_tx_queue_count(void);
 radio_uart_stats_t radio_uart_stats_snapshot(void);
 void radio_uart_process_tx(void);
 void radio_uart_process_tx_with_budget(uint32_t budget_ms);

@@ -16,11 +16,15 @@ TX_THREAD telemetry_thread;
 #define RADIO_WINDOW_DOWNLINK_OPEN 0U
 #define RADIO_WINDOW_UPLINK_OPEN 1U
 #define RADIO_DOWNLINK_WINDOW_MS 500U
-#define RADIO_UPLINK_WINDOW_MS 500U
-#define RADIO_TX_GUARD_MS 75U
-#define RADIO_UPLINK_TURNAROUND_MS 250U
+#define RADIO_UPLINK_WINDOW_MS 1500U
+#define RADIO_TX_GUARD_MS 50U
 #define TELEMETRY_DISCOVERY_ANNOUNCE_INTERVAL_MS 2000ULL
 #define TELEMETRY_THREAD_PRIORITY 3U
+
+static volatile uint32_t g_radio_downlink_windows = 0U;
+static volatile uint32_t g_radio_uplink_windows = 0U;
+static volatile uint32_t g_radio_downlink_tx_calls = 0U;
+static volatile uint32_t g_radio_uplink_rx_only_loops = 0U;
 
 static uint64_t radio_window_now_ms(void)
 {
@@ -58,6 +62,7 @@ static void telemetry_process_radio_tx_if_allowed(uint8_t uplink_open,
     }
 
     radio_uart_process_tx_with_budget((uint32_t)(remaining_ms - RADIO_TX_GUARD_MS));
+    g_radio_downlink_tx_calls++;
 }
 
 static void telemetry_announce_discovery_if_due(uint64_t now_ms,
@@ -91,7 +96,8 @@ static void telemetry_print_alive_if_due(uint64_t now_ms, uint64_t *next_print_m
            "rx_bad_len=%lu rx_errors=%lu rx_restarts=%lu tx_ok=%lu tx_errors=%lu "
            "tx_busy_count=%lu tx_enqueued=%lu tx_queue=%lu tx_budget_misses=%lu "
            "aux=%lu mode0_pins=%lu aux_busy=%lu tx_dma_started=%lu tx_dma_complete=%lu "
-           "tx_startup_drops=%lu last_rx_len=%lu last_rx_preview=",
+           "tx_startup_drops=%lu win_down=%lu win_up=%lu down_tx_calls=%lu up_rx_loops=%lu "
+           "last_rx_len=%lu last_rx_preview=",
            (unsigned long)(uint32_t)now_ms,
            (unsigned long)radio_uart_tx_ready(),
            (unsigned long)radio_uart_tx_busy(),
@@ -115,6 +121,10 @@ static void telemetry_print_alive_if_due(uint64_t now_ms, uint64_t *next_print_m
            (unsigned long)radio_stats.tx_dma_started,
            (unsigned long)radio_stats.tx_dma_complete,
            (unsigned long)radio_stats.tx_startup_drops,
+           (unsigned long)g_radio_downlink_windows,
+           (unsigned long)g_radio_uplink_windows,
+           (unsigned long)g_radio_downlink_tx_calls,
+           (unsigned long)g_radio_uplink_rx_only_loops,
            (unsigned long)radio_stats.last_rx_len);
     for (uint8_t i = 0U; i < radio_stats.last_rx_preview_len; i++) {
         printf("%02X%s",
@@ -165,10 +175,16 @@ void telemetry_thread_entry(ULONG initial_input)
             if (!radio_window_started) {
                 radio_window_started = 1U;
                 radio_uplink_open = 0U;
+                g_radio_downlink_windows++;
                 radio_window_deadline_ms = now_ms + RADIO_DOWNLINK_WINDOW_MS;
                 telemetry_emit_radio_window(0U, RADIO_DOWNLINK_WINDOW_MS);
             } else if (now_ms >= radio_window_deadline_ms && !radio_uart_tx_busy()) {
                 radio_uplink_open = !radio_uplink_open;
+                if (radio_uplink_open) {
+                    g_radio_uplink_windows++;
+                } else {
+                    g_radio_downlink_windows++;
+                }
                 radio_window_deadline_ms =
                     now_ms + (radio_uplink_open ? RADIO_UPLINK_WINDOW_MS : RADIO_DOWNLINK_WINDOW_MS);
                 telemetry_emit_radio_window(
@@ -177,6 +193,9 @@ void telemetry_thread_entry(ULONG initial_input)
                         radio_uplink_open,
                         radio_uplink_open ? RADIO_UPLINK_WINDOW_MS : RADIO_DOWNLINK_WINDOW_MS));
             }
+        }
+        if (radio_uplink_open) {
+            g_radio_uplink_rx_only_loops++;
         }
         telemetry_process_radio_tx_if_allowed(radio_uplink_open, now_ms, radio_window_deadline_ms);
         can_bus_process_rx();

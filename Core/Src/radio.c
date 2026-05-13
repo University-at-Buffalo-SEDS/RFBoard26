@@ -46,7 +46,7 @@
 #endif
 
 #ifndef RADIO_AIR_BIT_RATE_BPS
-#define RADIO_AIR_BIT_RATE_BPS 4800U
+#define RADIO_AIR_BIT_RATE_BPS 2400U
 #endif
 
 #ifndef RADIO_AIR_FRAME_OVERHEAD_BYTES
@@ -54,7 +54,7 @@
 #endif
 
 #ifndef RADIO_TX_COOLDOWN_MS
-#define RADIO_TX_COOLDOWN_MS 0U
+#define RADIO_TX_COOLDOWN_MS 25U
 #endif
 
 #if defined(RADIO_E22_M0_GPIO_Port) && defined(RADIO_E22_M0_Pin) && \
@@ -496,7 +496,7 @@ static uint32_t radio_uart_air_ms(uint16_t len)
 {
   uint32_t air_bps = RADIO_AIR_BIT_RATE_BPS;
   if (air_bps == 0U) {
-    air_bps = 4800U;
+    air_bps = 2400U;
   }
   const uint64_t bytes = (uint64_t)len + (uint64_t)RADIO_AIR_FRAME_OVERHEAD_BYTES;
   return (uint32_t)(((bytes * 10ULL * 1000ULL) + (uint64_t)air_bps - 1ULL) /
@@ -509,6 +509,11 @@ static void radio_uart_mark_tx_quiet(uint16_t len)
   g_tx_quiet_until_ms = radio_now_ms() + quiet_ms;
 }
 
+uint8_t radio_uart_air_busy(void)
+{
+  return (radio_now_ms() < g_tx_quiet_until_ms) ? 1U : 0U;
+}
+
 uint8_t radio_uart_tx_ready(void)
 {
   uint32_t now_ms = radio_now_ms();
@@ -517,7 +522,12 @@ uint8_t radio_uart_tx_ready(void)
 
 uint8_t radio_uart_tx_busy(void)
 {
-  return g_tx_dma_busy;
+  return (g_tx_dma_busy || radio_uart_air_busy()) ? 1U : 0U;
+}
+
+uint32_t radio_uart_tx_queue_count(void)
+{
+  return g_tx_count;
 }
 
 radio_uart_stats_t radio_uart_stats_snapshot(void)
@@ -666,6 +676,10 @@ HAL_StatusTypeDef radio_uart_send_command_frame(const uint8_t *bytes, size_t len
   if (!radio_e22_ready_for_uart()) {
     return HAL_BUSY;
   }
+  if (radio_uart_air_busy()) {
+    g_tx_busy++;
+    return HAL_BUSY;
+  }
 
   framed[0] = RADIO_UART_COMMAND_SYNC_0;
   framed[1] = RADIO_UART_COMMAND_SYNC_1;
@@ -686,6 +700,7 @@ HAL_StatusTypeDef radio_uart_send_command_frame(const uint8_t *bytes, size_t len
   if (status == HAL_OK) {
     g_tx_ok++;
     HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
+    radio_uart_mark_tx_quiet((uint16_t)(RADIO_UART_FRAME_HEADER_SIZE + len));
   } else {
     g_tx_errors++;
   }
@@ -712,7 +727,7 @@ void radio_uart_process_tx_with_budget(uint32_t budget_ms)
     return;
   }
 
-  if (!radio_uart_tx_ready() || g_tx_dma_busy || !radio_e22_ready_for_uart()) {
+  if (!radio_uart_tx_ready() || g_tx_dma_busy || radio_uart_air_busy() || !radio_e22_ready_for_uart()) {
     g_tx_startup_delays++;
     return;
   }
