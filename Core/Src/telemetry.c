@@ -370,12 +370,10 @@ static void telemetry_radio_rx(const uint8_t *data, size_t len, void *user) {
 
   if (is_flight_command) {
     const uint32_t flight_computer_can_id = 0x03U;
+#if COMMAND_TRACE_PRINTS
     HAL_StatusTypeDef can_status;
-#if COMMAND_TRACE_PRINTS
     printf("Ground station flight command RX: len=%u\r\n", (unsigned)len);
-#endif
     can_status = can_bus_send_large(data, len, flight_computer_can_id);
-#if COMMAND_TRACE_PRINTS
     if (can_status == HAL_OK) {
       printf("Flight computer CAN command TX: id=0x%03lx len=%u\r\n",
              (unsigned long)flight_computer_can_id,
@@ -386,6 +384,8 @@ static void telemetry_radio_rx(const uint8_t *data, size_t len, void *user) {
              (unsigned)len,
              (long)can_status);
     }
+#else
+    (void)can_bus_send_large(data, len, flight_computer_can_id);
 #endif
     return;
   }

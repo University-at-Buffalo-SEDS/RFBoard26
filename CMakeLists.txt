@@ -88,11 +88,11 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 # Telemetry Library
 set(SEDSPRINTF_RS_DEVICE_IDENTIFIER "RF" CACHE STRING "" FORCE)
 set(SEDSPRINTF_RS_MAX_STACK_PAYLOAD "128" CACHE STRING "" FORCE)
-set(SEDSPRINTF_RS_ENV_MAX_QUEUE_SIZE "1024" CACHE STRING "" FORCE)
-set(SEDSPRINTF_RS_ENV_STARTING_QUEUE_SIZE "512" CACHE STRING "" FORCE)
+set(SEDSPRINTF_RS_ENV_MAX_QUEUE_SIZE "256" CACHE STRING "" FORCE)
+set(SEDSPRINTF_RS_ENV_STARTING_QUEUE_SIZE "128" CACHE STRING "" FORCE)
 set(SEDSPRINTF_RS_ENV_QUEUE_GROW_STEP "1.25" CACHE STRING "" FORCE)
-set(SEDSPRINTF_RS_ENV_MAX_RECENT_RX_IDS "32" CACHE STRING "" FORCE)
-set(SEDSPRINTF_RS_ENV_STARTING_RECENT_RX_IDS "16" CACHE STRING "" FORCE)
+set(SEDSPRINTF_RS_ENV_MAX_RECENT_RX_IDS "16" CACHE STRING "" FORCE)
+set(SEDSPRINTF_RS_ENV_STARTING_RECENT_RX_IDS "8" CACHE STRING "" FORCE)
 set(SEDSPRINTF_RS_ENV_PAYLOAD_COMPRESS_THRESHOLD "30" CACHE STRING "" FORCE)
 add_subdirectory(${CMAKE_SOURCE_DIR}/sedsprintf_rs)
 target_link_libraries(${CMAKE_PROJECT_NAME} sedsprintf_rs)
@@ -102,9 +102,10 @@ set(TELEMETRY_TIMESYNC_ANNOUNCE_INTERVAL_MS "2000" CACHE STRING "Time sync annou
 set(TELEMETRY_TIMESYNC_REQUEST_INTERVAL_MS "2000" CACHE STRING "Time sync request interval in milliseconds." FORCE)
 set(SEDSPRINTF_RS_FORCE_RELEASE ON CACHE BOOL "Build the Rust telemetry library in release mode even for Debug firmware builds" FORCE)
 
-# Option defaults to ON
+# Option defaults
 option(ENABLE_TELEMETRY "Enable the telemetry subsystem" ON)
-option(ENABLE_COMMAND_TRACE_PRINTS "Print ground-station command RX and flight-computer CAN TX events" ON)
+option(ENABLE_COMMAND_TRACE_PRINTS "Print ground-station command RX and flight-computer CAN TX events" OFF)
+set(ENABLE_COMMAND_TRACE_PRINTS OFF CACHE BOOL "Print ground-station command RX and flight-computer CAN TX events" FORCE)
 
 # Print its state for debugging
 message(STATUS "Telemetry enabled: ${ENABLE_TELEMETRY}")
