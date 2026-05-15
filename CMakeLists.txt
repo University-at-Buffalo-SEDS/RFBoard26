@@ -104,7 +104,7 @@ set(SEDSPRINTF_RS_FORCE_RELEASE ON CACHE BOOL "Build the Rust telemetry library 
 
 # Option defaults to ON
 option(ENABLE_TELEMETRY "Enable the telemetry subsystem" ON)
-option(ENABLE_COMMAND_TRACE_PRINTS "Print ground-station command RX and flight-computer CAN TX events" OFF)
+option(ENABLE_COMMAND_TRACE_PRINTS "Print ground-station command RX and flight-computer CAN TX events" ON)
 
 # Print its state for debugging
 message(STATUS "Telemetry enabled: ${ENABLE_TELEMETRY}")

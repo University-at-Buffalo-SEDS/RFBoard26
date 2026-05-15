@@ -49,6 +49,7 @@ SedsResult log_error_syncronous(const char *fmt, ...);
 SedsResult telemetry_poll_timesync(void);
 SedsResult telemetry_announce_discovery(void);
 SedsResult telemetry_poll_discovery(void);
+uint8_t telemetry_radio_scheduler_handle_command(const uint8_t *data, size_t len);
 
 uint64_t telemetry_now_ms(void);
 uint64_t telemetry_unix_ms(void);

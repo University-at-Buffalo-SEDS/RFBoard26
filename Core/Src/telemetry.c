@@ -52,12 +52,17 @@ static void print_data_no_telem(void *data, size_t len) {
 
 #define TELEMETRY_TIMESYNC_ROLE_CONSUMER 0U
 #define TELEMETRY_TIMESYNC_ROLE_SOURCE 1U
+#define TELEMETRY_SEDS_FLAG_COMPRESSED_SENDER 0x02U
+#define TELEMETRY_SEDS_ENDPOINT_BITMAP_BYTES 2U
+#define TELEMETRY_SEDS_CRC_BYTES 4U
 
 static uint8_t g_can_rx_subscribed = 0U;
 static uint8_t g_radio_rx_subscribed = 0U;
 static int32_t g_can_side_id = -1;
 static int32_t g_radio_side_id = -1;
 static uint32_t g_pending_radio_flight_commands = 0U;
+static size_t g_pending_radio_flight_command_len = 0U;
+static uint32_t g_pending_radio_flight_command_crc = 0U;
 static uint8_t g_local_unix_valid = 0U;
 static uint64_t g_local_unix_ms = 0ULL;
 
@@ -86,24 +91,11 @@ static uint32_t telemetry_timesync_role(void) {
                                         : TELEMETRY_TIMESYNC_ROLE_CONSUMER;
 }
 
-static bool telemetry_packet_has_endpoint(const SedsPacketView *pkt, uint32_t endpoint) {
-  if (!pkt || !pkt->endpoints) {
-    return false;
-  }
-
-  for (size_t i = 0U; i < pkt->num_endpoints; i++) {
-    if (pkt->endpoints[i] == endpoint) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 static bool telemetry_is_flight_command_packet(const uint8_t *bytes, size_t len) {
-  bool is_flight_command = false;
+  const uint32_t endpoint = (uint32_t)SEDS_EP_FLIGHT_CONTROLLER;
   SedsOwnedHeader *header = NULL;
   SedsPacketView view;
+  bool matched = false;
 
   if (!bytes || len == 0U) {
     return false;
@@ -115,87 +107,32 @@ static bool telemetry_is_flight_command_packet(const uint8_t *bytes, size_t len)
   }
 
   memset(&view, 0, sizeof(view));
-  if (seds_owned_header_view(header, &view) == SEDS_OK) {
-    is_flight_command =
-        (view.ty == (uint32_t)SEDS_DT_FLIGHT_COMMAND) &&
-        telemetry_packet_has_endpoint(&view, (uint32_t)SEDS_EP_FLIGHT_CONTROLLER);
+  if (seds_owned_header_view(header, &view) == SEDS_OK &&
+      view.ty == (uint32_t)SEDS_DT_FLIGHT_COMMAND &&
+      view.endpoints != NULL) {
+    for (size_t i = 0U; i < view.num_endpoints; i++) {
+      if (view.endpoints[i] == endpoint) {
+        matched = true;
+        break;
+      }
+    }
   }
 
   seds_owned_header_free(header);
-  return is_flight_command;
+  return matched;
 }
 
-#if COMMAND_TRACE_PRINTS
-static void telemetry_print_flight_command_packet(const SedsPacketView *view) {
-  size_t preview_len = 0U;
-
-  if (!view) {
-    return;
+static uint32_t telemetry_packet_wire_crc(const uint8_t *bytes, size_t len) {
+  if (!bytes || len < TELEMETRY_SEDS_CRC_BYTES) {
+    return 0U;
   }
 
-  preview_len = view->payload_len;
-  if (preview_len > 8U) {
-    preview_len = 8U;
-  }
-
-  printf("Flight command radio RX: ty=%lu endpoints=%u payload_len=%u sender=%.*s payload=",
-         (unsigned long)view->ty,
-         (unsigned)view->num_endpoints,
-         (unsigned)view->payload_len,
-         (int)view->sender_len,
-         view->sender ? view->sender : "");
-
-  if (view->payload) {
-    for (size_t i = 0U; i < preview_len; i++) {
-      printf("%02X%s", view->payload[i], (i + 1U < preview_len) ? " " : "");
-    }
-  }
-  if (view->payload_len > preview_len) {
-    printf(" ...");
-  }
-  printf("\r\n");
+  const size_t offset = len - TELEMETRY_SEDS_CRC_BYTES;
+  return (uint32_t)bytes[offset] |
+         ((uint32_t)bytes[offset + 1U] << 8U) |
+         ((uint32_t)bytes[offset + 2U] << 16U) |
+         ((uint32_t)bytes[offset + 3U] << 24U);
 }
-
-static void telemetry_trace_radio_rx_frame(uint8_t command_frame,
-                                           const uint8_t *data,
-                                           size_t len) {
-  SedsOwnedPacket *packet = NULL;
-  SedsPacketView view;
-
-  if (command_frame) {
-    return;
-  }
-
-  if (!data || len == 0U) {
-    return;
-  }
-
-  packet = seds_pkt_deserialize_owned(data, len);
-  if (!packet) {
-    printf("Radio telemetry RX data frame failed to deserialize: len=%u\r\n", (unsigned)len);
-    return;
-  }
-
-  memset(&view, 0, sizeof(view));
-  if (seds_owned_pkt_view(packet, &view) == SEDS_OK) {
-    if (view.ty == (uint32_t)SEDS_DT_FLIGHT_COMMAND &&
-        telemetry_packet_has_endpoint(&view, (uint32_t)SEDS_EP_FLIGHT_CONTROLLER)) {
-      telemetry_print_flight_command_packet(&view);
-    } else {
-      printf("Radio telemetry RX data frame decoded: ty=%lu endpoints=%u payload_len=%u sender=%.*s\r\n",
-             (unsigned long)view.ty,
-             (unsigned)view.num_endpoints,
-             (unsigned)view.payload_len,
-             (int)view.sender_len,
-             view.sender ? view.sender : "");
-    }
-  } else {
-    printf("Radio telemetry RX data frame view failed: len=%u\r\n", (unsigned)len);
-  }
-
-  seds_owned_pkt_free(packet);
-}
-#endif
 
 static bool telemetry_unix_ms_to_utc(uint64_t unix_ms, int32_t *year, uint8_t *month,
                                      uint8_t *day, uint8_t *hour, uint8_t *minute,
@@ -340,7 +277,9 @@ SedsResult tx_send(const uint8_t *bytes, size_t len, void *user) {
   }
 
   is_radio_flight_command =
-      telemetry_is_flight_command_packet(bytes, len) && (g_pending_radio_flight_commands > 0U);
+      (g_pending_radio_flight_commands > 0U) &&
+      (len == g_pending_radio_flight_command_len) &&
+      (telemetry_packet_wire_crc(bytes, len) == g_pending_radio_flight_command_crc);
 
   status = can_bus_send_large(bytes, len, flight_computer_can_id);
 #if COMMAND_TRACE_PRINTS
@@ -409,12 +348,46 @@ static void telemetry_radio_rx(const uint8_t *data, size_t len, void *user) {
     return;
   }
 
+  if (radio_uart_current_rx_is_command_frame() &&
+      telemetry_radio_scheduler_handle_command(data, len)) {
+    return;
+  }
+
+  const bool is_flight_command = telemetry_is_flight_command_packet(data, len);
 #if COMMAND_TRACE_PRINTS
-  telemetry_trace_radio_rx_frame(radio_uart_current_rx_is_command_frame(), data, len);
+  printf("Radio uplink RX: kind=%s len=%u flight_command=%u preview=",
+         radio_uart_current_rx_is_command_frame() ? "command" : "data",
+         (unsigned)len,
+         is_flight_command ? 1U : 0U);
+  for (size_t i = 0U; i < len && i < 12U; i++) {
+    printf("%02X%s", data[i], (i + 1U < len && i + 1U < 12U) ? " " : "");
+  }
+  if (len > 12U) {
+    printf(" ...");
+  }
+  printf("\r\n");
 #endif
 
-  if (!radio_uart_current_rx_is_command_frame() && telemetry_is_flight_command_packet(data, len)) {
-    g_pending_radio_flight_commands++;
+  if (is_flight_command) {
+    const uint32_t flight_computer_can_id = 0x03U;
+    HAL_StatusTypeDef can_status;
+#if COMMAND_TRACE_PRINTS
+    printf("Ground station flight command RX: len=%u\r\n", (unsigned)len);
+#endif
+    can_status = can_bus_send_large(data, len, flight_computer_can_id);
+#if COMMAND_TRACE_PRINTS
+    if (can_status == HAL_OK) {
+      printf("Flight computer CAN command TX: id=0x%03lx len=%u\r\n",
+             (unsigned long)flight_computer_can_id,
+             (unsigned)len);
+    } else {
+      printf("Flight computer CAN command TX failed: id=0x%03lx len=%u status=%ld\r\n",
+             (unsigned long)flight_computer_can_id,
+             (unsigned)len,
+             (long)can_status);
+    }
+#endif
+    return;
   }
 
   if (g_radio_side_id >= 0) {
@@ -554,7 +527,7 @@ SedsResult init_telemetry_router(void) {
     g_can_side_id = -1;
   }
 
-  g_radio_side_id = seds_router_add_side_serialized(r, "radio", 5U, radio_tx_send, NULL, true);
+  g_radio_side_id = seds_router_add_side_serialized(r, "radio", 5U, radio_tx_send, NULL, false);
   if (g_radio_side_id < 0) {
     printf("Error: failed to add radio side: %ld\r\n", (long)g_radio_side_id);
     g_radio_side_id = -1;

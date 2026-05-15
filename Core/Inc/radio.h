@@ -68,8 +68,8 @@ uint8_t radio_uart_tx_busy(void);
 uint8_t radio_uart_air_busy(void);
 uint32_t radio_uart_tx_queue_count(void);
 radio_uart_stats_t radio_uart_stats_snapshot(void);
-void radio_uart_process_tx(void);
-void radio_uart_process_tx_with_budget(uint32_t budget_ms);
+uint32_t radio_uart_process_tx(void);
+uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms);
 uint8_t radio_uart_current_rx_is_command_frame(void);
 
 /* Subscribe a callback that is invoked from radio_uart_process_rx() in thread context. */

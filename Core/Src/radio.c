@@ -46,7 +46,7 @@
 #endif
 
 #ifndef RADIO_AIR_BIT_RATE_BPS
-#define RADIO_AIR_BIT_RATE_BPS 2400U
+#define RADIO_AIR_BIT_RATE_BPS 9600U
 #endif
 
 #ifndef RADIO_AIR_FRAME_OVERHEAD_BYTES
@@ -253,26 +253,6 @@ static void radio_uart_store_preview(volatile uint8_t *dst,
   }
   *dst_len = (uint8_t)preview_len;
 }
-
-#if COMMAND_TRACE_PRINTS
-static void radio_uart_trace_bytes(const char *prefix, const uint8_t *data, size_t len) {
-  size_t preview_len = len;
-  if (preview_len > 16U) {
-    preview_len = 16U;
-  }
-
-  printf("%s len=%u preview=", prefix ? prefix : "radio", (unsigned)len);
-  if (data) {
-    for (size_t i = 0U; i < preview_len; i++) {
-      printf("%02X%s", data[i], (i + 1U < preview_len) ? " " : "");
-    }
-  }
-  if (len > preview_len) {
-    printf(" ...");
-  }
-  printf("\r\n");
-}
-#endif
 
 static HAL_StatusTypeDef radio_uart_lock_tx_queue(void) {
   if (!g_radio_tx_queue_mutex_ready) {
@@ -509,6 +489,33 @@ static void radio_uart_mark_tx_quiet(uint16_t len)
   g_tx_quiet_until_ms = radio_now_ms() + quiet_ms;
 }
 
+static uint8_t radio_uart_reserve_airtime(uint16_t len, uint32_t budget_ms)
+{
+  const uint32_t now_ms = radio_now_ms();
+  const uint32_t wait_ms = (g_tx_quiet_until_ms > now_ms) ? (g_tx_quiet_until_ms - now_ms) : 0U;
+  const uint32_t air_ms = radio_uart_air_ms(len) + RADIO_TX_COOLDOWN_MS;
+
+  if (budget_ms != 0xFFFFFFFFUL &&
+      (wait_ms >= budget_ms || air_ms > (uint32_t)(budget_ms - wait_ms))) {
+    return 0U;
+  }
+
+  g_tx_quiet_until_ms = now_ms + wait_ms + air_ms;
+  return 1U;
+}
+
+static uint32_t radio_uart_available_air_budget(uint32_t budget_ms)
+{
+  const uint32_t now_ms = radio_now_ms();
+  const uint32_t wait_ms = (g_tx_quiet_until_ms > now_ms) ? (g_tx_quiet_until_ms - now_ms) : 0U;
+
+  if (budget_ms == 0xFFFFFFFFUL) {
+    return budget_ms;
+  }
+
+  return (wait_ms < budget_ms) ? (uint32_t)(budget_ms - wait_ms) : 0U;
+}
+
 uint8_t radio_uart_air_busy(void)
 {
   return (radio_now_ms() < g_tx_quiet_until_ms) ? 1U : 0U;
@@ -691,6 +698,7 @@ HAL_StatusTypeDef radio_uart_send_command_frame(const uint8_t *bytes, size_t len
     return HAL_BUSY;
   }
   g_tx_dma_busy = 1U;
+  (void)HAL_UART_AbortReceive(g_huart);
   status = HAL_UART_Transmit(
       g_huart,
       framed,
@@ -704,38 +712,53 @@ HAL_StatusTypeDef radio_uart_send_command_frame(const uint8_t *bytes, size_t len
   } else {
     g_tx_errors++;
   }
+  if (radio_uart_start_rx() != HAL_OK) {
+    g_rx_restart_errors++;
+  }
 
   return status;
 }
 
-void radio_uart_process_tx(void)
+uint32_t radio_uart_process_tx(void)
 {
-  radio_uart_process_tx_with_budget(0xFFFFFFFFUL);
+  return radio_uart_process_tx_with_budget(0xFFFFFFFFUL);
 }
 
-void radio_uart_process_tx_with_budget(uint32_t budget_ms)
+uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
 {
   radio_tx_item_t item;
   HAL_StatusTypeDef status;
   uint32_t sent = 0U;
 
   if (!g_huart) {
-    return;
+    return 0U;
   }
 
   if (RFBOARD_RADIO_LISTEN_ONLY) {
-    return;
+    return 0U;
   }
 
-  if (!radio_uart_tx_ready() || g_tx_dma_busy || radio_uart_air_busy() || !radio_e22_ready_for_uart()) {
+  if (!radio_uart_tx_ready() || g_tx_dma_busy || !radio_e22_ready_for_uart()) {
     g_tx_startup_delays++;
-    return;
+    return 0U;
+  }
+
+  const uint32_t available_air_budget = radio_uart_available_air_budget(budget_ms);
+  if (available_air_budget == 0U) {
+    g_tx_budget_misses++;
+    return 0U;
   }
 
   while (sent < RADIO_UART_TX_FRAMES_PER_SERVICE &&
-         radio_uart_dequeue_frame_with_budget(&item, budget_ms)) {
+         radio_uart_dequeue_frame_with_budget(&item, available_air_budget)) {
+    if (!radio_uart_reserve_airtime(item.len, budget_ms)) {
+      (void)radio_uart_enqueue_frame(item.data, item.len);
+      return sent;
+    }
+
     g_tx_dma_item = item;
     g_tx_dma_busy = 1U;
+    (void)HAL_UART_AbortReceive(g_huart);
     status = HAL_UART_Transmit_DMA(g_huart, g_tx_dma_item.data, g_tx_dma_item.len);
     if (status != HAL_OK) {
       g_tx_dma_busy = 0U;
@@ -744,6 +767,10 @@ void radio_uart_process_tx_with_budget(uint32_t budget_ms)
         g_tx_busy++;
       }
       (void)HAL_UART_AbortTransmit(g_huart);
+      g_tx_quiet_until_ms = radio_now_ms();
+      if (radio_uart_start_rx() != HAL_OK) {
+        g_rx_restart_errors++;
+      }
       break;
     }
 
@@ -751,6 +778,8 @@ void radio_uart_process_tx_with_budget(uint32_t budget_ms)
     g_tx_dma_started++;
     sent++;
   }
+
+  return sent;
 }
 
 HAL_StatusTypeDef radio_uart_subscribe_rx(radio_rx_cb_t cb, void *user) {
@@ -880,9 +909,6 @@ static void radio_process_framed_bytes(const uint8_t *data, size_t len)
         (size_t)g_frame_buf[2] | ((size_t)g_frame_buf[3] << 8U);
     if (payload_len == 0U || payload_len > RADIO_UART_MAX_PAYLOAD_SIZE) {
       g_rx_bad_len++;
-#if COMMAND_TRACE_PRINTS
-      radio_uart_trace_bytes("Radio UART RX bad frame length", g_frame_buf, g_frame_len);
-#endif
       radio_frame_buf_consume(1U);
       continue;
     }
@@ -891,13 +917,6 @@ static void radio_process_framed_bytes(const uint8_t *data, size_t len)
       return;
     }
 
-#if COMMAND_TRACE_PRINTS
-    radio_uart_trace_bytes(is_command_frame ? "Radio UART RX command frame"
-                           : is_ascii_frame ? "Radio UART RX ascii frame"
-                                            : "Radio UART RX data frame",
-                           &g_frame_buf[RADIO_UART_FRAME_HEADER_SIZE],
-                           payload_len);
-#endif
     g_current_rx_is_command_frame = is_command_frame;
     g_last_frame_payload_len = (uint16_t)payload_len;
     g_last_frame_kind = is_command_frame ? 2U : (is_ascii_frame ? 3U : 1U);
@@ -1004,7 +1023,9 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
   g_tx_dma_busy = 0U;
   g_tx_ok++;
   g_tx_dma_complete++;
-  radio_uart_mark_tx_quiet(g_tx_dma_item.len);
+  if (radio_uart_start_rx() != HAL_OK) {
+    g_rx_restart_errors++;
+  }
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
