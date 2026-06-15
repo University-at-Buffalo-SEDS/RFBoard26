@@ -91,7 +91,6 @@ TX_THREAD neom9n_thread;
 volatile uint8_t g_neom9n_has_fix = 0U;
 #define NEOM9N_THREAD_STACK_SIZE (9 * 1024u)
 #define GPS_LINK_WARNING_INTERVAL_MS (5ULL * 60ULL * 1000ULL)
-#define GPS_DATA_LOG_INTERVAL_MS 750ULL
 #define GPS_SATELLITE_LOG_INTERVAL_MS 1000ULL
 #define GPS_NO_DATA_SATELLITE_LOG_INTERVAL_MS 5000ULL
 #define GPS_SATELLITE_STALE_MS 5000UL
@@ -292,7 +291,6 @@ void neom9n_thread_entry(ULONG initial_input)
                 float fake[3] = {TELEMETRY_TEST_LAT, TELEMETRY_TEST_LON, TELEMETRY_TEST_ALT_M};
                 log_telemetry_asynchronous(SEDS_DT_GPS_DATA, fake, 3, sizeof(float));
                 printf("GPS TEST MODE: emitted fake GPS data\r\n");
-                next_gps_data_log_ms = now_local_ms + GPS_DATA_LOG_INTERVAL_MS;
             }
             tx_thread_sleep(50);
 
@@ -408,9 +406,6 @@ void neom9n_thread_entry(ULONG initial_input)
                 printf("==============================\n");
                 }
 #endif
-                if (gps_data_log_due) {
-                    next_gps_data_log_ms = local_ms + GPS_DATA_LOG_INTERVAL_MS;
-                }
             }
             else
             {
