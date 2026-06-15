@@ -89,16 +89,54 @@ static uint64_t wrap_day_ms(uint64_t ms) {
 /* Stack + TCB for neom9n thread */
 TX_THREAD neom9n_thread;
 volatile uint8_t g_neom9n_has_fix = 0U;
-volatile uint8_t g_neom9n_satellite_count = 0U;
-volatile uint32_t g_neom9n_satellite_update_tick = 0U;
 #define NEOM9N_THREAD_STACK_SIZE (9 * 1024u)
 #define GPS_LINK_WARNING_INTERVAL_MS (5ULL * 60ULL * 1000ULL)
 #define GPS_DATA_LOG_INTERVAL_MS 750ULL
+#define GPS_SATELLITE_LOG_INTERVAL_MS 1000ULL
+#define GPS_SATELLITE_STALE_MS 5000UL
 #define GPS_ERROR_LOG_INTERVAL_MS (5ULL * 60ULL * 1000ULL)
 #define GPS_CONSECUTIVE_ERROR_THRESHOLD 20U
 #define GPS_SPI_RECOVERY_ERROR_THRESHOLD 3U
 #define GPS_SPI_RECOVERY_INTERVAL_MS 5000ULL
 #define GPS_NO_FIX_ERROR_THRESHOLD 100U
+
+static uint8_t gps_satellite_count_or_zero(const NEOM9N_t *packet) {
+    if (packet == NULL || packet->last_satellite_update_tick == 0U) {
+        return 0U;
+    }
+
+    if ((uint32_t)(HAL_GetTick() - packet->last_satellite_update_tick) >
+        (uint32_t)GPS_SATELLITE_STALE_MS) {
+        return 0U;
+    }
+
+    return packet->num_satellites;
+}
+
+static void gps_emit_satellite_count_if_due(const NEOM9N_t *packet,
+                                            uint64_t now_ms,
+                                            uint64_t *next_emit_ms) {
+#if PRODUCTION_MODE
+    const uint8_t satellite_count = gps_satellite_count_or_zero(packet);
+    SedsResult result;
+
+    if (now_ms < *next_emit_ms) {
+        return;
+    }
+
+    result = log_telemetry_asynchronous(SEDS_DT_GPS_SATELLITE_NUMBER,
+                                        &satellite_count,
+                                        1U,
+                                        sizeof(satellite_count));
+    if (result == SEDS_OK) {
+        *next_emit_ms = now_ms + GPS_SATELLITE_LOG_INTERVAL_MS;
+    }
+#else
+    (void)packet;
+    (void)now_ms;
+    (void)next_emit_ms;
+#endif
+}
 
 static void gps_log_initial_link_warning(void) {
 #if GPS_TEST_MODE
@@ -221,9 +259,9 @@ void neom9n_thread_entry(ULONG initial_input)
     bool gps_no_fix_warning_sent = false;
     uint64_t next_initial_link_warning_ms = tx_now_ms() + GPS_LINK_WARNING_INTERVAL_MS;
     uint64_t next_gps_data_log_ms = 0ULL;
+    uint64_t next_gps_satellite_log_ms = 0ULL;
     uint64_t next_gps_error_log_ms[4] = {0ULL, 0ULL, 0ULL, 0ULL};
     uint64_t next_gps_spi_recover_ms = 0ULL;
-    uint32_t last_published_satellite_update_tick = 0U;
     // HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
 
     for michael
@@ -245,7 +283,9 @@ void neom9n_thread_entry(ULONG initial_input)
             // Emit a fixed GPS position payload occasionally
             if (now_local_ms >= next_gps_data_log_ms) {
                 float fake[3] = {TELEMETRY_TEST_LAT, TELEMETRY_TEST_LON, TELEMETRY_TEST_ALT_M};
-                log_telemetry_asynchronous(SEDS_DT_GPS_DATA, fake, 3, sizeof(float));
+                if (log_telemetry_asynchronous(SEDS_DT_GPS_DATA, fake, 3, sizeof(float)) == SEDS_OK) {
+                    next_gps_data_log_ms = now_local_ms + GPS_DATA_LOG_INTERVAL_MS;
+                }
                 printf("GPS TEST MODE: emitted fake GPS data\r\n");
             }
             tx_thread_sleep(50);
@@ -254,12 +294,9 @@ void neom9n_thread_entry(ULONG initial_input)
 #endif
         NEOM9N_status_t status = receive_nmea(&gps_packet, NMEA_MAX_WAIT, NMEA_MAX_IGNORES);
         const uint64_t now_ms = tx_now_ms();
-        if (gps_packet.last_satellite_update_tick != 0U &&
-            gps_packet.last_satellite_update_tick != last_published_satellite_update_tick) {
-            g_neom9n_satellite_count = gps_packet.num_satellites;
-            g_neom9n_satellite_update_tick = gps_packet.last_satellite_update_tick;
-            last_published_satellite_update_tick = gps_packet.last_satellite_update_tick;
-        }
+        gps_emit_satellite_count_if_due(&gps_packet,
+                                        now_ms,
+                                        &next_gps_satellite_log_ms);
 
         if (status == NEOM9N_OK)
         {
@@ -300,10 +337,12 @@ void neom9n_thread_entry(ULONG initial_input)
                 const bool gps_data_log_due = (local_ms >= next_gps_data_log_ms);
 #if PRODUCTION_MODE
                 if (gps_data_log_due) {
-                    log_telemetry_asynchronous(SEDS_DT_GPS_DATA,
-                                               gps_data_buffer,
-                                               3,
-                                               sizeof(float));
+                    if (log_telemetry_asynchronous(SEDS_DT_GPS_DATA,
+                                                   gps_data_buffer,
+                                                   3,
+                                                   sizeof(float)) == SEDS_OK) {
+                        next_gps_data_log_ms = local_ms + GPS_DATA_LOG_INTERVAL_MS;
+                    }
                 }
 #endif
                 /** 

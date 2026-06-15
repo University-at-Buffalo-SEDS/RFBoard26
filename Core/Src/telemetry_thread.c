@@ -30,8 +30,6 @@ TX_THREAD telemetry_thread;
 #define RADIO_SCHED_UPLINK_TO_DOWNLINK_TURNAROUND_MS 150ULL
 #define RADIO_SCHED_GS_TX_TURNAROUND_MS 100U
 #define TELEMETRY_DISCOVERY_ANNOUNCE_INTERVAL_MS 2000ULL
-#define TELEMETRY_GPS_SATELLITE_INTERVAL_MS 1000ULL
-#define TELEMETRY_GPS_SATELLITE_STALE_MS 5000U
 #define TELEMETRY_THREAD_PRIORITY 3U
 
 #ifndef TELEMETRY_ALIVE_PRINTS
@@ -192,31 +190,6 @@ static void telemetry_print_alive_if_due(uint64_t now_ms, uint64_t *next_print_m
 #endif
 }
 
-static void telemetry_emit_gps_satellite_count_if_due(uint64_t now_ms,
-                                                      uint64_t *next_emit_ms)
-{
-    static uint8_t last_sent_count = 0xFFU;
-    uint8_t satellite_count = 0U;
-    const uint32_t satellite_update_tick = g_neom9n_satellite_update_tick;
-
-    if (satellite_update_tick != 0U &&
-        (uint32_t)(HAL_GetTick() - satellite_update_tick) <=
-            (uint32_t)TELEMETRY_GPS_SATELLITE_STALE_MS) {
-        satellite_count = g_neom9n_satellite_count;
-    }
-
-    if (now_ms < *next_emit_ms && satellite_count == last_sent_count) {
-        return;
-    }
-
-    (void)log_telemetry_synchronous(SEDS_DT_GPS_SATELLITE_NUMBER,
-                                    &satellite_count,
-                                    1U,
-                                    sizeof(satellite_count));
-    last_sent_count = satellite_count;
-    *next_emit_ms = now_ms + TELEMETRY_GPS_SATELLITE_INTERVAL_MS;
-}
-
 static uint32_t telemetry_radio_downlink_budget_ms(uint64_t now_ms,
                                                    uint64_t turn_started_ms)
 {
@@ -245,7 +218,6 @@ void telemetry_thread_entry(ULONG initial_input)
     uint64_t next_grant_reannounce_ms = 0U;
     uint64_t next_idle_uplink_poll_ms = 0U;
     uint64_t next_discovery_announce_ms = 0U;
-    uint64_t next_gps_satellite_emit_ms = 0U;
     uint64_t next_alive_print_ms = 0U;
 
     // Ensure router exists early (so we can send requests immediately)
@@ -258,7 +230,6 @@ void telemetry_thread_entry(ULONG initial_input)
         radio_uart_process_rx();
         can_bus_process_rx();
         telemetry_retry_pending_can_commands();
-        telemetry_emit_gps_satellite_count_if_due(now_ms, &next_gps_satellite_emit_ms);
         telemetry_announce_discovery_if_due(now_ms, &next_discovery_announce_ms);
         (void)telemetry_poll_discovery();
         (void)process_rx_queue_timeout(TELEMETRY_QUEUE_BUDGET_MS);
