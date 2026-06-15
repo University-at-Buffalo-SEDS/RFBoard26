@@ -337,6 +337,7 @@ NEOM9N_status_t read_nmea_gga(NEOM9N_t *packet, uint32_t max_wait) {
             }
         }
         packet->num_satellites = val;
+        packet->last_satellite_update_tick = HAL_GetTick();
     }
 
     status = skip_field(packet, max_wait);    // HDOP

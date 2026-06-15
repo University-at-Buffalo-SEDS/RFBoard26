@@ -55,6 +55,9 @@ static void print_data_no_telem(void *data, size_t len) {
 #define TELEMETRY_SEDS_FLAG_COMPRESSED_SENDER 0x02U
 #define TELEMETRY_SEDS_ENDPOINT_BITMAP_BYTES 2U
 #define TELEMETRY_SEDS_CRC_BYTES 4U
+#define TELEMETRY_FLIGHT_CAN_ID 0x03U
+#define TELEMETRY_PENDING_CAN_DEPTH 8U
+#define TELEMETRY_PENDING_CAN_MAX_LEN 256U
 
 static uint8_t g_can_rx_subscribed = 0U;
 static uint8_t g_radio_rx_subscribed = 0U;
@@ -65,6 +68,17 @@ static size_t g_pending_radio_flight_command_len = 0U;
 static uint32_t g_pending_radio_flight_command_crc = 0U;
 static uint8_t g_local_unix_valid = 0U;
 static uint64_t g_local_unix_ms = 0ULL;
+
+typedef struct {
+  size_t len;
+  uint8_t data[TELEMETRY_PENDING_CAN_MAX_LEN];
+} TelemetryPendingCanCommand;
+
+static TelemetryPendingCanCommand g_pending_can[TELEMETRY_PENDING_CAN_DEPTH];
+static uint8_t g_pending_can_head = 0U;
+static uint8_t g_pending_can_tail = 0U;
+static uint8_t g_pending_can_count = 0U;
+static uint32_t g_pending_can_drops = 0U;
 
 RouterState g_router = {.r = NULL, .created = 0U, .start_time = 0ULL};
 
@@ -132,6 +146,75 @@ static uint32_t telemetry_packet_wire_crc(const uint8_t *bytes, size_t len) {
          ((uint32_t)bytes[offset + 1U] << 8U) |
          ((uint32_t)bytes[offset + 2U] << 16U) |
          ((uint32_t)bytes[offset + 3U] << 24U);
+}
+
+static void telemetry_note_flight_command_sent(const uint8_t *bytes, size_t len) {
+  if (g_pending_radio_flight_commands == 0U ||
+      len != g_pending_radio_flight_command_len ||
+      telemetry_packet_wire_crc(bytes, len) != g_pending_radio_flight_command_crc) {
+    return;
+  }
+
+  g_pending_radio_flight_commands--;
+}
+
+static bool telemetry_enqueue_pending_can_command(const uint8_t *bytes, size_t len) {
+  if (!bytes || len == 0U || len > TELEMETRY_PENDING_CAN_MAX_LEN) {
+    return false;
+  }
+
+  if (g_pending_can_count >= TELEMETRY_PENDING_CAN_DEPTH) {
+    g_pending_can_head = (uint8_t)((g_pending_can_head + 1U) % TELEMETRY_PENDING_CAN_DEPTH);
+    g_pending_can_count--;
+    g_pending_can_drops++;
+  }
+
+  g_pending_can[g_pending_can_tail].len = len;
+  memcpy(g_pending_can[g_pending_can_tail].data, bytes, len);
+  g_pending_can_tail = (uint8_t)((g_pending_can_tail + 1U) % TELEMETRY_PENDING_CAN_DEPTH);
+  g_pending_can_count++;
+  return true;
+}
+
+static HAL_StatusTypeDef telemetry_send_or_queue_can_command(const uint8_t *bytes, size_t len) {
+  HAL_StatusTypeDef status;
+
+  if (!bytes || len == 0U) {
+    return HAL_ERROR;
+  }
+
+  status = can_bus_send_large(bytes, len, TELEMETRY_FLIGHT_CAN_ID);
+  if (status == HAL_OK) {
+    telemetry_note_flight_command_sent(bytes, len);
+    return HAL_OK;
+  }
+
+  return telemetry_enqueue_pending_can_command(bytes, len) ? HAL_BUSY : status;
+}
+
+static SedsResult telemetry_send_or_queue_can_packet(const uint8_t *bytes, size_t len) {
+  const HAL_StatusTypeDef status = can_bus_send_large(bytes, len, TELEMETRY_FLIGHT_CAN_ID);
+  if (status == HAL_OK) {
+    telemetry_note_flight_command_sent(bytes, len);
+    return SEDS_OK;
+  }
+
+  return telemetry_enqueue_pending_can_command(bytes, len) ? SEDS_OK : SEDS_IO;
+}
+
+void telemetry_retry_pending_can_commands(void) {
+  while (g_pending_can_count > 0U) {
+    TelemetryPendingCanCommand *cmd = &g_pending_can[g_pending_can_head];
+    const HAL_StatusTypeDef status =
+        can_bus_send_large(cmd->data, cmd->len, TELEMETRY_FLIGHT_CAN_ID);
+    if (status != HAL_OK) {
+      return;
+    }
+
+    telemetry_note_flight_command_sent(cmd->data, cmd->len);
+    g_pending_can_head = (uint8_t)((g_pending_can_head + 1U) % TELEMETRY_PENDING_CAN_DEPTH);
+    g_pending_can_count--;
+  }
 }
 
 static bool telemetry_unix_ms_to_utc(uint64_t unix_ms, int32_t *year, uint8_t *month,
@@ -268,8 +351,7 @@ static uint64_t node_now_since_ms(void *user) {
 
 SedsResult tx_send(const uint8_t *bytes, size_t len, void *user) {
   (void)user;
-  const uint32_t flight_computer_can_id = 0x03U;
-  HAL_StatusTypeDef status;
+  SedsResult result;
   bool is_radio_flight_command = false;
 
   if (!bytes || len == 0U) {
@@ -281,19 +363,17 @@ SedsResult tx_send(const uint8_t *bytes, size_t len, void *user) {
       (len == g_pending_radio_flight_command_len) &&
       (telemetry_packet_wire_crc(bytes, len) == g_pending_radio_flight_command_crc);
 
-  status = can_bus_send_large(bytes, len, flight_computer_can_id);
+  result = telemetry_send_or_queue_can_packet(bytes, len);
 #if COMMAND_TRACE_PRINTS
-  if (status == HAL_OK && is_radio_flight_command) {
+  if (result == SEDS_OK && is_radio_flight_command) {
     printf("Flight computer CAN command TX: id=0x%03lx len=%u\r\n",
-           (unsigned long)flight_computer_can_id,
+           (unsigned long)TELEMETRY_FLIGHT_CAN_ID,
            (unsigned)len);
   }
+#else
+  (void)is_radio_flight_command;
 #endif
-  if (status == HAL_OK && is_radio_flight_command) {
-    g_pending_radio_flight_commands--;
-  }
-
-  return (status == HAL_OK) ? SEDS_OK : SEDS_IO;
+  return result;
 }
 
 static SedsResult radio_tx_send(const uint8_t *bytes, size_t len, void *user) {
@@ -369,23 +449,24 @@ static void telemetry_radio_rx(const uint8_t *data, size_t len, void *user) {
 #endif
 
   if (is_flight_command) {
-    const uint32_t flight_computer_can_id = 0x03U;
 #if COMMAND_TRACE_PRINTS
     HAL_StatusTypeDef can_status;
     printf("Ground station flight command RX: len=%u\r\n", (unsigned)len);
-    can_status = can_bus_send_large(data, len, flight_computer_can_id);
+    can_status = telemetry_send_or_queue_can_command(data, len);
     if (can_status == HAL_OK) {
       printf("Flight computer CAN command TX: id=0x%03lx len=%u\r\n",
-             (unsigned long)flight_computer_can_id,
+             (unsigned long)TELEMETRY_FLIGHT_CAN_ID,
              (unsigned)len);
     } else {
-      printf("Flight computer CAN command TX failed: id=0x%03lx len=%u status=%ld\r\n",
-             (unsigned long)flight_computer_can_id,
+      printf("Flight computer CAN command TX queued/failed: id=0x%03lx len=%u status=%ld pending=%u drops=%lu\r\n",
+             (unsigned long)TELEMETRY_FLIGHT_CAN_ID,
              (unsigned)len,
-             (long)can_status);
+             (long)can_status,
+             (unsigned)g_pending_can_count,
+             (unsigned long)g_pending_can_drops);
     }
 #else
-    (void)can_bus_send_large(data, len, flight_computer_can_id);
+    (void)telemetry_send_or_queue_can_command(data, len);
 #endif
     return;
   }

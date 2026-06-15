@@ -73,6 +73,7 @@ typedef struct {
 
     // N sats
     uint8_t num_satellites;
+    uint32_t last_satellite_update_tick;
      
     // Status
     bool valid_fix;             // True if GPS has valid fix

@@ -21,6 +21,7 @@ TX_THREAD telemetry_thread;
 #define RADIO_SCHED_FLAG_YIELD 0x02U
 #define RADIO_SCHED_BURST_MESSAGES 5U
 #define RADIO_SCHED_DOWNLINK_TIMEOUT_MS 500ULL
+#define RADIO_SCHED_MIN_DOWNLINK_BUDGET_MS 1U
 #define RADIO_SCHED_UPLINK_TIMEOUT_MS 3000ULL
 #define RADIO_SCHED_IDLE_UPLINK_POLL_MS 50ULL
 #define RADIO_SCHED_GRANT_RETRY_MS 50ULL
@@ -189,6 +190,22 @@ static void telemetry_print_alive_if_due(uint64_t now_ms, uint64_t *next_print_m
 #endif
 }
 
+static uint32_t telemetry_radio_downlink_budget_ms(uint64_t now_ms,
+                                                   uint64_t turn_started_ms)
+{
+    const uint64_t elapsed_ms = now_ms - turn_started_ms;
+    if (elapsed_ms >= RADIO_SCHED_DOWNLINK_TIMEOUT_MS) {
+        return 0U;
+    }
+
+    const uint64_t remaining_ms = RADIO_SCHED_DOWNLINK_TIMEOUT_MS - elapsed_ms;
+    if (remaining_ms > 0xFFFFFFFFULL) {
+        return 0xFFFFFFFFUL;
+    }
+
+    return (uint32_t)remaining_ms;
+}
+
 void telemetry_thread_entry(ULONG initial_input)
 {
     (void)initial_input;
@@ -212,9 +229,12 @@ void telemetry_thread_entry(ULONG initial_input)
         /* Poll hardware FIFO and then process reassembly + router queues. */
         radio_uart_process_rx();
         can_bus_process_rx();
+        telemetry_retry_pending_can_commands();
         telemetry_announce_discovery_if_due(now_ms, &next_discovery_announce_ms);
         (void)telemetry_poll_discovery();
-        (void)process_all_queues_timeout(TELEMETRY_QUEUE_BUDGET_MS);
+        (void)process_rx_queue_timeout(TELEMETRY_QUEUE_BUDGET_MS);
+        telemetry_retry_pending_can_commands();
+        (void)dispatch_tx_queue_timeout(TELEMETRY_QUEUE_BUDGET_MS);
         (void)telemetry_poll_timesync();
 
         if (radio_turn_started_ms == 0U) {
@@ -248,10 +268,14 @@ void telemetry_thread_entry(ULONG initial_input)
                 next_idle_uplink_poll_ms = now_ms + RADIO_SCHED_IDLE_UPLINK_POLL_MS;
                 g_radio_uplink_windows++;
                 g_radio_sched_gs_seen = 0U;
-            } else if (radio_turn_grant_sent &&
-                       radio_uart_process_tx_with_budget(0xFFFFFFFFUL) > 0U) {
-                radio_turn_sent++;
-                g_radio_downlink_tx_calls++;
+            } else if (radio_turn_grant_sent) {
+                const uint32_t downlink_budget_ms =
+                    telemetry_radio_downlink_budget_ms(now_ms, radio_turn_started_ms);
+                if (downlink_budget_ms >= RADIO_SCHED_MIN_DOWNLINK_BUDGET_MS &&
+                    radio_uart_process_tx_with_budget(downlink_budget_ms) > 0U) {
+                    radio_turn_sent++;
+                    g_radio_downlink_tx_calls++;
+                }
             }
         } else {
             g_radio_uplink_rx_only_loops++;

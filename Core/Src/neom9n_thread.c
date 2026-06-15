@@ -93,7 +93,8 @@ volatile uint8_t g_neom9n_has_fix = 0U;
 #define GPS_LINK_WARNING_INTERVAL_MS (5ULL * 60ULL * 1000ULL)
 #define GPS_DATA_LOG_INTERVAL_MS 750ULL
 #define GPS_SATELLITE_LOG_INTERVAL_MS 1000ULL
-#define GPS_NO_DATA_SATELLITE_LOG_INTERVAL_MS 500ULL
+#define GPS_NO_DATA_SATELLITE_LOG_INTERVAL_MS 5000ULL
+#define GPS_SATELLITE_STALE_MS 5000UL
 #define GPS_ERROR_LOG_INTERVAL_MS (5ULL * 60ULL * 1000ULL)
 #define GPS_CONSECUTIVE_ERROR_THRESHOLD 20U
 #define GPS_SPI_RECOVERY_ERROR_THRESHOLD 3U
@@ -105,7 +106,12 @@ static void gps_emit_satellite_count(uint8_t satellite_count,
                                      uint64_t interval_ms,
                                      uint64_t *next_emit_ms) {
 #if PRODUCTION_MODE
-    if (now_ms < *next_emit_ms) {
+    static bool have_last_satellite_count = false;
+    static uint8_t last_satellite_count = 0U;
+    const bool changed = !have_last_satellite_count ||
+                         last_satellite_count != satellite_count;
+
+    if (!changed && now_ms < *next_emit_ms) {
         return;
     }
 
@@ -114,6 +120,8 @@ static void gps_emit_satellite_count(uint8_t satellite_count,
                                                    1,
                                                    sizeof(uint8_t));
     (void)result;
+    have_last_satellite_count = true;
+    last_satellite_count = satellite_count;
     *next_emit_ms = now_ms + interval_ms;
 #else
     (void)satellite_count;
@@ -121,6 +129,19 @@ static void gps_emit_satellite_count(uint8_t satellite_count,
     (void)interval_ms;
     (void)next_emit_ms;
 #endif
+}
+
+static uint8_t gps_recent_satellite_count_or_zero(const NEOM9N_t *packet) {
+    if (packet == NULL || packet->last_satellite_update_tick == 0U) {
+        return 0U;
+    }
+
+    if ((uint32_t)(HAL_GetTick() - packet->last_satellite_update_tick) >
+        (uint32_t)GPS_SATELLITE_STALE_MS) {
+        return 0U;
+    }
+
+    return packet->num_satellites;
 }
 
 static void gps_log_initial_link_warning(void) {
@@ -395,7 +416,7 @@ void neom9n_thread_entry(ULONG initial_input)
             {
                 const uint64_t now_ms = tx_now_ms();
                 g_neom9n_has_fix = 0U;
-                gps_emit_satellite_count(0U,
+                gps_emit_satellite_count(gps_recent_satellite_count_or_zero(&gps_packet),
                                          now_ms,
                                          GPS_NO_DATA_SATELLITE_LOG_INTERVAL_MS,
                                          &next_no_gps_data_satellite_log_ms);
@@ -425,7 +446,7 @@ void neom9n_thread_entry(ULONG initial_input)
                 consecutive_errors++;
             }
             g_neom9n_has_fix = 0U;
-            gps_emit_satellite_count(0U,
+            gps_emit_satellite_count(gps_recent_satellite_count_or_zero(&gps_packet),
                                      now_ms,
                                      GPS_NO_DATA_SATELLITE_LOG_INTERVAL_MS,
                                      &next_no_gps_data_satellite_log_ms);
