@@ -104,14 +104,15 @@ volatile uint8_t g_neom9n_has_fix = 0U;
 static void gps_emit_satellite_count(uint8_t satellite_count,
                                      uint64_t now_ms,
                                      uint64_t interval_ms,
-                                     uint64_t *next_emit_ms) {
+                                     uint64_t *next_emit_ms,
+                                     bool force) {
 #if PRODUCTION_MODE
     static bool have_last_satellite_count = false;
     static uint8_t last_satellite_count = 0U;
     const bool changed = !have_last_satellite_count ||
                          last_satellite_count != satellite_count;
 
-    if (!changed && now_ms < *next_emit_ms) {
+    if (!force && !changed && now_ms < *next_emit_ms) {
         return;
     }
 
@@ -128,6 +129,7 @@ static void gps_emit_satellite_count(uint8_t satellite_count,
     (void)now_ms;
     (void)interval_ms;
     (void)next_emit_ms;
+    (void)force;
 #endif
 }
 
@@ -269,6 +271,7 @@ void neom9n_thread_entry(ULONG initial_input)
     uint64_t next_no_gps_data_satellite_log_ms = 0ULL;
     uint64_t next_gps_error_log_ms[4] = {0ULL, 0ULL, 0ULL, 0ULL};
     uint64_t next_gps_spi_recover_ms = 0ULL;
+    uint32_t last_reported_satellite_update_tick = 0U;
     // HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
 
     for michael
@@ -303,6 +306,16 @@ void neom9n_thread_entry(ULONG initial_input)
         if (status == NEOM9N_OK)
         {
             consecutive_errors = 0;
+            if (gps_packet.last_satellite_update_tick != 0U &&
+                gps_packet.last_satellite_update_tick != last_reported_satellite_update_tick) {
+                const uint64_t now_ms = tx_now_ms();
+                gps_emit_satellite_count(gps_packet.num_satellites,
+                                         now_ms,
+                                         GPS_SATELLITE_LOG_INTERVAL_MS,
+                                         &next_gps_satellite_log_ms,
+                                         true);
+                last_reported_satellite_update_tick = gps_packet.last_satellite_update_tick;
+            }
 
             if (gps_has_fix(&gps_packet))
             {
@@ -355,7 +368,8 @@ void neom9n_thread_entry(ULONG initial_input)
                 gps_emit_satellite_count(gps_packet.num_satellites,
                                          local_ms,
                                          GPS_SATELLITE_LOG_INTERVAL_MS,
-                                         &next_gps_satellite_log_ms);  // send N sats
+                                         &next_gps_satellite_log_ms,
+                                         false);  // send N sats
 #endif
 #if GPS_TEST_MODE
                 if (gps_data_log_due) {
@@ -419,7 +433,8 @@ void neom9n_thread_entry(ULONG initial_input)
                 gps_emit_satellite_count(gps_recent_satellite_count_or_zero(&gps_packet),
                                          now_ms,
                                          GPS_NO_DATA_SATELLITE_LOG_INTERVAL_MS,
-                                         &next_no_gps_data_satellite_log_ms);
+                                         &next_no_gps_data_satellite_log_ms,
+                                         false);
 
                 if (!gps_link_established)
                 {
@@ -449,7 +464,8 @@ void neom9n_thread_entry(ULONG initial_input)
             gps_emit_satellite_count(gps_recent_satellite_count_or_zero(&gps_packet),
                                      now_ms,
                                      GPS_NO_DATA_SATELLITE_LOG_INTERVAL_MS,
-                                     &next_no_gps_data_satellite_log_ms);
+                                     &next_no_gps_data_satellite_log_ms,
+                                     false);
 
             if (status == NEOM9N_SPI_ERR &&
                 consecutive_errors >= GPS_SPI_RECOVERY_ERROR_THRESHOLD &&
