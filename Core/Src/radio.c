@@ -33,6 +33,10 @@
 #define RADIO_UART_TX_QUEUE_DEPTH   32
 #endif
 
+#ifndef RADIO_UART_TX_MAX_AGE_MS
+#define RADIO_UART_TX_MAX_AGE_MS 1500U
+#endif
+
 #ifndef RADIO_UART_TX_FRAMES_PER_SERVICE
 #define RADIO_UART_TX_FRAMES_PER_SERVICE 1U
 #endif
@@ -87,6 +91,7 @@ typedef struct {
 typedef struct {
   uint16_t len;
   uint32_t flow_id;
+  uint32_t enqueued_ms;
   uint8_t data[RADIO_UART_FRAME_BUF_SIZE];
 } radio_tx_item_t;
 
@@ -131,6 +136,7 @@ static uint32_t g_tx_count = 0U;
 static uint32_t g_tx_drops = 0U;
 static uint32_t g_tx_drop_oldest = 0U;
 static uint32_t g_tx_drop_same_flow = 0U;
+static uint32_t g_tx_drop_stale = 0U;
 static volatile uint32_t g_tx_enqueued = 0U;
 static volatile uint32_t g_tx_budget_misses = 0U;
 static volatile uint32_t g_tx_ok = 0U;
@@ -307,6 +313,7 @@ static uint32_t radio_uart_queue_index_at_offset(uint32_t offset) {
 }
 
 static uint32_t radio_uart_air_ms(uint16_t len);
+static uint32_t radio_now_ms(void);
 
 static void radio_e22_force_mode0(void)
 {
@@ -353,6 +360,21 @@ static void radio_uart_remove_queue_index(uint32_t index) {
   g_tx_count--;
 }
 
+static void radio_uart_drop_stale_locked(uint32_t now_ms) {
+  uint32_t i = 0U;
+
+  while (i < g_tx_count) {
+    uint32_t idx = radio_uart_queue_index_at_offset(i);
+    if ((uint32_t)(now_ms - g_tx_queue[idx].enqueued_ms) >= RADIO_UART_TX_MAX_AGE_MS) {
+      radio_uart_remove_queue_index(idx);
+      g_tx_drops++;
+      g_tx_drop_stale++;
+      continue;
+    }
+    i++;
+  }
+}
+
 static uint32_t radio_uart_flow_count_locked(uint32_t flow_id) {
   uint32_t count = 0U;
 
@@ -364,6 +386,36 @@ static uint32_t radio_uart_flow_count_locked(uint32_t flow_id) {
   }
 
   return count;
+}
+
+static void radio_uart_drop_item_stale_or_requeue_front(const radio_tx_item_t *item) {
+  const uint32_t now_ms = radio_now_ms();
+
+  if (item == NULL || g_tx_queue == NULL) {
+    return;
+  }
+
+  if (radio_uart_lock_tx_queue() != HAL_OK) {
+    return;
+  }
+
+  if ((uint32_t)(now_ms - item->enqueued_ms) >= RADIO_UART_TX_MAX_AGE_MS) {
+    g_tx_drops++;
+    g_tx_drop_stale++;
+    radio_uart_unlock_tx_queue();
+    return;
+  }
+
+  if (g_tx_count < RADIO_UART_TX_QUEUE_DEPTH) {
+    g_tx_head = (g_tx_head == 0U) ? (RADIO_UART_TX_QUEUE_DEPTH - 1U) : (g_tx_head - 1U);
+    g_tx_queue[g_tx_head] = *item;
+    g_tx_count++;
+  } else {
+    g_tx_drops++;
+    g_tx_drop_oldest++;
+  }
+
+  radio_uart_unlock_tx_queue();
 }
 
 static uint32_t radio_uart_select_drop_index_locked(uint32_t incoming_flow_id,
@@ -399,6 +451,8 @@ static HAL_StatusTypeDef radio_uart_enqueue_frame(const uint8_t *data, uint16_t 
   flow_id = radio_uart_flow_id_from_frame(data, len);
   if (radio_uart_lock_tx_queue() != HAL_OK) return HAL_ERROR;
 
+  radio_uart_drop_stale_locked(radio_now_ms());
+
   if (g_tx_count >= RADIO_UART_TX_QUEUE_DEPTH) {
     uint8_t found_same_flow = 0U;
     uint32_t drop = radio_uart_select_drop_index_locked(flow_id, &found_same_flow);
@@ -414,6 +468,7 @@ static HAL_StatusTypeDef radio_uart_enqueue_frame(const uint8_t *data, uint16_t 
 
   g_tx_queue[g_tx_tail].len = len;
   g_tx_queue[g_tx_tail].flow_id = flow_id;
+  g_tx_queue[g_tx_tail].enqueued_ms = radio_now_ms();
   memcpy(g_tx_queue[g_tx_tail].data, data, len);
   g_tx_tail = (g_tx_tail + 1U) % RADIO_UART_TX_QUEUE_DEPTH;
   g_tx_count++;
@@ -426,6 +481,8 @@ static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32
   uint8_t have = 0U;
   if (!out || g_tx_queue == NULL) return 0U;
   if (radio_uart_lock_tx_queue() != HAL_OK) return 0U;
+
+  radio_uart_drop_stale_locked(radio_now_ms());
 
   if (g_tx_count > 0U) {
     uint8_t selected_valid = 0U;
@@ -552,7 +609,16 @@ uint8_t radio_uart_tx_busy(void)
 
 uint32_t radio_uart_tx_queue_count(void)
 {
-  return g_tx_count;
+  uint32_t count;
+
+  if (radio_uart_lock_tx_queue() != HAL_OK) {
+    return g_tx_count;
+  }
+
+  radio_uart_drop_stale_locked(radio_now_ms());
+  count = g_tx_count;
+  radio_uart_unlock_tx_queue();
+  return count;
 }
 
 radio_uart_stats_t radio_uart_stats_snapshot(void)
@@ -572,6 +638,10 @@ radio_uart_stats_t radio_uart_stats_snapshot(void)
   stats.tx_busy = g_tx_busy;
   stats.tx_enqueued = g_tx_enqueued;
   stats.tx_queue_count = g_tx_count;
+  stats.tx_drops = g_tx_drops;
+  stats.tx_drop_oldest = g_tx_drop_oldest;
+  stats.tx_drop_same_flow = g_tx_drop_same_flow;
+  stats.tx_drop_stale = g_tx_drop_stale;
   stats.tx_budget_misses = g_tx_budget_misses;
   stats.aux_busy_count = g_aux_busy_count;
   stats.tx_dma_started = g_tx_dma_started;
@@ -770,7 +840,7 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
   while (sent < RADIO_UART_TX_FRAMES_PER_SERVICE &&
          radio_uart_dequeue_frame_with_budget(&item, available_air_budget)) {
     if (!radio_uart_reserve_airtime(item.len, budget_ms)) {
-      (void)radio_uart_enqueue_frame(item.data, item.len);
+      radio_uart_drop_item_stale_or_requeue_front(&item);
       return sent;
     }
 

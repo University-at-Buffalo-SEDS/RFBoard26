@@ -26,6 +26,10 @@ typedef struct {
   uint32_t tx_busy;
   uint32_t tx_enqueued;
   uint32_t tx_queue_count;
+  uint32_t tx_drops;
+  uint32_t tx_drop_oldest;
+  uint32_t tx_drop_same_flow;
+  uint32_t tx_drop_stale;
   uint32_t tx_budget_misses;
   uint32_t aux_busy_count;
   uint32_t tx_dma_started;

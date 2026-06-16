@@ -20,15 +20,15 @@ TX_THREAD telemetry_thread;
 #define RADIO_SCHED_FLAG_HAS_MORE 0x01U
 #define RADIO_SCHED_FLAG_YIELD 0x02U
 #define RADIO_SCHED_BURST_MESSAGES 5U
-#define RADIO_SCHED_DOWNLINK_TIMEOUT_MS 500ULL
+#define RADIO_SCHED_DOWNLINK_TIMEOUT_MS 300ULL
 #define RADIO_SCHED_MIN_DOWNLINK_BUDGET_MS 1U
-#define RADIO_SCHED_UPLINK_TIMEOUT_MS 3000ULL
+#define RADIO_SCHED_UPLINK_TIMEOUT_MS 4000ULL
 #define RADIO_SCHED_IDLE_UPLINK_POLL_MS 50ULL
 #define RADIO_SCHED_GRANT_RETRY_MS 50ULL
 #define RADIO_SCHED_GRANT_REANNOUNCE_MS 5000ULL
 #define RADIO_SCHED_TURNAROUND_MS 75ULL
 #define RADIO_SCHED_UPLINK_TO_DOWNLINK_TURNAROUND_MS 150ULL
-#define RADIO_SCHED_GS_TX_TURNAROUND_MS 100U
+#define RADIO_SCHED_GS_TX_TURNAROUND_MS 600U
 #define TELEMETRY_DISCOVERY_ANNOUNCE_INTERVAL_MS 2000ULL
 #define TELEMETRY_THREAD_PRIORITY 3U
 
@@ -126,6 +126,7 @@ static void telemetry_print_alive_if_due(uint64_t now_ms, uint64_t *next_print_m
            "rx_irq=%lu rx_chunks=%lu rx_bytes=%lu rx_frames=%lu rx_sync_loss=%lu "
            "rx_bad_len=%lu rx_errors=%lu rx_restarts=%lu tx_ok=%lu tx_errors=%lu "
            "tx_busy_count=%lu tx_enqueued=%lu tx_queue=%lu tx_budget_misses=%lu "
+           "tx_drops=%lu tx_drop_oldest=%lu tx_drop_same_flow=%lu tx_drop_stale=%lu "
            "aux=%lu mode0_pins=%lu aux_busy=%lu tx_dma_started=%lu tx_dma_complete=%lu "
            "tx_startup_drops=%lu win_down=%lu win_up=%lu down_tx_calls=%lu up_rx_loops=%lu sched_grant_fail=%lu "
            "last_rx_len=%lu last_rx_preview=",
@@ -146,6 +147,10 @@ static void telemetry_print_alive_if_due(uint64_t now_ms, uint64_t *next_print_m
            (unsigned long)radio_stats.tx_enqueued,
            (unsigned long)radio_stats.tx_queue_count,
            (unsigned long)radio_stats.tx_budget_misses,
+           (unsigned long)radio_stats.tx_drops,
+           (unsigned long)radio_stats.tx_drop_oldest,
+           (unsigned long)radio_stats.tx_drop_same_flow,
+           (unsigned long)radio_stats.tx_drop_stale,
            (unsigned long)radio_stats.aux_high,
            (unsigned long)radio_stats.e22_mode0_pins_configured,
            (unsigned long)radio_stats.aux_busy_count,
