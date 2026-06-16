@@ -115,12 +115,18 @@ static uint8_t gps_satellite_count_or_zero(const NEOM9N_t *packet) {
 
 static void gps_emit_satellite_count_if_due(const NEOM9N_t *packet,
                                             uint64_t now_ms,
-                                            uint64_t *next_emit_ms) {
+                                            uint64_t *next_emit_ms,
+                                            bool force,
+                                            bool *sent) {
 #if PRODUCTION_MODE
     const uint8_t satellite_count = gps_satellite_count_or_zero(packet);
     SedsResult result;
 
-    if (now_ms < *next_emit_ms) {
+    if (sent != NULL) {
+        *sent = false;
+    }
+
+    if (!force && now_ms < *next_emit_ms) {
         return;
     }
 
@@ -130,11 +136,16 @@ static void gps_emit_satellite_count_if_due(const NEOM9N_t *packet,
                                         sizeof(satellite_count));
     if (result == SEDS_OK) {
         *next_emit_ms = now_ms + GPS_SATELLITE_LOG_INTERVAL_MS;
+        if (sent != NULL) {
+            *sent = true;
+        }
     }
 #else
     (void)packet;
     (void)now_ms;
     (void)next_emit_ms;
+    (void)force;
+    (void)sent;
 #endif
 }
 
@@ -262,6 +273,7 @@ void neom9n_thread_entry(ULONG initial_input)
     uint64_t next_gps_satellite_log_ms = 0ULL;
     uint64_t next_gps_error_log_ms[4] = {0ULL, 0ULL, 0ULL, 0ULL};
     uint64_t next_gps_spi_recover_ms = 0ULL;
+    uint32_t last_reported_satellite_update_tick = 0U;
     // HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
 
     for michael
@@ -294,9 +306,19 @@ void neom9n_thread_entry(ULONG initial_input)
 #endif
         NEOM9N_status_t status = receive_nmea(&gps_packet, NMEA_MAX_WAIT, NMEA_MAX_IGNORES);
         const uint64_t now_ms = tx_now_ms();
+        const bool fresh_satellite_update =
+            gps_packet.last_satellite_update_tick != 0U &&
+            gps_packet.last_satellite_update_tick != last_reported_satellite_update_tick;
+        bool satellite_count_sent = false;
+
         gps_emit_satellite_count_if_due(&gps_packet,
                                         now_ms,
-                                        &next_gps_satellite_log_ms);
+                                        &next_gps_satellite_log_ms,
+                                        fresh_satellite_update,
+                                        &satellite_count_sent);
+        if (fresh_satellite_update && satellite_count_sent) {
+            last_reported_satellite_update_tick = gps_packet.last_satellite_update_tick;
+        }
 
         if (status == NEOM9N_OK)
         {
