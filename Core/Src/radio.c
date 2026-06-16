@@ -148,13 +148,30 @@ static volatile uint32_t g_tx_quiet_until_ms = 0U;
 static volatile uint32_t g_aux_busy_count = 0U;
 static volatile uint32_t g_e22_mode0_set_at_ms = 0U;
 
-static uint32_t radio_hash_bytes(const uint8_t *data, size_t len) {
-  uint32_t hash = 2166136261UL;
+static uint32_t radio_hash_update(uint32_t hash, const uint8_t *data, size_t len) {
   for (size_t i = 0U; i < len; i++) {
     hash ^= (uint32_t)data[i];
     hash *= 16777619UL;
   }
+  return hash;
+}
+
+static uint32_t radio_hash_finish(uint32_t hash) {
   return (hash == RADIO_UART_SCHED_FALLBACK_FLOW) ? 1UL : hash;
+}
+
+static uint32_t radio_hash_type_and_sender(uint64_t data_type,
+                                           const uint8_t *sender,
+                                           size_t sender_len) {
+  uint32_t hash = 2166136261UL;
+
+  for (uint32_t i = 0U; i < 8U; i++) {
+    const uint8_t byte = (uint8_t)((data_type >> (8U * i)) & 0xFFU);
+    hash = radio_hash_update(hash, &byte, 1U);
+  }
+
+  hash = radio_hash_update(hash, sender, sender_len);
+  return radio_hash_finish(hash);
 }
 
 static uint8_t radio_read_uleb128(const uint8_t *data, size_t len,
@@ -181,6 +198,7 @@ static uint8_t radio_read_uleb128(const uint8_t *data, size_t len,
 
 static uint32_t radio_uart_flow_id_from_payload(const uint8_t *payload, size_t len) {
   size_t offset = 0U;
+  uint64_t data_type = 0ULL;
   uint64_t ignored = 0ULL;
   uint64_t sender_len = 0ULL;
   uint64_t sender_wire_len = 0ULL;
@@ -192,7 +210,7 @@ static uint32_t radio_uart_flow_id_from_payload(const uint8_t *payload, size_t l
   const uint8_t flags = payload[offset++];
   offset++; /* selected endpoint count */
 
-  if (!radio_read_uleb128(payload, len, &offset, &ignored) ||
+  if (!radio_read_uleb128(payload, len, &offset, &data_type) ||
       !radio_read_uleb128(payload, len, &offset, &ignored) ||
       !radio_read_uleb128(payload, len, &offset, &ignored) ||
       !radio_read_uleb128(payload, len, &offset, &sender_len)) {
@@ -214,7 +232,7 @@ static uint32_t radio_uart_flow_id_from_payload(const uint8_t *payload, size_t l
   }
 
   offset += RADIO_UART_SCHED_EP_BITMAP_LEN;
-  return radio_hash_bytes(&payload[offset], (size_t)sender_wire_len);
+  return radio_hash_type_and_sender(data_type, &payload[offset], (size_t)sender_wire_len);
 }
 
 static uint32_t radio_uart_flow_id_from_frame(const uint8_t *data, uint16_t len) {
