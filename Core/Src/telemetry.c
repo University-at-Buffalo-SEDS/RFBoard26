@@ -46,6 +46,10 @@ static void print_data_no_telem(void *data, size_t len) {
 #define COMMAND_TRACE_PRINTS 0
 #endif
 
+#ifndef TELEMETRY_RADIO_GPS_INTERVAL_MS
+#define TELEMETRY_RADIO_GPS_INTERVAL_MS 1000ULL
+#endif
+
 #ifndef TX_TIMER_TICKS_PER_SECOND
 #error "TX_TIMER_TICKS_PER_SECOND must be defined by ThreadX."
 #endif
@@ -53,11 +57,16 @@ static void print_data_no_telem(void *data, size_t len) {
 #define TELEMETRY_TIMESYNC_ROLE_CONSUMER 0U
 #define TELEMETRY_TIMESYNC_ROLE_SOURCE 1U
 #define TELEMETRY_SEDS_FLAG_COMPRESSED_SENDER 0x02U
-#define TELEMETRY_SEDS_ENDPOINT_BITMAP_BYTES 2U
 #define TELEMETRY_SEDS_CRC_BYTES 4U
 #define TELEMETRY_FLIGHT_CAN_ID 0x03U
 #define TELEMETRY_PENDING_CAN_DEPTH 8U
 #define TELEMETRY_PENDING_CAN_MAX_LEN 256U
+#define TELEMETRY_GPS_WIRE_MAX_LEN 96U
+#define TELEMETRY_DEVICE_IDENTIFIER "RF"
+#define TELEMETRY_DEVICE_IDENTIFIER_LEN 2U
+
+_Static_assert(TELEMETRY_DEVICE_IDENTIFIER_LEN == (sizeof(TELEMETRY_DEVICE_IDENTIFIER) - 1U),
+               "Telemetry sender length must match device identifier");
 
 static uint8_t g_can_rx_subscribed = 0U;
 static uint8_t g_radio_rx_subscribed = 0U;
@@ -68,6 +77,9 @@ static size_t g_pending_radio_flight_command_len = 0U;
 static uint32_t g_pending_radio_flight_command_crc = 0U;
 static uint8_t g_local_unix_valid = 0U;
 static uint64_t g_local_unix_ms = 0ULL;
+static uint64_t g_radio_last_gps_tx_ms = 0ULL;
+static uint8_t g_radio_gps_tx_seen = 0U;
+static volatile uint32_t g_radio_gps_throttle_drops = 0U;
 
 typedef struct {
   size_t len;
@@ -81,6 +93,8 @@ static uint8_t g_pending_can_count = 0U;
 static uint32_t g_pending_can_drops = 0U;
 
 RouterState g_router = {.r = NULL, .created = 0U, .start_time = 0ULL};
+
+static SedsResult telemetry_send_or_queue_can_packet(const uint8_t *bytes, size_t len);
 
 static uint64_t tx_raw_now_ms_locked(void) {
   const uint32_t ticks32 = (uint32_t)tx_time_get();
@@ -158,6 +172,16 @@ static void telemetry_note_flight_command_sent(const uint8_t *bytes, size_t len)
   g_pending_radio_flight_commands--;
 }
 
+static bool telemetry_radio_gps_throttle_active(uint64_t now_ms) {
+  if (g_radio_gps_tx_seen &&
+      (now_ms - g_radio_last_gps_tx_ms) < TELEMETRY_RADIO_GPS_INTERVAL_MS) {
+    g_radio_gps_throttle_drops++;
+    return true;
+  }
+
+  return false;
+}
+
 static bool telemetry_enqueue_pending_can_command(const uint8_t *bytes, size_t len) {
   if (!bytes || len == 0U || len > TELEMETRY_PENDING_CAN_MAX_LEN) {
     return false;
@@ -174,6 +198,75 @@ static bool telemetry_enqueue_pending_can_command(const uint8_t *bytes, size_t l
   g_pending_can_tail = (uint8_t)((g_pending_can_tail + 1U) % TELEMETRY_PENDING_CAN_DEPTH);
   g_pending_can_count++;
   return true;
+}
+
+static SedsResult telemetry_serialize_gps_packet(const void *data, size_t element_count,
+                                                 size_t element_size, uint8_t *out,
+                                                 size_t out_len, size_t *written) {
+  const uint32_t endpoints[] = {
+      (uint32_t)SEDS_EP_SD_CARD,
+      (uint32_t)SEDS_EP_GROUND_STATION,
+      (uint32_t)SEDS_EP_FLIGHT_CONTROLLER,
+  };
+  SedsPacketView view;
+  int32_t serialized_len;
+  const size_t payload_len = element_count * element_size;
+
+  if (!data || !out || !written || element_count != 3U || element_size != sizeof(float)) {
+    return SEDS_BAD_ARG;
+  }
+
+  memset(&view, 0, sizeof(view));
+  view.ty = (uint32_t)SEDS_DT_GPS_DATA;
+  view.data_size = payload_len;
+  view.sender = TELEMETRY_DEVICE_IDENTIFIER;
+  view.sender_len = TELEMETRY_DEVICE_IDENTIFIER_LEN;
+  view.endpoints = endpoints;
+  view.num_endpoints = sizeof(endpoints) / sizeof(endpoints[0]);
+  view.timestamp = telemetry_unix_ms();
+  view.payload = (const uint8_t *)data;
+  view.payload_len = payload_len;
+
+  serialized_len = seds_pkt_serialize(&view, out, out_len);
+  if (serialized_len < 0) {
+    return (SedsResult)serialized_len;
+  }
+  if ((size_t)serialized_len > out_len) {
+    return SEDS_PACKET_TOO_LARGE;
+  }
+
+  *written = (size_t)serialized_len;
+  return SEDS_OK;
+}
+
+static SedsResult telemetry_log_gps_direct(const void *data, size_t element_count,
+                                           size_t element_size) {
+  uint8_t bytes[TELEMETRY_GPS_WIRE_MAX_LEN];
+  size_t len = 0U;
+  SedsResult result;
+  HAL_StatusTypeDef radio_status;
+  const uint64_t now_ms = tx_raw_now_ms_locked();
+
+  result = telemetry_serialize_gps_packet(data, element_count, element_size, bytes,
+                                          sizeof(bytes), &len);
+  if (result != SEDS_OK) {
+    return result;
+  }
+
+  result = telemetry_send_or_queue_can_packet(bytes, len);
+
+  if (!telemetry_radio_gps_throttle_active(now_ms)) {
+    radio_status = radio_uart_send_bytes(bytes, len);
+    if (radio_status == HAL_OK) {
+      g_radio_last_gps_tx_ms = now_ms;
+      g_radio_gps_tx_seen = 1U;
+    } else if (radio_status != HAL_BUSY || radio_uart_tx_ready()) {
+      /* CAN is the primary path here; radio backpressure must not fail GPS logging. */
+      g_radio_gps_throttle_drops++;
+    }
+  }
+
+  return result;
 }
 
 static HAL_StatusTypeDef telemetry_send_or_queue_can_command(const uint8_t *bytes, size_t len) {
@@ -675,6 +768,10 @@ SedsResult log_telemetry_asynchronous(SedsDataType data_type, const void *data,
 #ifdef TELEMETRY_ENABLED
   if (!data || element_count == 0U || element_size == 0U) {
     return SEDS_BAD_ARG;
+  }
+
+  if (data_type == SEDS_DT_GPS_DATA) {
+    return telemetry_log_gps_direct(data, element_count, element_size);
   }
 
   if (!g_router.r && init_telemetry_router() != SEDS_OK) {
