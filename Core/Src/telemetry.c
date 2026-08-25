@@ -119,8 +119,21 @@ static uint32_t telemetry_timesync_role(void) {
                                         : TELEMETRY_TIMESYNC_ROLE_CONSUMER;
 }
 
-static bool telemetry_is_flight_command_packet(const uint8_t *bytes, size_t len) {
-  const uint32_t endpoint = (uint32_t)SEDS_EP_FLIGHT_CONTROLLER;
+static bool telemetry_packet_has_endpoint(const SedsPacketView *view, uint32_t endpoint) {
+  if (!view || view->endpoints == NULL) {
+    return false;
+  }
+
+  for (size_t i = 0U; i < view->num_endpoints; i++) {
+    if (view->endpoints[i] == endpoint) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+static bool telemetry_is_priority_radio_to_can_packet(const uint8_t *bytes, size_t len) {
   SedsOwnedHeader *header = NULL;
   SedsPacketView view;
   bool matched = false;
@@ -135,15 +148,12 @@ static bool telemetry_is_flight_command_packet(const uint8_t *bytes, size_t len)
   }
 
   memset(&view, 0, sizeof(view));
-  if (seds_owned_header_view(header, &view) == SEDS_OK &&
-      view.ty == (uint32_t)SEDS_DT_FLIGHT_COMMAND &&
-      view.endpoints != NULL) {
-    for (size_t i = 0U; i < view.num_endpoints; i++) {
-      if (view.endpoints[i] == endpoint) {
-        matched = true;
-        break;
-      }
-    }
+  if (seds_owned_header_view(header, &view) == SEDS_OK) {
+    matched =
+        (view.ty == (uint32_t)SEDS_DT_FLIGHT_COMMAND &&
+         telemetry_packet_has_endpoint(&view, (uint32_t)SEDS_EP_FLIGHT_CONTROLLER)) ||
+        (view.ty == (uint32_t)SEDS_DT_FLIGHT_STATE &&
+         telemetry_packet_has_endpoint(&view, (uint32_t)SEDS_EP_FLIGHT_STATE));
   }
 
   seds_owned_header_free(header);
@@ -526,12 +536,12 @@ static void telemetry_radio_rx(const uint8_t *data, size_t len, void *user) {
     return;
   }
 
-  const bool is_flight_command = telemetry_is_flight_command_packet(data, len);
+  const bool is_priority_can_packet = telemetry_is_priority_radio_to_can_packet(data, len);
 #if COMMAND_TRACE_PRINTS
-  printf("Radio uplink RX: kind=%s len=%u flight_command=%u preview=",
+  printf("Radio uplink RX: kind=%s len=%u priority_can=%u preview=",
          radio_uart_current_rx_is_command_frame() ? "command" : "data",
          (unsigned)len,
-         is_flight_command ? 1U : 0U);
+         is_priority_can_packet ? 1U : 0U);
   for (size_t i = 0U; i < len && i < 12U; i++) {
     printf("%02X%s", data[i], (i + 1U < len && i + 1U < 12U) ? " " : "");
   }
@@ -541,10 +551,10 @@ static void telemetry_radio_rx(const uint8_t *data, size_t len, void *user) {
   printf("\r\n");
 #endif
 
-  if (is_flight_command) {
+  if (is_priority_can_packet) {
 #if COMMAND_TRACE_PRINTS
     HAL_StatusTypeDef can_status;
-    printf("Ground station flight command RX: len=%u\r\n", (unsigned)len);
+    printf("Ground station priority CAN packet RX: len=%u\r\n", (unsigned)len);
     can_status = telemetry_send_or_queue_can_command(data, len);
     if (can_status == HAL_OK) {
       printf("Flight computer CAN command TX: id=0x%03lx len=%u\r\n",

@@ -50,7 +50,7 @@
 #endif
 
 #ifndef RADIO_AIR_BIT_RATE_BPS
-#define RADIO_AIR_BIT_RATE_BPS 9600U
+#define RADIO_AIR_BIT_RATE_BPS RADIO_BAUD_RATE
 #endif
 
 #ifndef RADIO_AIR_FRAME_OVERHEAD_BYTES
@@ -519,12 +519,12 @@ static uint32_t radio_uart_tx_timeout_ms(uint16_t len)
 {
   uint32_t baud = (g_huart != NULL) ? g_huart->Init.BaudRate : 0U;
   if (baud == 0U) {
-    baud = 9600U;
+    baud = RADIO_BAUD_RATE;
   }
 
   /*
    * 8N1 UART sends 10 bits per byte. Round up the wire time, then add margin
-   * so 9600-baud telemetry frames do not time out before leaving the UART.
+   * so telemetry frames do not time out before leaving the UART.
    */
   uint64_t wire_ms = (((uint64_t)len * 10ULL * 1000ULL) + (uint64_t)baud - 1ULL) /
                      (uint64_t)baud;

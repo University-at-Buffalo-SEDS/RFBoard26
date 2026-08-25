@@ -225,7 +225,7 @@ static bool gps_recover_spi(NEOM9N_t *packet) {
 void neom9n_thread_entry(ULONG initial_input)
 {
     (void)initial_input;
-    HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
+    // HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
 
     tx_thread_sleep(TX_TIMER_TICKS_PER_SECOND * 5);  // Wait for GPS boot
 

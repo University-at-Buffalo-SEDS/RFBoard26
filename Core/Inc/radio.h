@@ -9,6 +9,10 @@
 extern "C" {
 #endif
 
+#ifndef RADIO_BAUD_RATE
+#define RADIO_BAUD_RATE 57600U
+#endif
+
 typedef void (*radio_rx_cb_t)(const uint8_t *data, size_t len, void *user);
 
 typedef struct {

@@ -32,6 +32,10 @@ TX_THREAD telemetry_thread;
 #define TELEMETRY_DISCOVERY_ANNOUNCE_INTERVAL_MS 2000ULL
 #define TELEMETRY_THREAD_PRIORITY 3U
 
+#ifndef RADIO_SCHEDULER_ENABLED
+#define RADIO_SCHEDULER_ENABLED 0
+#endif
+
 #ifndef TELEMETRY_ALIVE_PRINTS
 #define TELEMETRY_ALIVE_PRINTS 0
 #endif
@@ -53,6 +57,7 @@ static uint64_t radio_window_now_ms(void)
 
 uint8_t telemetry_radio_scheduler_handle_command(const uint8_t *data, size_t len)
 {
+#if RADIO_SCHEDULER_ENABLED
     if (data == NULL || len < 7U ||
         data[0] != RADIO_SCHED_MAGIC_0 ||
         data[1] != RADIO_SCHED_MAGIC_1 ||
@@ -69,8 +74,14 @@ uint8_t telemetry_radio_scheduler_handle_command(const uint8_t *data, size_t len
            (unsigned)g_radio_sched_gs_flags);
 #endif
     return 1U;
+#else
+    (void)data;
+    (void)len;
+    return 0U;
+#endif
 }
 
+#if RADIO_SCHEDULER_ENABLED
 static HAL_StatusTypeDef telemetry_emit_radio_grant(uint8_t turn, uint8_t seq)
 {
     uint8_t payload[9];
@@ -94,6 +105,7 @@ static HAL_StatusTypeDef telemetry_emit_radio_grant(uint8_t turn, uint8_t seq)
 #endif
     return status;
 }
+#endif
 
 static void telemetry_announce_discovery_if_due(uint64_t now_ms,
                                                 uint64_t *next_emit_ms)
@@ -195,6 +207,7 @@ static void telemetry_print_alive_if_due(uint64_t now_ms, uint64_t *next_print_m
 #endif
 }
 
+#if RADIO_SCHEDULER_ENABLED
 static uint32_t telemetry_radio_downlink_budget_ms(uint64_t now_ms,
                                                    uint64_t turn_started_ms)
 {
@@ -210,10 +223,12 @@ static uint32_t telemetry_radio_downlink_budget_ms(uint64_t now_ms,
 
     return (uint32_t)remaining_ms;
 }
+#endif
 
 void telemetry_thread_entry(ULONG initial_input)
 {
     (void)initial_input;
+#if RADIO_SCHEDULER_ENABLED
     uint8_t radio_turn = RADIO_SCHED_DOWNLINK;
     uint8_t radio_turn_seq = 0U;
     uint8_t radio_turn_sent = 0U;
@@ -222,6 +237,7 @@ void telemetry_thread_entry(ULONG initial_input)
     uint64_t next_control_retry_ms = 0U;
     uint64_t next_grant_reannounce_ms = 0U;
     uint64_t next_idle_uplink_poll_ms = 0U;
+#endif
     uint64_t next_discovery_announce_ms = 0U;
     uint64_t next_alive_print_ms = 0U;
 
@@ -242,6 +258,7 @@ void telemetry_thread_entry(ULONG initial_input)
         (void)dispatch_tx_queue_timeout(TELEMETRY_QUEUE_BUDGET_MS);
         (void)telemetry_poll_timesync();
 
+#if RADIO_SCHEDULER_ENABLED
         if (radio_turn_started_ms == 0U) {
             radio_turn_started_ms = now_ms;
             radio_turn_seq++;
@@ -324,6 +341,9 @@ void telemetry_thread_entry(ULONG initial_input)
                 next_grant_reannounce_ms = now_ms + RADIO_SCHED_GRANT_RETRY_MS;
             }
         }
+#else
+        (void)radio_uart_process_tx();
+#endif
 
         tx_thread_sleep(TELEMETRY_THREAD_SLEEP_TICKS);
 
