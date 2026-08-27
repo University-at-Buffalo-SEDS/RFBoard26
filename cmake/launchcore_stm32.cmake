@@ -17,7 +17,7 @@ endforeach()
 FetchContent_Declare(
     sedslaunchcore
     GIT_REPOSITORY https://github.com/University-at-Buffalo-SEDS/SEDSLaunchCore.git
-    GIT_TAG 9d4f44f9142be75108361f1c85bde2dbf19e5a23
+    GIT_TAG 8634d554f3f32b5cc4aba7791f074c2a62ee1972
     GIT_SHALLOW FALSE
 )
 FetchContent_GetProperties(sedslaunchcore)
@@ -68,7 +68,6 @@ target_compile_definitions(${LAUNCHCORE_BOOTLOADER_TARGET} PRIVATE
 )
 target_link_options(${LAUNCHCORE_BOOTLOADER_TARGET} PRIVATE
     -T "${CMAKE_SOURCE_DIR}/Bootloader/linker_bootloader.ld"
-    --specs=nosys.specs
     -Wl,-Map=${LAUNCHCORE_BOOTLOADER_TARGET}.map
     -Wl,--gc-sections
     -Wl,--print-memory-usage
