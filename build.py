@@ -27,6 +27,7 @@ import argparse
 import os
 import re
 import shlex
+import shutil
 import socket
 import subprocess
 import sys
@@ -298,7 +299,7 @@ def assert_embedded_cache(ui: UI, build_dir: Path) -> None:
     )
 
 
-def configure_and_build(ui: UI, cfg: BuildConfig) -> tuple[Path, Path]:
+def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> tuple[Path, Path]:
     cfg.build_dir.mkdir(parents=True, exist_ok=True)
 
     telemetry_flag = f"-DENABLE_TELEMETRY={'ON' if cfg.telemetry else 'OFF'}"
@@ -311,7 +312,11 @@ def configure_and_build(ui: UI, cfg: BuildConfig) -> tuple[Path, Path]:
             telemetry_flag,
         ], cwd=cfg.repo_root)
         assert_embedded_cache(ui, cfg.build_dir)
-        run(ui, ["cmake", "--build", "--preset", cfg.build_type, "--parallel"], cwd=cfg.repo_root)
+        build_cmd = ["cmake", "--build", "--preset", cfg.build_type]
+        if target:
+            build_cmd += ["--target", target]
+        build_cmd.append("--parallel")
+        run(ui, build_cmd, cwd=cfg.repo_root)
     else:
         run(ui, [
             "cmake",
@@ -325,10 +330,17 @@ def configure_and_build(ui: UI, cfg: BuildConfig) -> tuple[Path, Path]:
             "-G", cfg.generator,
         ], cwd=cfg.repo_root)
         assert_embedded_cache(ui, cfg.build_dir)
-        run(ui, ["cmake", "--build", str(cfg.build_dir), "--parallel"], cwd=cfg.repo_root)
+        build_cmd = ["cmake", "--build", str(cfg.build_dir)]
+        if target:
+            build_cmd += ["--target", target]
+        build_cmd.append("--parallel")
+        run(ui, build_cmd, cwd=cfg.repo_root)
 
     # Find elf, then objcopy -> bin
-    elf = pick_elf(cfg.build_dir, cfg.artifact or cfg.project_name)
+    preferred = cfg.artifact or (
+        target if target and target != "factory-image" else cfg.project_name
+    )
+    elf = pick_elf(cfg.build_dir, preferred)
     bin_path = elf.with_suffix(".bin")
 
     # Prefer arm-none-eabi-objcopy but allow override via env
@@ -337,6 +349,86 @@ def configure_and_build(ui: UI, cfg: BuildConfig) -> tuple[Path, Path]:
 
     ui.say("ok", f"Built: {elf.name} -> {bin_path.name}")
     return elf, bin_path
+
+
+@dataclass(frozen=True)
+class BuiltArtifact:
+    kind: str
+    path: Path
+    address: str
+    elf: Path
+
+
+def board_macro(repo_root: Path, suffix: str) -> int:
+    text = (repo_root / "Bootloader" / "board_config.h").read_text(encoding="utf-8")
+    matches = re.findall(
+        rf"(?m)^#define\s+([A-Za-z0-9_]*{re.escape(suffix)})\s+"
+        rf"(0x[0-9A-Fa-f]+|[0-9]+)u?\s*$",
+        text,
+    )
+    if len(matches) != 1:
+        raise FriendlyError(f"Expected one BSP macro ending in {suffix}; found {len(matches)}")
+    return int(matches[0][1], 0)
+
+
+def build_selected_artifact(
+    ui: UI, cfg: BuildConfig, kind: str, ota_base: str | None,
+    ota_output: str | None, force_delta: bool
+) -> BuiltArtifact:
+    app_target = cfg.project_name
+    boot_target = f"{cfg.project_name}Bootloader"
+    target = {"firmware": app_target, "bootloader": boot_target,
+              "factory": "factory-image", "ota": app_target}[kind]
+    automatic_base: Path | None = None
+    if kind == "ota" and not ota_base:
+        previous = cfg.build_dir / f"{cfg.project_name}.launchcore.img"
+        if not previous.is_file():
+            raise FriendlyError(
+                "No previous packaged firmware is available for the automatic OTA baseline. "
+                "Build --image firmware or --image factory once, then build --image ota."
+            )
+        automatic_base = cfg.build_dir / f".{cfg.project_name}.ota-base.launchcore.img"
+        shutil.copy2(previous, automatic_base)
+    elf, raw_bin = configure_and_build(ui, cfg, target)
+    if kind == "bootloader":
+        return BuiltArtifact(kind, raw_bin, "0x08000000", elf)
+    app_image = cfg.build_dir / f"{cfg.project_name}.launchcore.img"
+    if not app_image.is_file():
+        raise FriendlyError(f"Packaged LaunchCore application was not produced: {app_image}")
+    slot_base = board_macro(cfg.repo_root, "SLOT_A_BASE")
+    if kind == "firmware":
+        ui.say("ok", f"Firmware image: {app_image} (flash at 0x{slot_base:08X})")
+        return BuiltArtifact(kind, app_image, f"0x{slot_base:08X}", elf)
+    if kind == "factory":
+        factory = cfg.build_dir / f"{cfg.project_name}.factory.bin"
+        if not factory.is_file():
+            raise FriendlyError(f"LaunchCore factory image was not produced: {factory}")
+        ui.say("ok", f"Factory image: {factory} (flash at 0x08000000)")
+        return BuiltArtifact(kind, factory, "0x08000000", elf)
+    base = (Path(ota_base).expanduser().resolve() if ota_base else automatic_base)
+    if base is None:
+        raise FriendlyError("Could not determine the OTA baseline image.")
+    if not base.is_file():
+        raise FriendlyError(f"OTA baseline image not found: {base}")
+    output = (Path(ota_output).expanduser().resolve() if ota_output else
+              cfg.build_dir / f"{cfg.project_name}.ota.delta")
+    delta_tool = cfg.build_dir / "_deps" / "sedslaunchcore-src" / "tools" / "mkdelta.py"
+    if not delta_tool.is_file():
+        raise FriendlyError(f"LaunchCore delta tool was not fetched: {delta_tool}")
+    cmd = [sys.executable, str(delta_tool), "--base", str(base),
+           "--target", str(app_image), "--output", str(output),
+           "--erase-size", hex(board_macro(cfg.repo_root, "FLASH_ERASE_SIZE")),
+           "--slot-size", hex(board_macro(cfg.repo_root, "SLOT_A_SIZE")),
+           "--delta-slot-size", hex(board_macro(cfg.repo_root, "DELTA_SIZE"))]
+    if force_delta:
+        cmd.append("--force")
+    try:
+        run(ui, cmd, cwd=cfg.repo_root)
+    finally:
+        if automatic_base is not None:
+            automatic_base.unlink(missing_ok=True)
+    ui.say("ok", f"Built OTA delta: {output}")
+    return BuiltArtifact(kind, output, "", elf)
 
 
 # ---------------------------
@@ -390,28 +482,27 @@ def flash_stm32prog_cli(
     run(ui, cmd)
 
 
-def flash_via_gdb(ui: UI, elf_path: Path, host: str, port: int, gdb: str, extra_gdb_cmds: list[str] | None = None) -> None:
+def flash_binary_via_gdb(
+    ui: UI, image_path: Path, addr: str, host: str, port: int, gdb: str
+) -> None:
     if which(gdb) is None:
         raise FriendlyError(f"{gdb} not found.\n"
                             "Install the ARM GNU toolchain that provides arm-none-eabi-gdb "
                             "or pass --gdb <path>.")
+    image = str(image_path.resolve()).replace("\\", "\\\\").replace('"', '\\"')
     cmds = [
         "set confirm off",
         "set pagination off",
         f"target extended-remote {host}:{port}",
         "monitor reset halt",
-        "load",
+        f'restore "{image}" binary {addr}',
         "monitor reset run",
         "quit",
     ]
-    if extra_gdb_cmds:
-        # Insert after connection
-        cmds = cmds[:4] + extra_gdb_cmds + cmds[4:]
-    # -batch-silent hides extra noise but still prints errors
-    run(ui, [gdb, "-q", "-batch", *sum([["-ex", c] for c in cmds], []), str(elf_path)])
+    run(ui, [gdb, "-q", "-batch", *sum([["-ex", c] for c in cmds], [])])
 
 
-def flash_st_util(ui: UI, elf_path: Path, gdb: str, host: str, port: int, st_util_args: list[str]) -> None:
+def flash_st_util(ui: UI, image_path: Path, addr: str, gdb: str, host: str, port: int, st_util_args: list[str]) -> None:
     # st-util comes from stlink tools; it provides a GDB server (default :4242).
     if which("st-util") is None:
         raise FriendlyError("st-util not found.\n"
@@ -420,7 +511,7 @@ def flash_st_util(ui: UI, elf_path: Path, gdb: str, host: str, port: int, st_uti
     proc = popen(ui, ["st-util", *st_util_args])
     try:
         wait_port(host, port, timeout_s=8.0)
-        flash_via_gdb(ui, elf_path, host, port, gdb)
+        flash_binary_via_gdb(ui, image_path, addr, host, port, gdb)
     finally:
         proc.terminate()
         try:
@@ -429,7 +520,7 @@ def flash_st_util(ui: UI, elf_path: Path, gdb: str, host: str, port: int, st_uti
             proc.kill()
 
 
-def flash_stlink_gdbserver(ui: UI, elf_path: Path, gdb: str, host: str, port: int, gdbserver: str, gdbserver_args: list[str]) -> None:
+def flash_stlink_gdbserver(ui: UI, image_path: Path, addr: str, gdb: str, host: str, port: int, gdbserver: str, gdbserver_args: list[str]) -> None:
     # Common names: ST-LINK_gdbserver (CubeProgrammer) or ST-LINK_gdbserver.exe on Windows.
     if which(gdbserver) is None:
         raise FriendlyError(f"{gdbserver} not found.\n"
@@ -439,7 +530,7 @@ def flash_stlink_gdbserver(ui: UI, elf_path: Path, gdb: str, host: str, port: in
     try:
         wait_port(host, port, timeout_s=10.0)
         # Some servers don't support monitor reset; keep it, but allow override
-        flash_via_gdb(ui, elf_path, host, port, gdb)
+        flash_binary_via_gdb(ui, image_path, addr, host, port, gdb)
     finally:
         proc.terminate()
         try:
@@ -480,6 +571,16 @@ def make_parser() -> argparse.ArgumentParser:
         mode.add_argument("--debug", action="store_true", help="Debug build (default).")
         mode.add_argument("--release", action="store_true", help="Release build.")
         sp.add_argument("--no-telemetry", action="store_true", help="Configure with -DENABLE_TELEMETRY=OFF")
+        sp.add_argument("--image", choices=["firmware", "bootloader", "factory", "ota"],
+                        default="factory",
+                        help="Artifact to build (default: factory bootloader+firmware image).")
+        sp.add_argument("--ota", action="store_true",
+                        help="Shortcut for --image ota using the previous build as its baseline.")
+        sp.add_argument("--ota-base",
+                        help="Override the automatic previous-build OTA baseline.")
+        sp.add_argument("--ota-output", help="Output path for the generated OTA delta.")
+        sp.add_argument("--force-delta", action="store_true",
+                        help="Keep a delta even when LaunchCore estimates a full image is smaller.")
 
     b = sub.add_parser("build", help="Configure + build + objcopy to .bin")
     add_mode_and_common(b)
@@ -489,8 +590,9 @@ def make_parser() -> argparse.ArgumentParser:
 
     f.add_argument("--method", choices=["dfu", "st-flash", "st-util", "stlink-gdbserver", "stm32prog-cli"], default="st-flash",
                    help="Flashing method.")
-    f.add_argument("--addr", default="0x08000000", help="Flash base address (default: 0x08000000)")
+    f.add_argument("--addr", default=None, help="Override the BSP-derived flash address.")
     f.add_argument("--no-reset", action="store_true", help="Do not reset after flash (st-flash/stm32prog-cli).")
+    f.add_argument("--app-only", action="store_true", help="Deprecated alias for --image firmware.")
 
     # st-util options
     f.add_argument("--host", default="127.0.0.1", help="GDB server host (default: 127.0.0.1)")
@@ -553,35 +655,46 @@ def main() -> None:
     cfg = build_cfg_from_args(ui, args)
 
     if args.cmd == "build":
-        configure_and_build(ui, cfg)
+        kind = "ota" if args.ota else args.image
+        build_selected_artifact(
+            ui, cfg, kind, args.ota_base, args.ota_output, args.force_delta
+        )
         return
 
     if args.cmd == "flash":
-        elf, bin_path = configure_and_build(ui, cfg)
+        kind = "firmware" if args.app_only else ("ota" if args.ota else args.image)
+        artifact = build_selected_artifact(
+            ui, cfg, kind, args.ota_base, args.ota_output, args.force_delta
+        )
+        if artifact.kind == "ota":
+            raise FriendlyError(
+                "OTA deltas are streamed through SEDSNet port 4510; they are not directly "
+                "flashable. Build with --image ota, then upload the .ota.delta artifact."
+            )
 
         method = args.method
-        addr = args.addr
+        addr = args.addr or artifact.address
 
         if method == "dfu":
-            flash_dfu(ui, bin_path, addr)
+            flash_dfu(ui, artifact.path, addr)
         elif method == "st-flash":
-            flash_st_flash(ui, bin_path, addr, reset=(not args.no_reset))
+            flash_st_flash(ui, artifact.path, addr, reset=(not args.no_reset))
         elif method == "st-util":
             port = args.port or 4242
             st_args = shlex.split(args.st_util_args) if args.st_util_args else []
-            flash_st_util(ui, elf, args.gdb, args.host, port, st_args)
+            flash_st_util(ui, artifact.path, addr, args.gdb, args.host, port, st_args)
         elif method == "stlink-gdbserver":
             # Reasonable default port used by some gdbservers (override with --port).
             port = args.port or 61234
             gs_args = shlex.split(args.gdbserver_args) if args.gdbserver_args else []
             # If user didn't specify port in args, try to nudge server via args when possible.
             # We won't guess vendor-specific flags; user can pass them in --gdbserver-args.
-            flash_stlink_gdbserver(ui, elf, args.gdb, args.host, port, args.gdbserver, gs_args)
+            flash_stlink_gdbserver(ui, artifact.path, addr, args.gdb, args.host, port, args.gdbserver, gs_args)
         elif method == "stm32prog-cli":
             sp_args = shlex.split(args.stm32prog_args) if args.stm32prog_args else []
             flash_stm32prog_cli(
                 ui,
-                bin_path,
+                artifact.path,
                 addr,
                 reset=(not args.no_reset),
                 stm32prog_cli=args.stm32prog_cli,
