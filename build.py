@@ -359,16 +359,52 @@ class BuiltArtifact:
     elf: Path
 
 
-def board_macro(repo_root: Path, suffix: str) -> int:
+@dataclass(frozen=True)
+class OtaLayout:
+    mode: str
+    secondary_size: int = 0
+
+
+def board_macro_optional(repo_root: Path, suffix: str) -> int | None:
     text = (repo_root / "Bootloader" / "board_config.h").read_text(encoding="utf-8")
     matches = re.findall(
         rf"(?m)^#define\s+([A-Za-z0-9_]*{re.escape(suffix)})\s+"
         rf"(0x[0-9A-Fa-f]+|[0-9]+)u?\s*$",
         text,
     )
-    if len(matches) != 1:
-        raise FriendlyError(f"Expected one BSP macro ending in {suffix}; found {len(matches)}")
+    if len(matches) > 1:
+        raise FriendlyError(f"Expected at most one BSP macro ending in {suffix}; found {len(matches)}")
+    if not matches:
+        return None
     return int(matches[0][1], 0)
+
+
+def board_macro(repo_root: Path, suffix: str) -> int:
+    value = board_macro_optional(repo_root, suffix)
+    if value is None:
+        raise FriendlyError(f"BSP macro ending in {suffix} is required")
+    return value
+
+
+def detect_ota_layout(repo_root: Path) -> OtaLayout:
+    storage = "\n".join(
+        source.read_text(encoding="utf-8", errors="replace")
+        for source in sorted((repo_root / "Bootloader").glob("*.c"))
+    )
+    delta_size = board_macro_optional(repo_root, "DELTA_SIZE")
+    slot_b_size = board_macro_optional(repo_root, "SLOT_B_SIZE")
+    staging_size = board_macro_optional(repo_root, "APP_STAGING_SIZE")
+    slot_b_is_delta = re.search(
+        r"\.slot_b_is_delta\s*=\s*true\b", storage
+    ) is not None
+
+    if delta_size:
+        return OtaLayout("delta", delta_size)
+    if slot_b_size:
+        return OtaLayout("delta" if slot_b_is_delta else "ab", slot_b_size)
+    if staging_size:
+        return OtaLayout("staging", staging_size)
+    return OtaLayout("recovery")
 
 
 def build_selected_artifact(
@@ -379,8 +415,11 @@ def build_selected_artifact(
     boot_target = f"{cfg.project_name}Bootloader"
     target = {"firmware": app_target, "bootloader": boot_target,
               "factory": "factory-image", "ota": app_target}[kind]
+    ota_layout = detect_ota_layout(cfg.repo_root) if kind == "ota" else None
+    if ota_base and ota_layout is not None and ota_layout.mode != "delta":
+        raise FriendlyError("--ota-base is only valid for a delta-mode BSP.")
     automatic_base: Path | None = None
-    if kind == "ota" and not ota_base:
+    if ota_layout is not None and ota_layout.mode == "delta" and not ota_base:
         previous = cfg.build_dir / f"{cfg.project_name}.launchcore.img"
         if previous.is_file():
             automatic_base = cfg.build_dir / f".{cfg.project_name}.ota-base.launchcore.img"
@@ -407,6 +446,14 @@ def build_selected_artifact(
     output = (Path(ota_output).expanduser().resolve() if ota_output else
               cfg.build_dir / f"{cfg.project_name}.seds")
     output.parent.mkdir(parents=True, exist_ok=True)
+    if ota_layout is None:
+        raise FriendlyError("Could not determine the BSP OTA layout.")
+    if ota_layout.mode != "delta":
+        shutil.copy2(app_image, output)
+        kind_name = {"ab": "A/B slot", "staging": "single-slot staging",
+                     "recovery": "bootloader recovery"}[ota_layout.mode]
+        ui.say("ok", f"Built {kind_name} OTA: {output}")
+        return BuiltArtifact(f"ota-{ota_layout.mode}", output, "", elf)
     if base is None:
         shutil.copy2(app_image, output)
         ui.say("ok", f"Built full-image recovery OTA: {output}")
@@ -418,7 +465,7 @@ def build_selected_artifact(
            "--target", str(app_image), "--output", str(output),
            "--erase-size", hex(board_macro(cfg.repo_root, "FLASH_ERASE_SIZE")),
            "--slot-size", hex(board_macro(cfg.repo_root, "SLOT_A_SIZE")),
-           "--delta-slot-size", hex(board_macro(cfg.repo_root, "DELTA_SIZE"))]
+           "--delta-slot-size", hex(ota_layout.secondary_size)]
     if force_delta:
         cmd.append("--force")
     try:
@@ -672,8 +719,12 @@ def main() -> None:
             ui, cfg, kind, args.ota_base, args.ota_output, args.force_delta
         )
         if artifact.kind.startswith("ota"):
-            transport = ("SEDSNet port 4510" if artifact.kind == "ota-delta" else
-                         "the LaunchCore bootloader recovery transport")
+            transport = {
+                "ota-delta": "the SEDSNet delta stream",
+                "ota-ab": "the LaunchCore A/B full-image stream",
+                "ota-staging": "the LaunchCore staging stream",
+                "ota-recovery": "the LaunchCore bootloader recovery transport",
+            }[artifact.kind]
             raise FriendlyError(
                 f"This OTA artifact is uploaded through {transport}; it is not directly "
                 "address-flashable. Upload the generated .seds artifact instead."

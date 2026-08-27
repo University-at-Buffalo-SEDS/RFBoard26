@@ -11,6 +11,33 @@ class OtaBuildScriptTests(unittest.TestCase):
         args = build.make_parser().parse_args(["build", "--ota"])
         self.assertTrue(args.ota)
 
+    def test_bsp_ota_layout_detection(self):
+        cases = {
+            "delta-macro": ("delta", "#define BOARD_DELTA_SIZE 0x6000u\n", "", 0x6000),
+            "ab": ("ab", "#define BOARD_SLOT_B_SIZE 0x40000u\n", "", 0x40000),
+            "delta-slot-b": (
+                "delta",
+                "#define BOARD_SLOT_B_SIZE 0x8000u\n",
+                "static const int layout = {.slot_b_is_delta = true};\n",
+                0x8000,
+            ),
+            "staging": ("staging", "#define BOARD_APP_STAGING_SIZE 0x50000u\n", "", 0x50000),
+            "recovery": ("recovery", "#define BOARD_SLOT_A_SIZE 0x70000u\n", "", 0),
+        }
+        for label, (expected, config, storage, expected_size) in cases.items():
+            with self.subTest(label), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "Bootloader").mkdir()
+                (root / "Bootloader" / "board_config.h").write_text(
+                    config, encoding="utf-8"
+                )
+                (root / "Bootloader" / "storage_internal_flash.c").write_text(
+                    storage, encoding="utf-8"
+                )
+                layout = build.detect_ota_layout(root)
+                self.assertEqual(layout.mode, expected)
+                self.assertEqual(layout.secondary_size, expected_size)
+
     def test_first_ota_build_is_full_recovery_seds(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
