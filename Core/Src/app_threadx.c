@@ -24,7 +24,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "main.h"
-#include "sedsprintf.h"
+#include "sedsnet_config.h"
 #include "telemetry.h"
 #include "RF-Threads.h"
 #include "tx_api.h"

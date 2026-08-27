@@ -44,6 +44,8 @@ enable_language(C ASM)
 
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
+target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
+    -T "${CMAKE_SOURCE_DIR}/STM32G491XX_FLASH.ld")
 
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/can_bus.c
@@ -80,6 +82,8 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined symbols
+    CAN_BUS_RX_RING_DEPTH=32
+    CAN_BUS_REASM_SLOTS=2
 )
 
 # Remove wrong libob.a library dependency when using cpp files
@@ -92,23 +96,20 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     # Add user defined libraries
 )
 
-# Telemetry Library
-set(SEDSPRINTF_RS_DEVICE_IDENTIFIER "RF" CACHE STRING "" FORCE)
-set(SEDSPRINTF_RS_MAX_STACK_PAYLOAD "64" CACHE STRING "" FORCE)
-set(SEDSPRINTF_RS_ENV_MAX_QUEUE_SIZE "128" CACHE STRING "" FORCE)
-set(SEDSPRINTF_RS_ENV_STARTING_QUEUE_SIZE "128" CACHE STRING "" FORCE)
-set(SEDSPRINTF_RS_ENV_QUEUE_GROW_STEP "1.25" CACHE STRING "" FORCE)
-set(SEDSPRINTF_RS_ENV_MAX_RECENT_RX_IDS "16" CACHE STRING "" FORCE)
-set(SEDSPRINTF_RS_ENV_STARTING_RECENT_RX_IDS "8" CACHE STRING "" FORCE)
-set(SEDSPRINTF_RS_ENV_PAYLOAD_COMPRESS_THRESHOLD "30" CACHE STRING "" FORCE)
-add_subdirectory(${CMAKE_SOURCE_DIR}/sedsprintf_rs)
-target_link_libraries(${CMAKE_PROJECT_NAME} sedsprintf_rs)
+# SEDSNet v4
+set(SEDSNET_DEVICE_IDENTIFIER "RF" CACHE STRING "" FORCE)
+set(SEDSNET_MAX_STACK_PAYLOAD "64" CACHE STRING "" FORCE)
+set(SEDSNET_MAX_QUEUE_BUDGET "128" CACHE STRING "" FORCE)
+set(SEDSNET_MAX_RECENT_RX_IDS "16" CACHE STRING "" FORCE)
+set(SEDSNET_ENV_STARTING_QUEUE_SIZE "128" CACHE STRING "" FORCE)
+set(SEDSNET_ENV_QUEUE_GROW_STEP "1.25" CACHE STRING "" FORCE)
+set(SEDSNET_ENV_PAYLOAD_COMPRESS_THRESHOLD "30" CACHE STRING "" FORCE)
+set(SEDSNET_TARGET "thumbv7em-none-eabihf" CACHE STRING "" FORCE)
+include(cmake/sedsnet_fetch.cmake)
 set(TELEMETRY_TIMESYNC_MASTER_PRIO "1" CACHE STRING "Timesync source priority. Values < 0 make this board a consumer; values >= 0 make it a source with that priority." FORCE)
 set(TELEMETRY_TIMESYNC_SOURCE_TIMEOUT_MS "5000" CACHE STRING "Time sync source timeout in milliseconds." FORCE)
 set(TELEMETRY_TIMESYNC_ANNOUNCE_INTERVAL_MS "2000" CACHE STRING "Time sync announce interval in milliseconds." FORCE)
 set(TELEMETRY_TIMESYNC_REQUEST_INTERVAL_MS "2000" CACHE STRING "Time sync request interval in milliseconds." FORCE)
-set(SEDSPRINTF_RS_FORCE_RELEASE ON CACHE BOOL "Build the Rust telemetry library in release mode even for Debug firmware builds" FORCE)
-
 # Option defaults
 option(ENABLE_TELEMETRY "Enable the telemetry subsystem" ON)
 option(ENABLE_RADIO_SCHEDULER "Enable the radio turn/grant scheduler" OFF)
@@ -140,3 +141,16 @@ if(ENABLE_TELEMETRY)
 else()
     # Not defined → disabled
 endif()
+
+set(LAUNCHCORE_DEVICE_DEFINE STM32G491xx)
+set(LAUNCHCORE_CMSIS_DEVICE_DIR "${CMAKE_SOURCE_DIR}/Drivers/CMSIS/Device/ST/STM32G4xx/Include")
+set(LAUNCHCORE_HAL_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/Drivers/STM32G4xx_HAL_Driver/Inc")
+set(LAUNCHCORE_SYSTEM_SOURCE "${CMAKE_SOURCE_DIR}/Core/Src/system_stm32g4xx.c")
+set(LAUNCHCORE_STARTUP_SOURCE "${CMAKE_SOURCE_DIR}/startup_stm32g491xx.s")
+set(LAUNCHCORE_FLASH_SOURCES
+    "${CMAKE_SOURCE_DIR}/Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_flash.c"
+    "${CMAKE_SOURCE_DIR}/Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_flash_ex.c")
+set(LAUNCHCORE_APP_SLOT_BASE 0x08004000)
+set(LAUNCHCORE_APP_VECTOR_TABLE 0x08004100)
+set(LAUNCHCORE_METADATA0_BASE 0x0807E000)
+include(cmake/launchcore_stm32.cmake)

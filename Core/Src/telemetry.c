@@ -4,7 +4,7 @@
 #include "app_threadx.h"
 #include "can_bus.h"
 #include "radio.h"
-#include "sedsprintf.h"
+#include "sedsnet_config.h"
 #include "stm32g4xx_hal.h"
 
 #include <stdarg.h>
@@ -142,7 +142,7 @@ static bool telemetry_is_priority_radio_to_can_packet(const uint8_t *bytes, size
     return false;
   }
 
-  header = seds_pkt_deserialize_header_owned(bytes, len);
+  header = seds_pkt_unpack_header_owned(bytes, len);
   if (!header) {
     return false;
   }
@@ -237,7 +237,7 @@ static SedsResult telemetry_serialize_gps_packet(const void *data, size_t elemen
   view.payload = (const uint8_t *)data;
   view.payload_len = payload_len;
 
-  serialized_len = seds_pkt_serialize(&view, out, out_len);
+  serialized_len = seds_pkt_pack(&view, out, out_len);
   if (serialized_len < 0) {
     return (SedsResult)serialized_len;
   }
@@ -508,10 +508,10 @@ static void telemetry_can_rx(const uint8_t *data, size_t len, void *user) {
   }
 
   if (g_can_side_id >= 0) {
-    (void)seds_router_rx_serialized_packet_to_queue_from_side(
+    (void)seds_router_rx_packed_packet_to_queue_from_side(
         g_router.r, (uint32_t)g_can_side_id, data, len);
   } else {
-    (void)seds_router_rx_serialized_packet_to_queue(g_router.r, data, len);
+    (void)seds_router_rx_packed_packet_to_queue(g_router.r, data, len);
   }
 #else
   (void)data;
@@ -575,10 +575,10 @@ static void telemetry_radio_rx(const uint8_t *data, size_t len, void *user) {
   }
 
   if (g_radio_side_id >= 0) {
-    (void)seds_router_rx_serialized_packet_to_queue_from_side(
+    (void)seds_router_rx_packed_packet_to_queue_from_side(
         g_router.r, (uint32_t)g_radio_side_id, data, len);
   } else {
-    (void)seds_router_rx_serialized_packet_to_queue(g_router.r, data, len);
+    (void)seds_router_rx_packed_packet_to_queue(g_router.r, data, len);
   }
 #else
   (void)data;
@@ -601,10 +601,10 @@ void rx_asynchronous(const uint8_t *bytes, size_t len) {
   }
 
   if (g_can_side_id >= 0) {
-    (void)seds_router_rx_serialized_packet_to_queue_from_side(
+    (void)seds_router_rx_packed_packet_to_queue_from_side(
         g_router.r, (uint32_t)g_can_side_id, bytes, len);
   } else {
-    (void)seds_router_rx_serialized_packet_to_queue(g_router.r, bytes, len);
+    (void)seds_router_rx_packed_packet_to_queue(g_router.r, bytes, len);
   }
 #endif
 }
@@ -624,10 +624,10 @@ static UNUSED_FUNCTION void rx_synchronous(const uint8_t *bytes, size_t len) {
   }
 
   if (g_can_side_id >= 0) {
-    (void)seds_router_receive_serialized_from_side(g_router.r, (uint32_t)g_can_side_id, bytes,
+    (void)seds_router_receive_packed_from_side(g_router.r, (uint32_t)g_can_side_id, bytes,
                                                    len);
   } else {
-    (void)seds_router_receive_serialized(g_router.r, bytes, len);
+    (void)seds_router_receive_packed(g_router.r, bytes, len);
   }
 #endif
 }
@@ -705,13 +705,13 @@ SedsResult init_telemetry_router(void) {
     return SEDS_ERR;
   }
 
-  g_can_side_id = seds_router_add_side_serialized(r, "can", 3U, tx_send, NULL, true);
+  g_can_side_id = seds_router_add_side_packed(r, "can", 3U, tx_send, NULL, true);
   if (g_can_side_id < 0) {
     printf("Error: failed to add CAN side: %ld\r\n", (long)g_can_side_id);
     g_can_side_id = -1;
   }
 
-  g_radio_side_id = seds_router_add_side_serialized(r, "radio", 5U, radio_tx_send, NULL, false);
+  g_radio_side_id = seds_router_add_side_packed(r, "radio", 5U, radio_tx_send, NULL, false);
   if (g_radio_side_id < 0) {
     printf("Error: failed to add radio side: %ld\r\n", (long)g_radio_side_id);
     g_radio_side_id = -1;
