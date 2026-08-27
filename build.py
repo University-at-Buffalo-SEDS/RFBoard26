@@ -382,13 +382,9 @@ def build_selected_artifact(
     automatic_base: Path | None = None
     if kind == "ota" and not ota_base:
         previous = cfg.build_dir / f"{cfg.project_name}.launchcore.img"
-        if not previous.is_file():
-            raise FriendlyError(
-                "No previous packaged firmware is available for the automatic OTA baseline. "
-                "Build --image firmware or --image factory once, then build --image ota."
-            )
-        automatic_base = cfg.build_dir / f".{cfg.project_name}.ota-base.launchcore.img"
-        shutil.copy2(previous, automatic_base)
+        if previous.is_file():
+            automatic_base = cfg.build_dir / f".{cfg.project_name}.ota-base.launchcore.img"
+            shutil.copy2(previous, automatic_base)
     elf, raw_bin = configure_and_build(ui, cfg, target)
     if kind == "bootloader":
         return BuiltArtifact(kind, raw_bin, "0x08000000", elf)
@@ -405,13 +401,16 @@ def build_selected_artifact(
             raise FriendlyError(f"LaunchCore factory image was not produced: {factory}")
         ui.say("ok", f"Factory image: {factory} (flash at 0x08000000)")
         return BuiltArtifact(kind, factory, "0x08000000", elf)
-    base = (Path(ota_base).expanduser().resolve() if ota_base else automatic_base)
-    if base is None:
-        raise FriendlyError("Could not determine the OTA baseline image.")
-    if not base.is_file():
+    base = Path(ota_base).expanduser().resolve() if ota_base else automatic_base
+    if ota_base and (base is None or not base.is_file()):
         raise FriendlyError(f"OTA baseline image not found: {base}")
     output = (Path(ota_output).expanduser().resolve() if ota_output else
-              cfg.build_dir / f"{cfg.project_name}.ota.delta")
+              cfg.build_dir / f"{cfg.project_name}.seds")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if base is None:
+        shutil.copy2(app_image, output)
+        ui.say("ok", f"Built full-image recovery OTA: {output}")
+        return BuiltArtifact("ota-recovery", output, "", elf)
     delta_tool = cfg.build_dir / "_deps" / "sedslaunchcore-src" / "tools" / "mkdelta.py"
     if not delta_tool.is_file():
         raise FriendlyError(f"LaunchCore delta tool was not fetched: {delta_tool}")
@@ -423,12 +422,18 @@ def build_selected_artifact(
     if force_delta:
         cmd.append("--force")
     try:
-        run(ui, cmd, cwd=cfg.repo_root)
+        ui.say("run", " ".join(shlex.quote(c) for c in cmd))
+        delta = subprocess.run(cmd, cwd=cfg.repo_root, capture_output=True, text=True)
+        if delta.returncode != 0:
+            shutil.copy2(app_image, output)
+            ui.say("info", "Delta is unavailable or does not fit; using bootloader recovery.")
+            ui.say("ok", f"Built full-image recovery OTA: {output}")
+            return BuiltArtifact("ota-recovery", output, "", elf)
     finally:
         if automatic_base is not None:
             automatic_base.unlink(missing_ok=True)
     ui.say("ok", f"Built OTA delta: {output}")
-    return BuiltArtifact(kind, output, "", elf)
+    return BuiltArtifact("ota-delta", output, "", elf)
 
 
 # ---------------------------
@@ -666,10 +671,12 @@ def main() -> None:
         artifact = build_selected_artifact(
             ui, cfg, kind, args.ota_base, args.ota_output, args.force_delta
         )
-        if artifact.kind == "ota":
+        if artifact.kind.startswith("ota"):
+            transport = ("SEDSNet port 4510" if artifact.kind == "ota-delta" else
+                         "the LaunchCore bootloader recovery transport")
             raise FriendlyError(
-                "OTA deltas are streamed through SEDSNet port 4510; they are not directly "
-                "flashable. Build with --image ota, then upload the .ota.delta artifact."
+                f"This OTA artifact is uploaded through {transport}; it is not directly "
+                "address-flashable. Upload the generated .seds artifact instead."
             )
 
         method = args.method
