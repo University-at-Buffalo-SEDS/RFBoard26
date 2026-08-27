@@ -2,6 +2,7 @@
 #include "RF-Threads.h"
 #include "tx_api.h"
 #include "telemetry.h"
+#include "ota_stream.h"
 #include "can_bus.h"
 #include "radio.h"
 #include "main.h"
@@ -257,6 +258,7 @@ void telemetry_thread_entry(ULONG initial_input)
         telemetry_retry_pending_can_commands();
         (void)dispatch_tx_queue_timeout(TELEMETRY_QUEUE_BUDGET_MS);
         (void)telemetry_poll_timesync();
+        ota_stream_poll();
 
 #if RADIO_SCHEDULER_ENABLED
         if (radio_turn_started_ms == 0U) {

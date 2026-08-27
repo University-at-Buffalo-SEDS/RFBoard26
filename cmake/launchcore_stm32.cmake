@@ -25,6 +25,23 @@ if(NOT sedslaunchcore_POPULATED)
     FetchContent_Populate(sedslaunchcore)
 endif()
 
+if(DEFINED LAUNCHCORE_DELTA_SIZE)
+    target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+        "${CMAKE_SOURCE_DIR}/Core/Src/ota_stream.c"
+        "${CMAKE_SOURCE_DIR}/Core/Src/launchcore_delta_format.c"
+        "${sedslaunchcore_SOURCE_DIR}/bootloader/src/crc32.c"
+        "${sedslaunchcore_SOURCE_DIR}/bootloader/src/metadata.c"
+        "${sedslaunchcore_SOURCE_DIR}/update_lib/src/delta_update.c"
+        "${sedslaunchcore_SOURCE_DIR}/update_lib/src/confirm_boot.c"
+        "${sedslaunchcore_SOURCE_DIR}/update_lib/src/update_status.c"
+        "${CMAKE_SOURCE_DIR}/Bootloader/storage_dispatch.c"
+        "${CMAKE_SOURCE_DIR}/Bootloader/storage_internal_flash.c")
+    target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
+        "${CMAKE_SOURCE_DIR}/Bootloader"
+        "${sedslaunchcore_SOURCE_DIR}/bootloader/include"
+        "${sedslaunchcore_SOURCE_DIR}/update_lib/include")
+endif()
+
 set(_launchcore_core_sources
     app_install.c
     boot_select.c

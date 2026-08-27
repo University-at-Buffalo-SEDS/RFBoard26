@@ -59,7 +59,7 @@ static void fault_busy_delay(volatile uint32_t n)
   }
 }
 
-static void fault_blink_pattern(uint32_t code)
+static void __attribute__((unused)) fault_blink_pattern(uint32_t code)
 {
   __disable_irq();
   for (;;)

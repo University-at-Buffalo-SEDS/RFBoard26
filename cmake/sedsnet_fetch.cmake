@@ -22,6 +22,9 @@ FetchContent_Declare(
                   -P ${CMAKE_SOURCE_DIR}/cmake/prepare_sedsnet.cmake
 )
 FetchContent_MakeAvailable(sedsnet)
+# SEDSNet's assembler-stack-note flag is not consumed by GCC's LTO wrapper.
+# The final ELF still enforces a non-executable stack through -z noexecstack.
+set_property(TARGET sedsnet PROPERTY INTERFACE_COMPILE_OPTIONS "")
 
 add_custom_command(
     OUTPUT "${sedsnet_SOURCE_DIR}/telemetry_config.json"

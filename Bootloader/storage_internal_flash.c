@@ -7,8 +7,8 @@
 static const launchcore_storage_layout_t layout = {
     .slot_a_base = BOARD_SLOT_A_BASE,
     .slot_a_size = BOARD_SLOT_A_SIZE,
-    .slot_b_base = 0u,
-    .slot_b_size = 0u,
+    .slot_b_base = BOARD_DELTA_BASE,
+    .slot_b_size = BOARD_DELTA_SIZE,
     .metadata0_base = BOARD_METADATA0_BASE,
     .metadata1_base = BOARD_METADATA1_BASE,
     .metadata_size = LAUNCHCORE_FLASH_ERASE_SIZE,
@@ -18,7 +18,7 @@ static const launchcore_storage_layout_t layout = {
     .persistent_data_size = BOARD_PERSIST_SIZE,
     .persistent_data_erase_size = LAUNCHCORE_FLASH_ERASE_SIZE,
     .slot_erase_size = LAUNCHCORE_FLASH_ERASE_SIZE,
-    .slot_b_is_delta = false,
+    .slot_b_is_delta = true,
     .supports_xip = true,
 };
 
@@ -30,6 +30,7 @@ static bool range_within(uint32_t addr, uint32_t len, uint32_t base, uint32_t si
 static bool writable_range(uint32_t addr, uint32_t len)
 {
     return range_within(addr, len, layout.slot_a_base, layout.slot_a_size) ||
+           range_within(addr, len, layout.slot_b_base, layout.slot_b_size) ||
            range_within(addr, len, layout.metadata0_base, layout.metadata_size) ||
            range_within(addr, len, layout.metadata1_base, layout.metadata_size) ||
            range_within(addr, len, layout.persistent_data_base, layout.persistent_data_size);
