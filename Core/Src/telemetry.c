@@ -65,6 +65,7 @@ static void print_data_no_telem(void *data, size_t len) {
 #define TELEMETRY_GPS_WIRE_MAX_LEN 96U
 #define TELEMETRY_DEVICE_IDENTIFIER "RF"
 #define TELEMETRY_DEVICE_IDENTIFIER_LEN 2U
+#define TELEMETRY_ROUTER_RETRY_MS 5000ULL
 
 #ifndef RF_SEDSNET_MEMORY_POOL_SIZE
 #define RF_SEDSNET_MEMORY_POOL_SIZE 12288U
@@ -96,6 +97,9 @@ static uint64_t g_local_unix_ms = 0ULL;
 static uint64_t g_radio_last_gps_tx_ms = 0ULL;
 static uint8_t g_radio_gps_tx_seen = 0U;
 static volatile uint32_t g_radio_gps_throttle_drops = 0U;
+static uint64_t g_router_retry_after_ms = 0ULL;
+
+extern void telemetry_memory_profile_mark(uint32_t stage);
 
 typedef struct {
   size_t len;
@@ -695,6 +699,12 @@ SedsResult init_telemetry_router(void) {
     return SEDS_OK;
   }
 
+  const uint64_t init_now_ms = tx_raw_now_ms_locked();
+  if (g_router_retry_after_ms != 0ULL && init_now_ms < g_router_retry_after_ms) {
+    return SEDS_ERR;
+  }
+  telemetry_memory_profile_mark(0U);
+
   if (!g_can_rx_subscribed) {
     if (can_bus_subscribe_rx(telemetry_can_rx, NULL) == HAL_OK) {
       g_can_rx_subscribed = 1U;
@@ -725,20 +735,24 @@ SedsResult init_telemetry_router(void) {
     g_router.created = 0U;
     g_can_side_id = -1;
     g_radio_side_id = -1;
+    g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
     return SEDS_ERR;
   }
+  telemetry_memory_profile_mark(1U);
 
   g_can_side_id = seds_router_add_side_packed(r, "can", 3U, tx_send, NULL, true);
   if (g_can_side_id < 0) {
     printf("Error: failed to add CAN side: %ld\r\n", (long)g_can_side_id);
     g_can_side_id = -1;
   }
+  telemetry_memory_profile_mark(2U);
 
   g_radio_side_id = seds_router_add_side_packed(r, "radio", 5U, radio_tx_send, NULL, false);
   if (g_radio_side_id < 0) {
     printf("Error: failed to add radio side: %ld\r\n", (long)g_radio_side_id);
     g_radio_side_id = -1;
   }
+  telemetry_memory_profile_mark(3U);
 
   result = telemetry_configure_timesync_locked(r);
   if (result != SEDS_OK) {
@@ -748,8 +762,10 @@ SedsResult init_telemetry_router(void) {
     g_router.created = 0U;
     g_can_side_id = -1;
     g_radio_side_id = -1;
+    g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
     return result;
   }
+  telemetry_memory_profile_mark(4U);
 
   result = ota_stream_init(r);
   if (result != SEDS_OK) {
@@ -757,8 +773,10 @@ SedsResult init_telemetry_router(void) {
     seds_router_free(r);
     g_router.r = NULL;
     g_router.created = 0U;
+    g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
     return result;
   }
+  telemetry_memory_profile_mark(5U);
 
   result = seds_router_announce_discovery(r);
   if (result != SEDS_OK) {
@@ -768,12 +786,15 @@ SedsResult init_telemetry_router(void) {
     g_router.created = 0U;
     g_can_side_id = -1;
     g_radio_side_id = -1;
+    g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
     return result;
   }
+  telemetry_memory_profile_mark(6U);
 
   g_router.r = r;
   g_router.created = 1U;
   g_router.start_time = tx_raw_now_ms_locked();
+  g_router_retry_after_ms = 0ULL;
   return SEDS_OK;
 #endif
 }

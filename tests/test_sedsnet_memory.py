@@ -46,6 +46,29 @@ class SedsnetMemoryTests(unittest.TestCase):
         self.assertIn("g_telemetry_alloc_fail", memory_branch)
         self.assertNotIn("g_last_err_memory_hint", memory_branch)
 
+    def test_allocator_profile_records_low_water_and_init_stages(self):
+        hooks = (ROOT / "Core" / "Src" / "telemetry_hooks.c").read_text(
+            encoding="utf-8"
+        )
+        telemetry = (ROOT / "Core" / "Src" / "telemetry.c").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("g_telemetry_pool_low_water", hooks)
+        self.assertIn("g_telemetry_max_alloc_request", hooks)
+        self.assertIn("g_telemetry_profile_available[8]", hooks)
+        for stage in range(7):
+            self.assertIn(f"telemetry_memory_profile_mark({stage}U)", telemetry)
+
+    def test_failed_router_initialization_is_rate_limited(self):
+        source = (ROOT / "Core" / "Src" / "telemetry.c").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("TELEMETRY_ROUTER_RETRY_MS", source)
+        self.assertIn("init_now_ms < g_router_retry_after_ms", source)
+        self.assertGreaterEqual(
+            source.count("g_router_retry_after_ms = init_now_ms +"), 3
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

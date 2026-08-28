@@ -19,6 +19,15 @@ volatile uint32_t g_telemetry_panic_count = 0U;
 volatile size_t g_telemetry_last_alloc_request = 0U;
 volatile ULONG g_telemetry_alloc_failure_available = 0U;
 volatile ULONG g_telemetry_alloc_failure_fragments = 0U;
+volatile ULONG g_telemetry_pool_available = 0U;
+volatile ULONG g_telemetry_pool_low_water = ~0UL;
+volatile ULONG g_telemetry_pool_fragments = 0U;
+volatile size_t g_telemetry_max_alloc_request = 0U;
+volatile uint32_t g_telemetry_alloc_count = 0U;
+volatile uint32_t g_telemetry_free_count = 0U;
+/* Stages: pre-router, router, CAN, radio, timesync, OTA, discovery, reserved. */
+volatile ULONG g_telemetry_profile_available[8] = {0U};
+volatile ULONG g_telemetry_profile_fragments[8] = {0U};
 static volatile uint8_t g_last_err_memory_hint = 0U;
 static volatile uint8_t g_last_err_mutex_hint = 0U;
 
@@ -100,9 +109,41 @@ static int str_contains_ci_n(const char *s, size_t n, const char *needle)
     return 0;
 }
 
+static void telemetry_memory_profile_sample(void)
+{
+    ULONG available = 0U;
+    ULONG fragments = 0U;
+    if (rust_byte_pool_external == NULL)
+    {
+        return;
+    }
+    if (tx_byte_pool_info_get(rust_byte_pool_external, TX_NULL,
+                              &available, &fragments,
+                              TX_NULL, TX_NULL, TX_NULL) == TX_SUCCESS)
+    {
+        g_telemetry_pool_available = available;
+        g_telemetry_pool_fragments = fragments;
+        if (available < g_telemetry_pool_low_water)
+        {
+            g_telemetry_pool_low_water = available;
+        }
+    }
+}
+
+void telemetry_memory_profile_mark(uint32_t stage)
+{
+    telemetry_memory_profile_sample();
+    if (stage < 8U)
+    {
+        g_telemetry_profile_available[stage] = g_telemetry_pool_available;
+        g_telemetry_profile_fragments[stage] = g_telemetry_pool_fragments;
+    }
+}
+
 void telemetry_set_byte_pool(TX_BYTE_POOL *pool)
 {
     rust_byte_pool_external = pool;
+    telemetry_memory_profile_sample();
 }
 
 void telemetry_init_lock(void)
@@ -173,6 +214,10 @@ void *telemetryMalloc(size_t xSize)
         xSize = 1U;
     }
     g_telemetry_last_alloc_request = xSize;
+    if (xSize > g_telemetry_max_alloc_request)
+    {
+        g_telemetry_max_alloc_request = xSize;
+    }
 
     /*
      * Allow a brief wait so telemetry bursts don't immediately fail allocator
@@ -190,6 +235,8 @@ void *telemetryMalloc(size_t xSize)
         g_telemetry_alloc_fail++;
         return NULL;
     }
+    g_telemetry_alloc_count++;
+    telemetry_memory_profile_sample();
     return ptr;
 }
 
@@ -198,6 +245,8 @@ void telemetryFree(void *pv)
     if (pv != NULL)
     {
         (void)tx_byte_release(pv);
+        g_telemetry_free_count++;
+        telemetry_memory_profile_sample();
     }
 }
 
