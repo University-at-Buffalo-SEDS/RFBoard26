@@ -24,6 +24,7 @@ Usage examples
 from __future__ import annotations
 
 import argparse
+import io
 import os
 import re
 import shlex
@@ -503,17 +504,19 @@ def flash_dfu(ui: UI, bin_path: Path, addr: str) -> None:
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
+            bufsize=0,
         )
     except FileNotFoundError:
         raise FriendlyError("Command not found: dfu-util")
 
     output_chunks = []
     assert process.stdout is not None
-    while chunk := process.stdout.read(1):
-        output_chunks.append(chunk)
-        print(chunk, end="", flush=True)
+    stream = io.TextIOWrapper(
+        process.stdout, encoding="utf-8", errors="replace", newline=""
+    )
+    while text := stream.read(1):
+        output_chunks.append(text)
+        print(text, end="", flush=True)
     returncode = process.wait()
     output = "".join(output_chunks)
 

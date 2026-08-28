@@ -20,7 +20,7 @@ class OtaBuildScriptTests(unittest.TestCase):
         dfu_output = ("Download [=========================] 100%\r"
                       "File downloaded successfully\nSubmitting leave request...\n"
                       "dfu-util: Error during download get_status\n")
-        process = mock.Mock(stdout=io.StringIO(dfu_output))
+        process = mock.Mock(stdout=io.BytesIO(dfu_output.encode("utf-8")))
         process.wait.return_value = 74
         visible_output = io.StringIO()
         with mock.patch.object(build, "which", return_value="/usr/local/bin/dfu-util"), \
