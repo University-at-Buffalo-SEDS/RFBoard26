@@ -7,6 +7,22 @@ import build
 
 
 class OtaBuildScriptTests(unittest.TestCase):
+    def test_flash_defaults_to_combined_factory_image(self):
+        args = build.make_parser().parse_args(["flash", "--release", "--method", "dfu"])
+        self.assertEqual(args.image, "factory")
+        self.assertFalse(args.app_only)
+
+    def test_dfu_flash_leaves_rom_bootloader_after_download(self):
+        ui = mock.Mock()
+        image = Path("RFBoard26.factory.bin")
+        with mock.patch.object(build, "which", return_value="/usr/local/bin/dfu-util"), \
+             mock.patch.object(build, "run") as run:
+            build.flash_dfu(ui, image, "0x08000000")
+        run.assert_called_once_with(
+            ui,
+            ["dfu-util", "-a", "0", "-s", "0x08000000:leave", "-D", str(image)],
+        )
+
     def test_ota_shortcut_is_available(self):
         args = build.make_parser().parse_args(["build", "--ota"])
         self.assertTrue(args.ota)

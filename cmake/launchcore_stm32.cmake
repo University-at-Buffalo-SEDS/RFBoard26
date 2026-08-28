@@ -17,7 +17,7 @@ endforeach()
 FetchContent_Declare(
     sedslaunchcore
     GIT_REPOSITORY https://github.com/University-at-Buffalo-SEDS/SEDSLaunchCore.git
-    GIT_TAG 6e74648b14378936867827bc744c31a4b3cb49e8
+    GIT_TAG 1ab6cd3dcddb7acaacb9dbfc16159f36f19363a8
     GIT_SHALLOW FALSE
 )
 FetchContent_GetProperties(sedslaunchcore)
@@ -120,6 +120,7 @@ add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
             --output "${_app_image}"
             --slot-base "${LAUNCHCORE_APP_SLOT_BASE}"
             --vector-table "${LAUNCHCORE_APP_VECTOR_TABLE}"
+            --header-size 0x200
             --version "${LAUNCHCORE_APP_VERSION}"
             --xip
     VERBATIM

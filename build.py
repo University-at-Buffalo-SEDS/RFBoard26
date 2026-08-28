@@ -492,7 +492,11 @@ def flash_dfu(ui: UI, bin_path: Path, addr: str) -> None:
         raise FriendlyError("dfu-util not found.\n"
                             "Install it (e.g., apt-get install dfu-util, brew install dfu-util) "
                             "or use --method st-flash / st-util.")
-    run(ui, ["dfu-util", "-a", "0", "-s", addr, "-D", str(bin_path)])
+    # STM32's DfuSe extension remains in the system-memory DFU loader unless
+    # the address carries the `leave` modifier.  A successful download without
+    # this modifier therefore looks like a boot failure until a manual reset.
+    dfuse_address = addr if ":" in addr else f"{addr}:leave"
+    run(ui, ["dfu-util", "-a", "0", "-s", dfuse_address, "-D", str(bin_path)])
 
 
 def flash_st_flash(ui: UI, bin_path: Path, addr: str, reset: bool) -> None:

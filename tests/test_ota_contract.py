@@ -53,6 +53,24 @@ class OtaContractTests(unittest.TestCase):
         self.assertEqual(origin, macro("BOARD_VECTOR_TABLE"))
         self.assertEqual(origin + length, macro("BOARD_DELTA_BASE"))
 
+    def test_vector_table_and_packaged_header_are_cortex_m_aligned(self):
+        slot_base = macro("BOARD_SLOT_A_BASE")
+        vector_table = macro("BOARD_VECTOR_TABLE")
+        self.assertEqual(vector_table % 0x200, 0)
+        self.assertEqual(vector_table - slot_base, 0x200)
+
+        cmake = (ROOT / "cmake/launchcore_stm32.cmake").read_text()
+        self.assertRegex(cmake, r"--header-size\s+0x200")
+
+        platform = (ROOT / "Bootloader/platform.c").read_text()
+        self.assertIn("(vector_table_addr & 0x1FFu) == 0u", platform)
+
+    def test_bootloader_exposes_led_boot_state(self):
+        platform = (ROOT / "Bootloader/platform.c").read_text()
+        self.assertIn("status_led_init();", platform)
+        self.assertIn("BOOT_STATUS_BLUE_PIN", platform)
+        self.assertIn("BOOT_STATUS_GREEN_PIN", platform)
+
 
 if __name__ == "__main__":
     unittest.main()
