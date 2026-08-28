@@ -496,7 +496,30 @@ def flash_dfu(ui: UI, bin_path: Path, addr: str) -> None:
     # the address carries the `leave` modifier.  A successful download without
     # this modifier therefore looks like a boot failure until a manual reset.
     dfuse_address = addr if ":" in addr else f"{addr}:leave"
-    run(ui, ["dfu-util", "-a", "0", "-s", dfuse_address, "-D", str(bin_path)])
+    cmd = ["dfu-util", "-a", "0", "-s", dfuse_address, "-D", str(bin_path)]
+    ui.say("run", " ".join(shlex.quote(part) for part in cmd))
+    try:
+        completed = subprocess.run(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+        )
+    except FileNotFoundError:
+        raise FriendlyError("Command not found: dfu-util")
+
+    output = completed.stdout or ""
+    if output:
+        print(output, end="" if output.endswith("\\n") else "\\n")
+
+    reset_disconnect = (
+        completed.returncode == 74
+        and "File downloaded successfully" in output
+        and "Submitting leave request" in output
+        and "Error during download get_status" in output
+    )
+    if reset_disconnect:
+        ui.say("ok", "DFU download completed; device reset before final status response.")
+        return
+    if completed.returncode != 0:
+        raise FriendlyError(f"Command failed (exit {completed.returncode}): dfu-util")
 
 
 def flash_st_flash(ui: UI, bin_path: Path, addr: str, reset: bool) -> None:

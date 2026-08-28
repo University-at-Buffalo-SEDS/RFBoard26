@@ -15,12 +15,18 @@ class OtaBuildScriptTests(unittest.TestCase):
     def test_dfu_flash_leaves_rom_bootloader_after_download(self):
         ui = mock.Mock()
         image = Path("RFBoard26.factory.bin")
+        completed = mock.Mock(
+            returncode=74,
+            stdout=("File downloaded successfully\nSubmitting leave request...\n"
+                    "dfu-util: Error during download get_status\n"),
+        )
         with mock.patch.object(build, "which", return_value="/usr/local/bin/dfu-util"), \
-             mock.patch.object(build, "run") as run:
+             mock.patch.object(build.subprocess, "run", return_value=completed) as run:
             build.flash_dfu(ui, image, "0x08000000")
-        run.assert_called_once_with(
-            ui,
-            ["dfu-util", "-a", "0", "-s", "0x08000000:leave", "-D", str(image)],
+        command = run.call_args.args[0]
+        self.assertEqual(command[4], "0x08000000:leave")
+        ui.say.assert_any_call(
+            "ok", "DFU download completed; device reset before final status response."
         )
 
     def test_ota_shortcut_is_available(self):

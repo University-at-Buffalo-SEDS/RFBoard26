@@ -99,8 +99,8 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 # SEDSNet v4
 set(SEDSNET_DEVICE_IDENTIFIER "RF" CACHE STRING "" FORCE)
 set(SEDSNET_MAX_STACK_PAYLOAD "128" CACHE STRING "" FORCE)
-set(RF_SEDSNET_MEMORY_POOL_SIZE "8192" CACHE STRING
-    "Shared SEDSNet runtime pool for queues, discovery, reliability, schema, and OTA")
+set(RF_SEDSNET_MEMORY_POOL_SIZE "4096" CACHE STRING
+    "Shared SEDSNet runtime pool for queues, discovery, reliability, schema, and OTA" FORCE)
 set(RF_SEDSNET_STARTING_ALLOCATION "512" CACHE STRING
     "Initial allocation within the shared SEDSNet runtime pool")
 set(SEDSNET_MAX_QUEUE_BUDGET "${RF_SEDSNET_MEMORY_POOL_SIZE}" CACHE STRING "" FORCE)

@@ -15,7 +15,7 @@ class SedsnetMemoryTests(unittest.TestCase):
         )
         recent = int(re.search(r'set\(SEDSNET_MAX_RECENT_RX_IDS "(\d+)"', cmake).group(1))
 
-        self.assertGreaterEqual(pool, 8192)
+        self.assertEqual(pool, 4096)
         self.assertGreaterEqual(start, 512)
         self.assertGreater(pool, recent * 8 + 2 * start)
 
