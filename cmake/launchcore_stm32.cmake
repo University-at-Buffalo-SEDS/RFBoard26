@@ -24,6 +24,21 @@ FetchContent_GetProperties(sedslaunchcore)
 if(NOT sedslaunchcore_POPULATED)
     FetchContent_Populate(sedslaunchcore)
 endif()
+include("${sedslaunchcore_SOURCE_DIR}/cmake/launchcore_stm32.cmake")
+
+set(_launchcore_bsp_config "${CMAKE_SOURCE_DIR}/Bootloader/board_config.h")
+_launchcore_read_layout_define(
+    "${_launchcore_bsp_config}" LAUNCHCORE_INTERNAL_FLASH_SIZE _launchcore_total_flash)
+_launchcore_read_layout_define(
+    "${_launchcore_bsp_config}" LAUNCHCORE_BOOTLOADER_SIZE _launchcore_boot_capacity)
+_launchcore_read_layout_define(
+    "${_launchcore_bsp_config}" BOARD_SLOT_A_BASE _launchcore_slot_base)
+_launchcore_read_layout_define(
+    "${_launchcore_bsp_config}" BOARD_SLOT_A_SIZE _launchcore_slot_size)
+_launchcore_read_layout_define(
+    "${_launchcore_bsp_config}" BOARD_VECTOR_TABLE _launchcore_vector_table)
+math(EXPR _launchcore_firmware_capacity
+    "${_launchcore_slot_size} - (${_launchcore_vector_table} - ${_launchcore_slot_base})")
 
 if(DEFINED LAUNCHCORE_DELTA_SIZE)
     target_sources(${CMAKE_PROJECT_NAME} PRIVATE
@@ -127,3 +142,13 @@ add_custom_command(
     VERBATIM
 )
 add_custom_target(factory-image ALL DEPENDS "${_factory_image}")
+launchcore_add_memory_report(
+    NAME launchcore-memory-report
+    BOOTLOADER_TARGET ${LAUNCHCORE_BOOTLOADER_TARGET}
+    APPLICATION_TARGET ${CMAKE_PROJECT_NAME}
+    BOOTLOADER_BINARY "${_bootloader_bin}"
+    FIRMWARE_BINARY "${_app_bin}"
+    BOOTLOADER_CAPACITY "${_launchcore_boot_capacity}"
+    FIRMWARE_CAPACITY "${_launchcore_firmware_capacity}"
+    TOTAL_FLASH_SIZE "${_launchcore_total_flash}")
+add_dependencies(factory-image launchcore-memory-report)

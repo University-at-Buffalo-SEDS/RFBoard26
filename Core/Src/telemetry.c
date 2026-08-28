@@ -66,6 +66,21 @@ static void print_data_no_telem(void *data, size_t len) {
 #define TELEMETRY_DEVICE_IDENTIFIER "RF"
 #define TELEMETRY_DEVICE_IDENTIFIER_LEN 2U
 
+#ifndef RF_SEDSNET_MEMORY_POOL_SIZE
+#define RF_SEDSNET_MEMORY_POOL_SIZE 8192U
+#endif
+#ifndef RF_SEDSNET_MAX_RECENT_RX_IDS
+#define RF_SEDSNET_MAX_RECENT_RX_IDS 16U
+#endif
+#ifndef RF_SEDSNET_STARTING_ALLOCATION
+#define RF_SEDSNET_STARTING_ALLOCATION 512U
+#endif
+
+_Static_assert(RF_SEDSNET_MEMORY_POOL_SIZE >=
+                   (RF_SEDSNET_MAX_RECENT_RX_IDS * sizeof(uint64_t)) +
+                       (2U * RF_SEDSNET_STARTING_ALLOCATION),
+               "SEDSNet pool must leave space after recent IDs and initial RX/TX queues");
+
 _Static_assert(TELEMETRY_DEVICE_IDENTIFIER_LEN == (sizeof(TELEMETRY_DEVICE_IDENTIFIER) - 1U),
                "Telemetry sender length must match device identifier");
 
@@ -696,7 +711,14 @@ SedsResult init_telemetry_router(void) {
     }
   }
 
-  r = seds_router_new(Seds_RM_Relay, node_now_since_ms, NULL, NULL, 0U);
+  const SedsRuntimeMemoryConfig memory = {
+      .max_queue_budget = RF_SEDSNET_MEMORY_POOL_SIZE,
+      .max_recent_rx_ids = RF_SEDSNET_MAX_RECENT_RX_IDS,
+      .starting_queue_size = RF_SEDSNET_STARTING_ALLOCATION,
+      .queue_grow_step = 1.25,
+  };
+  r = seds_router_new_with_memory(Seds_RM_Relay, node_now_since_ms, NULL, NULL, 0U,
+                                  SEDS_ROUTER_E2E_DISABLED, 0U, &memory);
   if (!r) {
     printf("Error: failed to create router\r\n");
     g_router.r = NULL;
