@@ -1,3 +1,5 @@
+import contextlib
+import io
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,16 +17,19 @@ class OtaBuildScriptTests(unittest.TestCase):
     def test_dfu_flash_leaves_rom_bootloader_after_download(self):
         ui = mock.Mock()
         image = Path("RFBoard26.factory.bin")
-        completed = mock.Mock(
-            returncode=74,
-            stdout=("File downloaded successfully\nSubmitting leave request...\n"
-                    "dfu-util: Error during download get_status\n"),
-        )
+        dfu_output = ("Download [=========================] 100%\r"
+                      "File downloaded successfully\nSubmitting leave request...\n"
+                      "dfu-util: Error during download get_status\n")
+        process = mock.Mock(stdout=io.StringIO(dfu_output))
+        process.wait.return_value = 74
+        visible_output = io.StringIO()
         with mock.patch.object(build, "which", return_value="/usr/local/bin/dfu-util"), \
-             mock.patch.object(build.subprocess, "run", return_value=completed) as run:
-            build.flash_dfu(ui, image, "0x08000000")
-        command = run.call_args.args[0]
+             mock.patch.object(build.subprocess, "Popen", return_value=process) as popen:
+            with contextlib.redirect_stdout(visible_output):
+                build.flash_dfu(ui, image, "0x08000000")
+        command = popen.call_args.args[0]
         self.assertEqual(command[4], "0x08000000:leave")
+        self.assertEqual(visible_output.getvalue(), dfu_output)
         ui.say.assert_any_call(
             "ok", "DFU download completed; device reset before final status response."
         )

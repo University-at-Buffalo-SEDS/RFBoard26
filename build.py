@@ -499,18 +499,26 @@ def flash_dfu(ui: UI, bin_path: Path, addr: str) -> None:
     cmd = ["dfu-util", "-a", "0", "-s", dfuse_address, "-D", str(bin_path)]
     ui.say("run", " ".join(shlex.quote(part) for part in cmd))
     try:
-        completed = subprocess.run(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
         )
     except FileNotFoundError:
         raise FriendlyError("Command not found: dfu-util")
 
-    output = completed.stdout or ""
-    if output:
-        print(output, end="" if output.endswith("\\n") else "\\n")
+    output_chunks = []
+    assert process.stdout is not None
+    while chunk := process.stdout.read(1):
+        output_chunks.append(chunk)
+        print(chunk, end="", flush=True)
+    returncode = process.wait()
+    output = "".join(output_chunks)
 
     reset_disconnect = (
-        completed.returncode == 74
+        returncode == 74
         and "File downloaded successfully" in output
         and "Submitting leave request" in output
         and "Error during download get_status" in output
@@ -518,8 +526,8 @@ def flash_dfu(ui: UI, bin_path: Path, addr: str) -> None:
     if reset_disconnect:
         ui.say("ok", "DFU download completed; device reset before final status response.")
         return
-    if completed.returncode != 0:
-        raise FriendlyError(f"Command failed (exit {completed.returncode}): dfu-util")
+    if returncode != 0:
+        raise FriendlyError(f"Command failed (exit {returncode}): dfu-util")
 
 
 def flash_st_flash(ui: UI, bin_path: Path, addr: str, reset: bool) -> None:
