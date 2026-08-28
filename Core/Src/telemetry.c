@@ -67,7 +67,7 @@ static void print_data_no_telem(void *data, size_t len) {
 #define TELEMETRY_DEVICE_IDENTIFIER_LEN 2U
 
 #ifndef RF_SEDSNET_MEMORY_POOL_SIZE
-#define RF_SEDSNET_MEMORY_POOL_SIZE 8192U
+#define RF_SEDSNET_MEMORY_POOL_SIZE 12288U
 #endif
 #ifndef RF_SEDSNET_MAX_RECENT_RX_IDS
 #define RF_SEDSNET_MAX_RECENT_RX_IDS 16U

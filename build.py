@@ -510,13 +510,28 @@ def flash_dfu(ui: UI, bin_path: Path, addr: str) -> None:
         raise FriendlyError("Command not found: dfu-util")
 
     output_chunks = []
+    line_chunks = []
+    deferred_status = ""
     assert process.stdout is not None
     stream = io.TextIOWrapper(
         process.stdout, encoding="utf-8", errors="replace", newline=""
     )
     while text := stream.read(1):
         output_chunks.append(text)
-        print(text, end="", flush=True)
+        line_chunks.append(text)
+        if text in ("\r", "\n"):
+            line = "".join(line_chunks)
+            line_chunks.clear()
+            if "dfu-util: Error during download get_status" in line:
+                deferred_status += line
+            else:
+                print(line, end="", flush=True)
+    if line_chunks:
+        line = "".join(line_chunks)
+        if "dfu-util: Error during download get_status" in line:
+            deferred_status += line
+        else:
+            print(line, end="", flush=True)
     returncode = process.wait()
     output = "".join(output_chunks)
 
@@ -527,8 +542,9 @@ def flash_dfu(ui: UI, bin_path: Path, addr: str) -> None:
         and "Error during download get_status" in output
     )
     if reset_disconnect:
-        ui.say("ok", "DFU download completed; device reset before final status response.")
         return
+    if deferred_status:
+        print(deferred_status, end="", flush=True)
     if returncode != 0:
         raise FriendlyError(f"Command failed (exit {returncode}): dfu-util")
 

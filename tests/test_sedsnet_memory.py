@@ -7,6 +7,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class SedsnetMemoryTests(unittest.TestCase):
+    def test_threadx_byte_pool_stays_at_known_working_size(self):
+        config = (ROOT / "AZURE_RTOS" / "App" / "app_azure_rtos_config.h").read_text(
+            encoding="utf-8"
+        )
+        size = int(re.search(r"TX_APP_MEM_POOL_SIZE\s+(\d+)", config).group(1))
+        self.assertEqual(size, 55000)
+
     def test_shared_pool_is_not_the_legacy_per_queue_size(self):
         cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
         pool = int(re.search(r'set\(RF_SEDSNET_MEMORY_POOL_SIZE "(\d+)"', cmake).group(1))
@@ -15,7 +22,7 @@ class SedsnetMemoryTests(unittest.TestCase):
         )
         recent = int(re.search(r'set\(SEDSNET_MAX_RECENT_RX_IDS "(\d+)"', cmake).group(1))
 
-        self.assertEqual(pool, 4096)
+        self.assertEqual(pool, 12288)
         self.assertGreaterEqual(start, 512)
         self.assertGreater(pool, recent * 8 + 2 * start)
 

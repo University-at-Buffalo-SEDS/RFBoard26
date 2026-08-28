@@ -29,9 +29,9 @@ class OtaBuildScriptTests(unittest.TestCase):
                 build.flash_dfu(ui, image, "0x08000000")
         command = popen.call_args.args[0]
         self.assertEqual(command[4], "0x08000000:leave")
-        self.assertEqual(visible_output.getvalue(), dfu_output)
-        ui.say.assert_any_call(
-            "ok", "DFU download completed; device reset before final status response."
+        self.assertEqual(
+            visible_output.getvalue(),
+            dfu_output.replace("dfu-util: Error during download get_status\n", ""),
         )
 
     def test_ota_shortcut_is_available(self):
