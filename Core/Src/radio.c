@@ -30,7 +30,7 @@
 #endif
 
 #ifndef RADIO_UART_TX_QUEUE_DEPTH
-#define RADIO_UART_TX_QUEUE_DEPTH   32
+#define RADIO_UART_TX_QUEUE_DEPTH   16
 #endif
 
 #ifndef RADIO_UART_TX_MAX_AGE_MS

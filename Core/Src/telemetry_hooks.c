@@ -16,6 +16,9 @@ volatile uint32_t g_telemetry_lock_get_fail = 0U;
 volatile uint32_t g_telemetry_lock_put_fail = 0U;
 volatile uint32_t g_telemetry_alloc_fail = 0U;
 volatile uint32_t g_telemetry_panic_count = 0U;
+volatile size_t g_telemetry_last_alloc_request = 0U;
+volatile ULONG g_telemetry_alloc_failure_available = 0U;
+volatile ULONG g_telemetry_alloc_failure_fragments = 0U;
 static volatile uint8_t g_last_err_memory_hint = 0U;
 static volatile uint8_t g_last_err_mutex_hint = 0U;
 
@@ -169,6 +172,7 @@ void *telemetryMalloc(size_t xSize)
         /* Rust allocator contract expects non-NULL for successful alloc. */
         xSize = 1U;
     }
+    g_telemetry_last_alloc_request = xSize;
 
     /*
      * Allow a brief wait so telemetry bursts don't immediately fail allocator
@@ -176,6 +180,13 @@ void *telemetryMalloc(size_t xSize)
      */
     if (tx_byte_allocate(rust_byte_pool_external, &ptr, xSize, 5) != TX_SUCCESS)
     {
+        ULONG available = 0U;
+        ULONG fragments = 0U;
+        (void)tx_byte_pool_info_get(rust_byte_pool_external, TX_NULL,
+                                    &available, &fragments,
+                                    TX_NULL, TX_NULL, TX_NULL);
+        g_telemetry_alloc_failure_available = available;
+        g_telemetry_alloc_failure_fragments = fragments;
         g_telemetry_alloc_fail++;
         return NULL;
     }
@@ -219,7 +230,6 @@ void telemetry_panic_hook(const char *str, size_t len)
     /* Prefer explicit text match if available. */
     if ((str != NULL && len > 0U &&
          (str_contains_ci_n(str, len, "alloc") || str_contains_ci_n(str, len, "memory"))) ||
-        (g_last_err_memory_hint != 0U) ||
         (g_telemetry_alloc_fail != 0U))
     {
         telemetry_panic_led_loop_memory();

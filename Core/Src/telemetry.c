@@ -73,7 +73,7 @@ static void print_data_no_telem(void *data, size_t len) {
 #define RF_SEDSNET_MAX_RECENT_RX_IDS 16U
 #endif
 #ifndef RF_SEDSNET_STARTING_ALLOCATION
-#define RF_SEDSNET_STARTING_ALLOCATION 512U
+#define RF_SEDSNET_STARTING_ALLOCATION 128U
 #endif
 
 _Static_assert(RF_SEDSNET_MEMORY_POOL_SIZE >=
