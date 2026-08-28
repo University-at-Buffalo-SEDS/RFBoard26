@@ -13,7 +13,7 @@ set(SEDSNET_ENABLE_CRYPTOGRAPHY OFF CACHE BOOL
 FetchContent_Declare(
     sedsnet
     GIT_REPOSITORY https://github.com/Rylan-Meilutis/SEDSnet.git
-    GIT_TAG ec4d1a7c59646753a8f4e7da6b7f5c9e0f3e66d0
+    GIT_TAG 8821dc028718ea8e6f4231a5edad44f210581d4a
     GIT_SHALLOW FALSE
     PATCH_COMMAND ${CMAKE_COMMAND}
                   -DSEDSNET_SOURCE_DIR=<SOURCE_DIR>
