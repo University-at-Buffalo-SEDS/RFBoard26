@@ -36,6 +36,12 @@ class SedsnetMemoryTests(unittest.TestCase):
         radio = (ROOT / "Core" / "Src" / "radio.c").read_text(encoding="utf-8")
         depth = int(re.search(r"#define RADIO_UART_TX_QUEUE_DEPTH\s+(\d+)", radio).group(1))
         self.assertEqual(depth, 16)
+        self.assertIn(
+            "g_tx_queue_storage[RADIO_UART_TX_QUEUE_DEPTH]", radio
+        )
+        init = radio.split("UINT radio_uart_init_tx_queue", 1)[1]
+        init = init.split("/* Arm RX-to-idle", 1)[0]
+        self.assertNotIn("tx_byte_allocate", init)
 
     def test_memory_led_requires_a_confirmed_allocator_failure(self):
         hooks = (ROOT / "Core" / "Src" / "telemetry_hooks.c").read_text(

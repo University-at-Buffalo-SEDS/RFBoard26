@@ -129,6 +129,13 @@ static volatile uint32_t g_rx_pin_edges = 0U;
 static volatile uint8_t g_rx_pin_last = 0xFFU;
 static TX_MUTEX g_radio_tx_queue_mutex;
 static uint8_t g_radio_tx_queue_mutex_ready = 0U;
+/*
+ * Keep this fixed-capacity queue out of the shared ThreadX byte pool. The
+ * telemetry and GPS stacks consume 25 KiB before SEDSNet starts, and placing
+ * this 4.35 KiB queue in that same pool left too little room for SEDSNet's
+ * transient discovery allocations and allocator bookkeeping.
+ */
+static radio_tx_item_t g_tx_queue_storage[RADIO_UART_TX_QUEUE_DEPTH];
 static radio_tx_item_t *g_tx_queue = NULL;
 static uint32_t g_tx_head = 0U;
 static uint32_t g_tx_tail = 0U;
@@ -691,16 +698,9 @@ UINT radio_uart_init_tx_queue(TX_BYTE_POOL *byte_pool) {
   if (g_tx_queue != NULL) {
     return TX_SUCCESS;
   }
-  if (byte_pool == NULL) {
-    return TX_POOL_ERROR;
-  }
-
-  if (tx_byte_allocate(byte_pool, (VOID **)&g_tx_queue,
-                       sizeof(radio_tx_item_t) * RADIO_UART_TX_QUEUE_DEPTH,
-                       TX_NO_WAIT) != TX_SUCCESS) {
-    g_tx_queue = NULL;
-    return TX_POOL_ERROR;
-  }
+  (void)byte_pool;
+  g_tx_queue = g_tx_queue_storage;
+  memset(g_tx_queue_storage, 0, sizeof(g_tx_queue_storage));
 
   if (!g_radio_tx_queue_mutex_ready &&
       tx_mutex_create(&g_radio_tx_queue_mutex, "radio_txq_mutex", TX_INHERIT) == TX_SUCCESS) {
