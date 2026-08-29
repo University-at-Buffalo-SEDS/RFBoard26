@@ -10,6 +10,7 @@ import tempfile
 SIMULATOR_REPOSITORY = (
     "https://github.com/University-at-Buffalo-SEDS/FirmwareSimulator.git"
 )
+SIMULATOR_INTERFACE_VERSION = "2"
 
 
 def require_docker() -> str:
@@ -76,7 +77,10 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, architecture: str)
         "SEDS_FIRMWARE_SIM_IMAGE",
         f"ghcr.io/university-at-buffalo-seds/firmwaresimulator:{architecture}",
     )
-    local = f"seds-firmware-simulator:{architecture}-local"
+    local = (
+        f"seds-firmware-simulator:{architecture}-local-"
+        f"v{SIMULATOR_INTERFACE_VERSION}"
+    )
     configured_source = os.environ.get("SEDS_FIRMWARE_SIM_SOURCE")
     if configured_source:
         source = Path(configured_source).expanduser().resolve()
