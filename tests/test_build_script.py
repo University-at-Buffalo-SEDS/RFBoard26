@@ -28,6 +28,15 @@ class OtaBuildScriptTests(unittest.TestCase):
         for artifact in layout["artifacts"].values():
             self.assertEqual(Path(artifact).parts[1], "Selected_Test_Build")
 
+    def test_all_tests_report_an_unavailable_docker_daemon(self):
+        from sim import run_full
+
+        probe = mock.Mock(returncode=1, stdout="", stderr="daemon unavailable")
+        with mock.patch.object(run_full.shutil, "which", return_value="/usr/bin/docker"):
+            with mock.patch.object(run_full.subprocess, "run", return_value=probe):
+                with self.assertRaisesRegex(RuntimeError, "daemon is not available"):
+                    run_full.require_docker()
+
     def test_flash_defaults_to_combined_factory_image(self):
         args = build.make_parser().parse_args(["flash", "--release", "--method", "dfu"])
         self.assertEqual(args.image, "factory")

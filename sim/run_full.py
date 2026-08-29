@@ -8,6 +8,31 @@ import subprocess
 import tempfile
 
 
+def require_docker() -> str:
+    docker = shutil.which("docker")
+    if docker is None:
+        raise RuntimeError(
+            "Docker is required for build.py test --all. Install Docker Engine "
+            "or Docker Desktop, then retry."
+        )
+    probe = subprocess.run(
+        [docker, "info", "--format", "{{.ServerVersion}}"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if probe.returncode != 0:
+        detail = (probe.stderr or probe.stdout).strip()
+        raise RuntimeError(
+            "Docker is installed, but its daemon is not available. On Linux, start "
+            "it with 'sudo systemctl start docker'; if access is denied, add your "
+            "user to the docker group and log in again. On Docker Desktop, start "
+            "the application."
+            + (f"\nDocker reported: {detail}" if detail else "")
+        )
+    return docker
+
+
 def load_layout_for_build(repo_root: Path, build_subdir: str | None) -> dict:
     layout = json.loads((repo_root / "sim" / "board.json").read_text(encoding="utf-8"))
     if build_subdir is None:
@@ -25,9 +50,7 @@ def run_full_simulation(
     ui, repo_root: Path, architecture: str, build_subdir: str | None = None
 ) -> None:
     """Run this board's file-defined simulation inside Docker."""
-    docker = shutil.which("docker")
-    if docker is None:
-        raise RuntimeError("Docker is required for build.py test --all")
+    docker = require_docker()
 
     image = os.environ.get(
         "SEDS_FIRMWARE_SIM_IMAGE",

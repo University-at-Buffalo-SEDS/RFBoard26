@@ -773,6 +773,12 @@ def main() -> None:
     cfg = build_cfg_from_args(ui, args)
 
     if args.cmd == "test":
+        if args.all_tests:
+            from sim.run_full import require_docker
+            try:
+                require_docker()
+            except RuntimeError as exc:
+                raise FriendlyError(str(exc)) from None
         run_host_tests(ui, cfg.repo_root)
         if args.all_tests:
             build_selected_artifact(ui, cfg, "factory", None, None, False)
