@@ -99,19 +99,22 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 # SEDSNet v4
 set(SEDSNET_DEVICE_IDENTIFIER "RF" CACHE STRING "" FORCE)
 set(SEDSNET_MAX_STACK_PAYLOAD "128" CACHE STRING "" FORCE)
-set(RF_SEDSNET_MEMORY_POOL_SIZE "12288" CACHE STRING
-    "Shared SEDSNet runtime pool for queues, discovery, reliability, schema, and OTA" FORCE)
-set(RF_SEDSNET_STARTING_ALLOCATION "128" CACHE STRING
-    "Initial allocation within the shared SEDSNet runtime pool" FORCE)
-set(SEDSNET_MAX_QUEUE_BUDGET "${RF_SEDSNET_MEMORY_POOL_SIZE}" CACHE STRING "" FORCE)
+set(RF_SEDSNET_MEMORY_POOL_SIZE "28672" CACHE STRING
+    "Isolated SEDSNet allocator pool, including router state, allocator metadata, and reserve" FORCE)
+set(RF_SEDSNET_QUEUE_BUDGET "12288" CACHE STRING
+    "Fallback/discovery SEDSNet budget; normal telemetry dispatches immediately" FORCE)
+set(RF_SEDSNET_STARTING_ALLOCATION "1024" CACHE STRING
+    "Fixed fallback queue storage; normal telemetry dispatches immediately" FORCE)
+set(SEDSNET_MAX_QUEUE_BUDGET "${RF_SEDSNET_QUEUE_BUDGET}" CACHE STRING "" FORCE)
 set(SEDSNET_MAX_RECENT_RX_IDS "16" CACHE STRING "" FORCE)
 set(SEDSNET_ENV_STARTING_QUEUE_SIZE "${RF_SEDSNET_STARTING_ALLOCATION}" CACHE STRING "" FORCE)
-set(SEDSNET_ENV_QUEUE_GROW_STEP "1.25" CACHE STRING "" FORCE)
+set(SEDSNET_ENV_QUEUE_GROW_STEP "1.0" CACHE STRING "" FORCE)
 set(SEDSNET_ENV_PAYLOAD_COMPRESS_THRESHOLD "30" CACHE STRING "" FORCE)
 set(SEDSNET_TARGET "thumbv7em-none-eabihf" CACHE STRING "" FORCE)
 include(cmake/sedsnet_fetch.cmake)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     RF_SEDSNET_MEMORY_POOL_SIZE=${RF_SEDSNET_MEMORY_POOL_SIZE}
+    RF_SEDSNET_QUEUE_BUDGET=${RF_SEDSNET_QUEUE_BUDGET}
     RF_SEDSNET_MAX_RECENT_RX_IDS=${SEDSNET_MAX_RECENT_RX_IDS}
     RF_SEDSNET_STARTING_ALLOCATION=${RF_SEDSNET_STARTING_ALLOCATION})
 set(TELEMETRY_TIMESYNC_MASTER_PRIO "1" CACHE STRING "Timesync source priority. Values < 0 make this board a consumer; values >= 0 make it a source with that priority." FORCE)

@@ -68,16 +68,19 @@ static void print_data_no_telem(void *data, size_t len) {
 #define TELEMETRY_ROUTER_RETRY_MS 5000ULL
 
 #ifndef RF_SEDSNET_MEMORY_POOL_SIZE
-#define RF_SEDSNET_MEMORY_POOL_SIZE 12288U
+#define RF_SEDSNET_MEMORY_POOL_SIZE 28672U
+#endif
+#ifndef RF_SEDSNET_QUEUE_BUDGET
+#define RF_SEDSNET_QUEUE_BUDGET 12288U
 #endif
 #ifndef RF_SEDSNET_MAX_RECENT_RX_IDS
 #define RF_SEDSNET_MAX_RECENT_RX_IDS 16U
 #endif
 #ifndef RF_SEDSNET_STARTING_ALLOCATION
-#define RF_SEDSNET_STARTING_ALLOCATION 128U
+#define RF_SEDSNET_STARTING_ALLOCATION 1024U
 #endif
 
-_Static_assert(RF_SEDSNET_MEMORY_POOL_SIZE >=
+_Static_assert(RF_SEDSNET_QUEUE_BUDGET >=
                    (RF_SEDSNET_MAX_RECENT_RX_IDS * sizeof(uint64_t)) +
                        (2U * RF_SEDSNET_STARTING_ALLOCATION),
                "SEDSNet pool must leave space after recent IDs and initial RX/TX queues");
@@ -528,10 +531,10 @@ static void telemetry_can_rx(const uint8_t *data, size_t len, void *user) {
   }
 
   if (g_can_side_id >= 0) {
-    (void)seds_router_rx_packed_packet_to_queue_from_side(
+    (void)seds_router_receive_packed_from_side(
         g_router.r, (uint32_t)g_can_side_id, data, len);
   } else {
-    (void)seds_router_rx_packed_packet_to_queue(g_router.r, data, len);
+    (void)seds_router_receive_packed(g_router.r, data, len);
   }
 #else
   (void)data;
@@ -595,10 +598,10 @@ static void telemetry_radio_rx(const uint8_t *data, size_t len, void *user) {
   }
 
   if (g_radio_side_id >= 0) {
-    (void)seds_router_rx_packed_packet_to_queue_from_side(
+    (void)seds_router_receive_packed_from_side(
         g_router.r, (uint32_t)g_radio_side_id, data, len);
   } else {
-    (void)seds_router_rx_packed_packet_to_queue(g_router.r, data, len);
+    (void)seds_router_receive_packed(g_router.r, data, len);
   }
 #else
   (void)data;
@@ -621,10 +624,10 @@ void rx_asynchronous(const uint8_t *bytes, size_t len) {
   }
 
   if (g_can_side_id >= 0) {
-    (void)seds_router_rx_packed_packet_to_queue_from_side(
+    (void)seds_router_receive_packed_from_side(
         g_router.r, (uint32_t)g_can_side_id, bytes, len);
   } else {
-    (void)seds_router_rx_packed_packet_to_queue(g_router.r, bytes, len);
+    (void)seds_router_receive_packed(g_router.r, bytes, len);
   }
 #endif
 }
@@ -722,10 +725,10 @@ SedsResult init_telemetry_router(void) {
   }
 
   const SedsRuntimeMemoryConfig memory = {
-      .max_queue_budget = RF_SEDSNET_MEMORY_POOL_SIZE,
+      .max_queue_budget = RF_SEDSNET_QUEUE_BUDGET,
       .max_recent_rx_ids = RF_SEDSNET_MAX_RECENT_RX_IDS,
       .starting_queue_size = RF_SEDSNET_STARTING_ALLOCATION,
-      .queue_grow_step = 1.25,
+      .queue_grow_step = 1.0,
   };
   r = seds_router_new_with_memory(Seds_RM_Relay, node_now_since_ms, NULL, NULL, 0U,
                                   SEDS_ROUTER_E2E_DISABLED, 0U, &memory);
@@ -841,8 +844,15 @@ SedsResult log_telemetry_asynchronous(SedsDataType data_type, const void *data,
     return SEDS_ERR;
   }
 
-  return seds_router_log_queue_typed(g_router.r, data_type, data, element_count, element_size,
-                                     guess_kind_from_elem_size(element_size));
+  /*
+   * The CAN and radio transports already own their hardware queues.  Queueing
+   * the same packet in SEDSNet as well causes burst traffic to grow a second,
+   * fragmented heap-backed queue before the telemetry thread can drain it.
+   * Dispatch into the transport immediately; the transport scheduler still
+   * controls when bytes reach the wire.
+   */
+  return seds_router_log_typed(g_router.r, data_type, data, element_count, element_size,
+                               guess_kind_from_elem_size(element_size));
 #else
   (void)data_type;
   print_data_no_telem((void *)data, element_count * element_size);
@@ -860,7 +870,7 @@ SedsResult log_telemetry_string_asynchronous(SedsDataType data_type, const char 
     return SEDS_ERR;
   }
 
-  return seds_router_log_string_ex(g_router.r, data_type, str, strlen(str), NULL, 1);
+  return seds_router_log_string_ex(g_router.r, data_type, str, strlen(str), NULL, 0);
 #else
   (void)data_type;
   (void)str;

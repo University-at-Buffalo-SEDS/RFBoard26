@@ -17,6 +17,7 @@ volatile uint32_t g_telemetry_lock_put_fail = 0U;
 volatile uint32_t g_telemetry_alloc_fail = 0U;
 volatile uint32_t g_telemetry_panic_count = 0U;
 volatile size_t g_telemetry_last_alloc_request = 0U;
+volatile size_t g_telemetry_alloc_failure_request = 0U;
 volatile ULONG g_telemetry_alloc_failure_available = 0U;
 volatile ULONG g_telemetry_alloc_failure_fragments = 0U;
 volatile ULONG g_telemetry_pool_available = 0U;
@@ -232,6 +233,7 @@ void *telemetryMalloc(size_t xSize)
                                     TX_NULL, TX_NULL, TX_NULL);
         g_telemetry_alloc_failure_available = available;
         g_telemetry_alloc_failure_fragments = fragments;
+        g_telemetry_alloc_failure_request = xSize;
         g_telemetry_alloc_fail++;
         return NULL;
     }

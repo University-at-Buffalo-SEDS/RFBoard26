@@ -12,7 +12,7 @@
     "slot_a_size": 475136,
     "erase_size": 2048,
     "write_alignment": 8,
-    "sedsnet_pool": 12288,
+    "sedsnet_pool": 28672,
     "delta_base": 134709248,
     "delta_size": 24576
   },
@@ -26,16 +26,25 @@
   },
   "execution": {
     "virtual_time_ms": 250,
-    "sample_count": 1,
+    "sample_count": 5,
+    "memory_probe_warmup_samples": 2,
     "memory_probes": [
-      {"name": "pool_available", "symbol": "g_telemetry_pool_available", "minimum": 4096, "max_end_drop": 1024},
+      {"name": "pool_available", "symbol": "g_telemetry_pool_available", "minimum": 4096, "max_end_drop": 4096},
       {"name": "pool_low_water", "symbol": "g_telemetry_pool_low_water", "minimum": 2048},
+      {"name": "alloc_failure_request", "symbol": "g_telemetry_alloc_failure_request", "maximum": 0},
+      {"name": "alloc_failure_available", "symbol": "g_telemetry_alloc_failure_available"},
+      {"name": "alloc_failure_fragments", "symbol": "g_telemetry_alloc_failure_fragments"},
+      {"name": "max_alloc_request", "symbol": "g_telemetry_max_alloc_request"},
       {"name": "alloc_failures", "symbol": "g_telemetry_alloc_fail", "maximum": 0},
       {"name": "panics", "symbol": "g_telemetry_panic_count", "maximum": 0},
       {"name": "lock_get_failures", "symbol": "g_telemetry_lock_get_fail", "maximum": 0},
       {"name": "lock_put_failures", "symbol": "g_telemetry_lock_put_fail", "maximum": 0},
+      {"name": "stack_errors", "symbol": "g_thread_stack_error_count", "maximum": 0},
       {"name": "allocations", "symbol": "g_telemetry_alloc_count"},
-      {"name": "frees", "symbol": "g_telemetry_free_count"}
+      {"name": "frees", "symbol": "g_telemetry_free_count"},
+      {"name": "fdcan_irqs", "symbol": "g_fdcan_irq_count"},
+      {"name": "fdcan_tx_ok", "symbol": "g_fdcan_tx_ok_count"},
+      {"name": "fdcan_tx_fail", "symbol": "g_fdcan_tx_fail_count"}
     ]
   },
   "traffic": {

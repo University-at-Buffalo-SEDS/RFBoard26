@@ -29,7 +29,7 @@
 #include "RF-Threads.h"
 #include "tx_api.h"
 #include "neom9n.h"
-/* Provide telemetry_set_byte_pool so rust hooks use the app memory pool */
+/* Provide telemetry_set_byte_pool so Rust uses its isolated allocator pool. */
 extern void telemetry_set_byte_pool(TX_BYTE_POOL *pool);
 extern void telemetry_init_lock(void);
 /* USER CODE END Includes */
@@ -57,6 +57,15 @@ static void busy_delay(volatile uint32_t n)
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
+static TX_BYTE_POOL sedsnet_byte_pool;
+volatile uint32_t g_thread_stack_error_count = 0U;
+
+static void thread_stack_error_handler(TX_THREAD *thread_ptr)
+{
+  (void)thread_ptr;
+  g_thread_stack_error_count++;
+  Error_Handler();
+}
 
 /* USER CODE END PV */
 
@@ -79,9 +88,19 @@ UINT App_ThreadX_Init(VOID *memory_ptr)
   /* USER CODE END App_ThreadX_MEM_POOL */
 
   /* USER CODE BEGIN App_ThreadX_Init */
-  telemetry_set_byte_pool(byte_pool);
+  VOID *sedsnet_pool_memory = TX_NULL;
+  if (tx_byte_allocate(byte_pool, &sedsnet_pool_memory,
+                       RF_SEDSNET_MEMORY_POOL_SIZE, TX_NO_WAIT) != TX_SUCCESS ||
+      tx_byte_pool_create(&sedsnet_byte_pool, "SEDSNet memory pool",
+                          sedsnet_pool_memory,
+                          RF_SEDSNET_MEMORY_POOL_SIZE) != TX_SUCCESS)
+  {
+    Error_Handler();
+  }
+  telemetry_set_byte_pool(&sedsnet_byte_pool);
   /* Initialize telemetry lock used by Rust (telemetry_lock/telemetry_unlock). */
   telemetry_init_lock();
+  (void)tx_thread_stack_error_notify(thread_stack_error_handler);
 
   ret = create_telemetry_thread(byte_pool);
   if (ret != TX_SUCCESS)

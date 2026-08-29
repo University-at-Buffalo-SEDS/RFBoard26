@@ -205,7 +205,9 @@ static uint32_t g_notification_mask = 0;
 static uint32_t g_own_std_id = 0xFFFFFFFFu;
 
 /* IRQ counter incremented by ISR to help debug whether interrupts fire. */
-volatile uint32_t g_fdcan_irq_count = 0;
+volatile uint32_t g_fdcan_irq_count __attribute__((used, externally_visible)) = 0;
+volatile uint32_t g_fdcan_tx_ok_count __attribute__((used, externally_visible)) = 0;
+volatile uint32_t g_fdcan_tx_fail_count __attribute__((used, externally_visible)) = 0;
 
 /*
  * RX/TX pending flags set from ISR.
@@ -260,7 +262,10 @@ static HAL_StatusTypeDef can_bus_enqueue_tx_frame(const FDCAN_TxHeaderTypeDef *h
     {
       HAL_StatusTypeDef st = HAL_FDCAN_AddMessageToTxFifoQ(g_hfdcan, hdr, data);
       if (st == HAL_OK)
+      {
+        g_fdcan_tx_ok_count++;
         return HAL_OK;
+      }
 
       /*
        * Retry only when queue is temporarily full; for all other errors,
@@ -268,11 +273,17 @@ static HAL_StatusTypeDef can_bus_enqueue_tx_frame(const FDCAN_TxHeaderTypeDef *h
        */
       const uint32_t err = HAL_FDCAN_GetError(g_hfdcan);
       if ((err & HAL_FDCAN_ERROR_FIFO_FULL) == 0U)
+      {
+        g_fdcan_tx_fail_count++;
         return st;
+      }
     }
 
     if ((uint32_t)(HAL_GetTick() - t0) >= (uint32_t)CAN_BUS_TX_ENQUEUE_TIMEOUT_MS)
+    {
+      g_fdcan_tx_fail_count++;
       return HAL_TIMEOUT;
+    }
   }
 }
 

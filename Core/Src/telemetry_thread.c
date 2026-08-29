@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 TX_THREAD telemetry_thread;
-#define TELEMETRY_THREAD_STACK_SIZE (16U *1024U)
+#define TELEMETRY_THREAD_STACK_SIZE (16U * 1024U)
 #define TELEMETRY_THREAD_SLEEP_TICKS 1U
 #define TELEMETRY_QUEUE_BUDGET_MS 5U
 #define TELEMETRY_ALIVE_PRINT_INTERVAL_MS 5000ULL
@@ -254,7 +254,6 @@ void telemetry_thread_entry(ULONG initial_input)
         telemetry_retry_pending_can_commands();
         telemetry_announce_discovery_if_due(now_ms, &next_discovery_announce_ms);
         (void)telemetry_poll_discovery();
-        (void)process_rx_queue_timeout(TELEMETRY_QUEUE_BUDGET_MS);
         telemetry_retry_pending_can_commands();
         (void)dispatch_tx_queue_timeout(TELEMETRY_QUEUE_BUDGET_MS);
         (void)telemetry_poll_timesync();
