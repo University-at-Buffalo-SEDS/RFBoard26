@@ -7,6 +7,10 @@ import shutil
 import subprocess
 import tempfile
 
+SIMULATOR_REPOSITORY = (
+    "https://github.com/University-at-Buffalo-SEDS/FirmwareSimulator.git"
+)
+
 
 def require_docker() -> str:
     docker = shutil.which("docker")
@@ -46,26 +50,91 @@ def load_layout_for_build(repo_root: Path, build_subdir: str | None) -> dict:
     return layout
 
 
+def _image_exists(docker: str, image: str) -> bool:
+    result = subprocess.run(
+        [docker, "image", "inspect", image],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return result.returncode == 0
+
+
+def _build_simulator_image(
+    ui, docker: str, source: Path, architecture: str, image: str
+) -> None:
+    build = [
+        docker, "build", "--platform", "linux/amd64",
+        "--build-arg", f"SIM_ARCH={architecture}",
+        "-t", image, str(source),
+    ]
+    ui.say("run", " ".join(build))
+    subprocess.run(build, check=True)
+
+
+def resolve_simulator_image(ui, docker: str, repo_root: Path, architecture: str) -> str:
+    requested = os.environ.get(
+        "SEDS_FIRMWARE_SIM_IMAGE",
+        f"ghcr.io/university-at-buffalo-seds/firmwaresimulator:{architecture}",
+    )
+    local = f"seds-firmware-simulator:{architecture}-local"
+    sibling = repo_root.parent / "FirmwareSimulator"
+    if sibling.joinpath("Dockerfile").is_file():
+        _build_simulator_image(ui, docker, sibling, architecture, local)
+        return local
+    if _image_exists(docker, local):
+        return local
+    if _image_exists(docker, requested):
+        return requested
+
+    ui.say("run", f"{docker} pull {requested}")
+    pull = subprocess.run(
+        [docker, "pull", requested],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if pull.returncode == 0:
+        return requested
+
+    git = shutil.which("git")
+    if git is None:
+        raise RuntimeError(
+            "The published simulator image is unavailable and git is required "
+            "to build it from source."
+        )
+    ui.say(
+        "info",
+        "Published simulator image unavailable; cloning FirmwareSimulator and "
+        "building a local image.",
+    )
+    with tempfile.TemporaryDirectory(prefix="seds-firmware-simulator-") as directory:
+        source = Path(directory) / "FirmwareSimulator"
+        try:
+            subprocess.run(
+                [
+                    git, "clone", "--depth", "1", "--branch", "main",
+                    SIMULATOR_REPOSITORY, str(source),
+                ],
+                check=True,
+            )
+            _build_simulator_image(ui, docker, source, architecture, local)
+        except subprocess.CalledProcessError as exc:
+            detail = (pull.stderr or pull.stdout).strip()
+            raise RuntimeError(
+                "The simulator image could not be pulled and its source fallback "
+                "could not be built."
+                + (f"\nRegistry reported: {detail}" if detail else "")
+            ) from exc
+    return local
+
+
 def run_full_simulation(
     ui, repo_root: Path, architecture: str, build_subdir: str | None = None
 ) -> None:
     """Run this board's file-defined simulation inside Docker."""
     docker = require_docker()
 
-    image = os.environ.get(
-        "SEDS_FIRMWARE_SIM_IMAGE",
-        f"ghcr.io/university-at-buffalo-seds/firmwaresimulator:{architecture}",
-    )
-    simulator_source = repo_root.parent / "FirmwareSimulator"
-    if simulator_source.joinpath("Dockerfile").is_file():
-        image = f"seds-firmware-simulator:{architecture}-local"
-        build = [
-            docker, "build", "--platform", "linux/amd64",
-            "--build-arg", f"SIM_ARCH={architecture}",
-            "-t", image, str(simulator_source),
-        ]
-        ui.say("run", " ".join(build))
-        subprocess.run(build, check=True)
+    image = resolve_simulator_image(ui, docker, repo_root, architecture)
 
     layout = load_layout_for_build(repo_root, build_subdir)
 

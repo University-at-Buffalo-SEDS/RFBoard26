@@ -37,6 +37,27 @@ class OtaBuildScriptTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "daemon is not available"):
                     run_full.require_docker()
 
+    def test_missing_registry_image_is_built_from_a_fresh_clone(self):
+        from sim import run_full
+
+        missing = mock.Mock(returncode=1, stdout="", stderr="denied")
+        success = mock.Mock(returncode=0, stdout="", stderr="")
+        ui = mock.Mock()
+        with mock.patch.dict(run_full.os.environ, {}, clear=True):
+            with mock.patch.object(run_full.shutil, "which", return_value="/usr/bin/git"):
+                with mock.patch.object(
+                    run_full.subprocess,
+                    "run",
+                    side_effect=[missing, missing, missing, success, success],
+                ) as execute:
+                    image = run_full.resolve_simulator_image(
+                        ui, "/usr/bin/docker", Path("/board"), "stm32g4"
+                    )
+
+        self.assertEqual(image, "seds-firmware-simulator:stm32g4-local")
+        commands = [call.args[0] for call in execute.call_args_list]
+        self.assertTrue(any("clone" in command for command in commands))
+
     def test_flash_defaults_to_combined_factory_image(self):
         args = build.make_parser().parse_args(["flash", "--release", "--method", "dfu"])
         self.assertEqual(args.image, "factory")
