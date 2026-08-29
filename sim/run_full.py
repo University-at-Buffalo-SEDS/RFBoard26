@@ -77,14 +77,15 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, architecture: str)
         f"ghcr.io/university-at-buffalo-seds/firmwaresimulator:{architecture}",
     )
     local = f"seds-firmware-simulator:{architecture}-local"
-    sibling = repo_root.parent / "FirmwareSimulator"
-    if sibling.joinpath("Dockerfile").is_file():
-        _build_simulator_image(ui, docker, sibling, architecture, local)
+    configured_source = os.environ.get("SEDS_FIRMWARE_SIM_SOURCE")
+    if configured_source:
+        source = Path(configured_source).expanduser().resolve()
+        if not source.joinpath("Dockerfile").is_file():
+            raise RuntimeError(
+                f"SEDS_FIRMWARE_SIM_SOURCE does not contain a Dockerfile: {source}"
+            )
+        _build_simulator_image(ui, docker, source, architecture, local)
         return local
-    if _image_exists(docker, local):
-        return local
-    if _image_exists(docker, requested):
-        return requested
 
     ui.say("run", f"{docker} pull {requested}")
     pull = subprocess.run(
@@ -95,6 +96,10 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, architecture: str)
     )
     if pull.returncode == 0:
         return requested
+    if _image_exists(docker, requested):
+        return requested
+    if _image_exists(docker, local):
+        return local
 
     git = shutil.which("git")
     if git is None:
@@ -128,6 +133,14 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, architecture: str)
     return local
 
 
+def write_container_layout(directory: Path, layout: dict) -> Path:
+    directory.chmod(0o755)
+    layout_path = directory / "board.json"
+    layout_path.write_text(json.dumps(layout, indent=2), encoding="utf-8")
+    layout_path.chmod(0o644)
+    return layout_path
+
+
 def run_full_simulation(
     ui, repo_root: Path, architecture: str, build_subdir: str | None = None
 ) -> None:
@@ -139,8 +152,7 @@ def run_full_simulation(
     layout = load_layout_for_build(repo_root, build_subdir)
 
     with tempfile.TemporaryDirectory(prefix="seds-firmware-layout-") as directory:
-        layout_path = Path(directory) / "board.json"
-        layout_path.write_text(json.dumps(layout, indent=2), encoding="utf-8")
+        write_container_layout(Path(directory), layout)
         command = [
             docker, "run", "--platform", "linux/amd64", "--rm",
             "-v", f"{repo_root}:/firmware:ro",

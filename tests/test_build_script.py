@@ -58,6 +58,15 @@ class OtaBuildScriptTests(unittest.TestCase):
         commands = [call.args[0] for call in execute.call_args_list]
         self.assertTrue(any("clone" in command for command in commands))
 
+    def test_generated_layout_is_readable_by_the_container_user(self):
+        from sim.run_full import write_container_layout
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            layout = write_container_layout(root, {"name": "test"})
+            self.assertEqual(root.stat().st_mode & 0o777, 0o755)
+            self.assertEqual(layout.stat().st_mode & 0o777, 0o644)
+
     def test_flash_defaults_to_combined_factory_image(self):
         args = build.make_parser().parse_args(["flash", "--release", "--method", "dfu"])
         self.assertEqual(args.image, "factory")
