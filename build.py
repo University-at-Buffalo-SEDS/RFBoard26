@@ -709,8 +709,8 @@ def make_parser() -> argparse.ArgumentParser:
 
     t = sub.add_parser("test", help="Run unit tests and optional full firmware simulation")
     add_mode_and_common(t)
-    t.add_argument("--full", action="store_true",
-                   help="Build release artifacts and run the Rust firmware simulator in Docker.")
+    t.add_argument("--all", "--full", dest="all_tests", action="store_true",
+                   help="Build the selected configuration and run all unit and Docker firmware simulation tests (--full is an alias).")
 
     # st-util options
     f.add_argument("--host", default="127.0.0.1", help="GDB server host (default: 127.0.0.1)")
@@ -770,17 +770,17 @@ def main() -> None:
     if not args.trace:
         sys.excepthook = _wrap_unhandled(ui)
 
-    if args.cmd == "test" and args.full and not args.debug:
-        args.release = True
     cfg = build_cfg_from_args(ui, args)
 
     if args.cmd == "test":
         run_host_tests(ui, cfg.repo_root)
-        if args.full:
+        if args.all_tests:
             build_selected_artifact(ui, cfg, "factory", None, None, False)
             build_selected_artifact(ui, cfg, "ota", None, None, False)
             from sim.run_full import run_full_simulation
-            run_full_simulation(ui, cfg.repo_root, "stm32g4")
+            run_full_simulation(
+                ui, cfg.repo_root, "stm32g4", cfg.build_subdir
+            )
         return
 
     if args.cmd == "build":
