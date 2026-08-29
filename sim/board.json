@@ -22,6 +22,20 @@
     "factory": "build/Release/RFBoard26.factory.bin",
     "ota": "build/Release/RFBoard26.seds"
   },
+  "execution": {
+    "virtual_time_ms": 250,
+    "sample_count": 1,
+    "memory_probes": [
+      {"name": "pool_available", "symbol": "g_telemetry_pool_available", "minimum": 4096, "max_end_drop": 1024},
+      {"name": "pool_low_water", "symbol": "g_telemetry_pool_low_water", "minimum": 2048},
+      {"name": "alloc_failures", "symbol": "g_telemetry_alloc_fail", "maximum": 0},
+      {"name": "panics", "symbol": "g_telemetry_panic_count", "maximum": 0},
+      {"name": "lock_get_failures", "symbol": "g_telemetry_lock_get_fail", "maximum": 0},
+      {"name": "lock_put_failures", "symbol": "g_telemetry_lock_put_fail", "maximum": 0},
+      {"name": "allocations", "symbol": "g_telemetry_alloc_count"},
+      {"name": "frees", "symbol": "g_telemetry_free_count"}
+    ]
+  },
   "traffic": {
     "iterations": 100000,
     "max_payload": 512,
@@ -35,14 +49,9 @@
     {
       "type": "gps",
       "name": "neo_m9n",
+      "model": "neo_m9n",
+      "bus": "spi1",
       "failure_every": 997
-    },
-    {
-      "type": "adc",
-      "name": "rf_adc",
-      "bits": 12,
-      "channels": 4,
-      "disconnect_after": 950
     }
   ]
 }
