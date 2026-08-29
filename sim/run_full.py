@@ -20,14 +20,15 @@ def run_full_simulation(ui, repo_root: Path, architecture: str) -> None:
     if simulator_source.joinpath("Dockerfile").is_file():
         image = f"seds-firmware-simulator:{architecture}-local"
         build = [
-            docker, "build", "--build-arg", f"SIM_ARCH={architecture}",
+            docker, "build", "--platform", "linux/amd64",
+            "--build-arg", f"SIM_ARCH={architecture}",
             "-t", image, str(simulator_source),
         ]
         ui.say("run", " ".join(build))
         subprocess.run(build, check=True)
 
     command = [
-        docker, "run", "--rm",
+        docker, "run", "--platform", "linux/amd64", "--rm",
         "-v", f"{repo_root}:/firmware:ro",
         image, "run",
         "--layout", "/firmware/sim/board.json",
@@ -35,4 +36,3 @@ def run_full_simulation(ui, repo_root: Path, architecture: str) -> None:
     ]
     ui.say("run", " ".join(command))
     subprocess.run(command, check=True)
-
