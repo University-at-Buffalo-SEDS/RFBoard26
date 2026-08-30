@@ -10,7 +10,7 @@ import tempfile
 SIMULATOR_REPOSITORY = (
     "https://github.com/University-at-Buffalo-SEDS/FirmwareSimulator.git"
 )
-SIMULATOR_INTERFACE_VERSION = "0.2.0"
+SIMULATOR_INTERFACE_VERSION = "0.3.0"
 
 
 def require_docker() -> str:
@@ -62,7 +62,7 @@ def _image_exists(docker: str, image: str) -> bool:
 
 def _build_simulator_image(ui, docker: str, source: Path, image: str) -> None:
     build = [
-        docker, "build", "--platform", "linux/amd64",
+        docker, "build",
         "--progress=plain",
         "-t", image, str(source),
     ]
@@ -86,12 +86,10 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str
         _build_simulator_image(ui, docker, source, local)
         return local
 
-    ui.say("run", f"{docker} pull --platform linux/amd64 {requested}")
+    ui.say("run", f"{docker} pull {requested}")
     # Inherit the terminal streams so layer downloads and extraction remain
     # visible. Capturing these pipes makes a large image pull look hung.
-    pull = subprocess.run(
-        [docker, "pull", "--platform", "linux/amd64", requested]
-    )
+    pull = subprocess.run([docker, "pull", requested])
     if pull.returncode == 0:
         return requested
     if _image_exists(docker, requested):
@@ -150,7 +148,7 @@ def run_full_simulation(
     with tempfile.TemporaryDirectory(prefix="seds-firmware-layout-") as directory:
         write_container_layout(Path(directory), layout)
         command = [
-            docker, "run", "--platform", "linux/amd64", "--rm",
+            docker, "run", "--rm",
             "-v", f"{repo_root}:/firmware:ro",
             "-v", f"{directory}:/simulation:ro",
             image, "run",

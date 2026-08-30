@@ -67,14 +67,12 @@ class OtaBuildScriptTests(unittest.TestCase):
                         ui, "/usr/bin/docker", Path("/board"), "stm32g4"
                     )
 
-        self.assertEqual(image, "seds-firmware-simulator:local-v0.2.0")
+        self.assertEqual(image, "seds-firmware-simulator:local-v0.3.0")
         commands = [call.args[0] for call in execute.call_args_list]
         self.assertIn(
             [
                 "/usr/bin/docker",
                 "pull",
-                "--platform",
-                "linux/amd64",
                 "ghcr.io/university-at-buffalo-seds/firmwaresimulator:latest",
             ],
             commands,
@@ -95,6 +93,9 @@ class OtaBuildScriptTests(unittest.TestCase):
         )
         self.assertFalse(
             any("SIM_ARCH" in argument for command in commands for argument in command)
+        )
+        self.assertFalse(
+            any("--platform" in command for command in commands)
         )
 
     def test_generated_layout_is_readable_by_the_container_user(self):
