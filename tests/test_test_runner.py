@@ -1,6 +1,7 @@
 import contextlib
 import io
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import build
@@ -43,10 +44,9 @@ class TestRunnerReportingTests(unittest.TestCase):
         self.assertIn("FAIL", output.getvalue())
 
     def test_ctest_zero_test_guard_is_enabled(self):
-        source = open(build.__file__, encoding="utf-8").read()
+        source = Path(build.__file__).read_text(encoding="utf-8")
         self.assertIn("--no-tests=error", source)
 
 
 if __name__ == "__main__":
     unittest.main()
-
