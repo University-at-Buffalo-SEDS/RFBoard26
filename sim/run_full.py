@@ -10,7 +10,7 @@ import tempfile
 SIMULATOR_REPOSITORY = (
     "https://github.com/University-at-Buffalo-SEDS/FirmwareSimulator.git"
 )
-SIMULATOR_INTERFACE_VERSION = "2"
+SIMULATOR_INTERFACE_VERSION = "0.2.0"
 
 
 def require_docker() -> str:
@@ -60,27 +60,21 @@ def _image_exists(docker: str, image: str) -> bool:
     return result.returncode == 0
 
 
-def _build_simulator_image(
-    ui, docker: str, source: Path, architecture: str, image: str
-) -> None:
+def _build_simulator_image(ui, docker: str, source: Path, image: str) -> None:
     build = [
         docker, "build", "--platform", "linux/amd64",
-        "--build-arg", f"SIM_ARCH={architecture}",
         "-t", image, str(source),
     ]
     ui.say("run", " ".join(build))
     subprocess.run(build, check=True)
 
 
-def resolve_simulator_image(ui, docker: str, repo_root: Path, architecture: str) -> str:
+def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str) -> str:
     requested = os.environ.get(
         "SEDS_FIRMWARE_SIM_IMAGE",
-        f"ghcr.io/university-at-buffalo-seds/firmwaresimulator:{architecture}",
+        "ghcr.io/university-at-buffalo-seds/firmwaresimulator:latest",
     )
-    local = (
-        f"seds-firmware-simulator:{architecture}-local-"
-        f"v{SIMULATOR_INTERFACE_VERSION}"
-    )
+    local = f"seds-firmware-simulator:local-v{SIMULATOR_INTERFACE_VERSION}"
     configured_source = os.environ.get("SEDS_FIRMWARE_SIM_SOURCE")
     if configured_source:
         source = Path(configured_source).expanduser().resolve()
@@ -88,7 +82,7 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, architecture: str)
             raise RuntimeError(
                 f"SEDS_FIRMWARE_SIM_SOURCE does not contain a Dockerfile: {source}"
             )
-        _build_simulator_image(ui, docker, source, architecture, local)
+        _build_simulator_image(ui, docker, source, local)
         return local
 
     ui.say("run", f"{docker} pull {requested}")
@@ -126,7 +120,7 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, architecture: str)
                 ],
                 check=True,
             )
-            _build_simulator_image(ui, docker, source, architecture, local)
+            _build_simulator_image(ui, docker, source, local)
         except subprocess.CalledProcessError as exc:
             detail = (pull.stderr or pull.stdout).strip()
             raise RuntimeError(

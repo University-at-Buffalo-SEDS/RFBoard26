@@ -25,6 +25,19 @@ class OtaBuildScriptTests(unittest.TestCase):
 
         root = Path(build.__file__).resolve().parent
         layout = load_layout_for_build(root, "Selected_Test_Build")
+        expected_mcus = {
+            "stm32g4": "stm32g491",
+            "stm32h5": "stm32h523",
+            "stm32u5": "stm32u585",
+        }
+        self.assertEqual(layout["mcu"], expected_mcus[layout["architecture"]])
+        ioc = next(root.glob("*.ioc")).read_text(encoding="utf-8")
+        expected_parts = {
+            "stm32g491": "Mcu.CPN=STM32G491",
+            "stm32h523": "Mcu.CPN=STM32H523",
+            "stm32u585": "Mcu.CPN=STM32U585",
+        }
+        self.assertIn(expected_parts[layout["mcu"]], ioc)
         for artifact in layout["artifacts"].values():
             self.assertEqual(Path(artifact).parts[1], "Selected_Test_Build")
 
@@ -54,9 +67,20 @@ class OtaBuildScriptTests(unittest.TestCase):
                         ui, "/usr/bin/docker", Path("/board"), "stm32g4"
                     )
 
-        self.assertEqual(image, "seds-firmware-simulator:stm32g4-local-v2")
+        self.assertEqual(image, "seds-firmware-simulator:local-v0.2.0")
         commands = [call.args[0] for call in execute.call_args_list]
+        self.assertIn(
+            [
+                "/usr/bin/docker",
+                "pull",
+                "ghcr.io/university-at-buffalo-seds/firmwaresimulator:latest",
+            ],
+            commands,
+        )
         self.assertTrue(any("clone" in command for command in commands))
+        self.assertFalse(
+            any("SIM_ARCH" in argument for command in commands for argument in command)
+        )
 
     def test_generated_layout_is_readable_by_the_container_user(self):
         from sim.run_full import write_container_layout

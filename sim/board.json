@@ -1,6 +1,7 @@
 {
   "name": "RFBoard26",
   "architecture": "stm32g4",
+  "mcu": "stm32g491",
   "memory": {
     "flash_base": 134217728,
     "flash_size": 524288,
@@ -23,6 +24,13 @@
     "bootloader": "build/Release/RFBoard26Bootloader.bin",
     "factory": "build/Release/RFBoard26.factory.bin",
     "ota": "build/Release/RFBoard26.seds"
+  },
+  "board": {
+    "strict_mmio": false,
+    "clocks": [],
+    "connections": [],
+    "pins": [],
+    "dma_routes": []
   },
   "execution": {
     "virtual_time_ms": 250,
