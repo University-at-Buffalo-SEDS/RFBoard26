@@ -132,6 +132,89 @@ def popen(ui: UI, cmd: list[str], cwd: Optional[Path] = None) -> subprocess.Pope
                             f"Make sure it's installed and on PATH.")
 
 
+
+
+def run_gtests(ui: UI, repo_root: Path) -> None:
+    source = repo_root / "tests" / "gtest"
+    if not (source / "CMakeLists.txt").is_file():
+        raise FriendlyError(
+            "GoogleTest suite is missing (expected tests/gtest/CMakeLists.txt)."
+        )
+    cmake = which("cmake")
+    if cmake is None:
+        raise FriendlyError(
+            "CMake is required for GoogleTest.\n"
+            "Install CMake and ensure the 'cmake' command is on PATH."
+        )
+    build_dir = repo_root / "build" / "host-gtests"
+    generator = "Ninja" if which("ninja") else "Unix Makefiles"
+    run(ui, [cmake, "-S", str(source), "-B", str(build_dir), "-G", generator],
+        cwd=repo_root)
+    run(ui, [cmake, "--build", str(build_dir), "--parallel"], cwd=repo_root)
+    run(ui, ["ctest", "--test-dir", str(build_dir), "--output-on-failure",
+             "--no-tests=error"],
+        cwd=repo_root)
+
+
+def _test_failure_help(stage: str) -> str:
+    if stage == "Docker readiness":
+        return (
+            "Start Docker Desktop/the Docker daemon, then verify 'docker info' works.\n"
+            "If the registry image is unavailable, the runner will clone and build "
+            "FirmwareSimulator locally."
+        )
+    if stage == "GoogleTest unit tests":
+        return (
+            "Install CMake and a C++17 compiler. GoogleTest is discovered locally "
+            "or fetched automatically during configure.\n"
+            "Re-run with --trace if configure or compilation details are needed."
+        )
+    if stage == "Host and Python unit tests":
+        return (
+            "Read the first failing assertion above and run that test directly.\n"
+            "For Python: python3 -m unittest discover -s tests -p 'test_*.py'."
+        )
+    if stage in {"Factory firmware build", "OTA package build"}:
+        return (
+            "Confirm the ARM GNU toolchain, CMake, Ninja, Rust, and Cargo are on PATH.\n"
+            "Remove only this board's selected build directory if its CMake cache is stale."
+        )
+    return (
+        "Review the simulator matrix above for the failing row. Check missing ELF symbols, "
+        "memory thresholds, peripheral configuration, and boot/OTA artifact paths.\n"
+        "Re-run with --trace for a Python traceback."
+    )
+
+
+def _print_test_summary(ui: UI, results: list[tuple[str, str]]) -> None:
+    width = max([len("Test stage"), *(len(name) for name, _ in results)])
+    print("\nFirmware test summary")
+    print(f"{'Test stage':<{width}}  Result")
+    print(f"{'-' * width}  ------")
+    for name, result in results:
+        print(f"{name:<{width}}  {result}")
+    passed = sum(result == "PASS" for _, result in results)
+    if passed == len(results):
+        ui.say("ok", f"All {passed} test stages passed.")
+    else:
+        ui.say("err", f"{passed}/{len(results)} completed test stages passed.")
+
+
+def _run_test_stage(ui: UI, results: list[tuple[str, str]], stage: str,
+                    action) -> None:
+    try:
+        action()
+    except Exception as exc:
+        results.append((stage, "FAIL"))
+        _print_test_summary(ui, results)
+        detail = str(exc).strip() or type(exc).__name__
+        raise FriendlyError(
+            f"{stage} failed.\n\nPossible solutions:\n"
+            f"- {_test_failure_help(stage)}\n\nDetails: {detail}"
+        ) from None
+    results.append((stage, "PASS"))
+
+
 def find_repo_root(start: Path) -> Path:
     p = start.resolve()
     for cand in [p, *p.parents]:
@@ -773,20 +856,37 @@ def main() -> None:
     cfg = build_cfg_from_args(ui, args)
 
     if args.cmd == "test":
+        results: list[tuple[str, str]] = []
+        _run_test_stage(
+            ui, results, "Host and Python unit tests",
+            lambda: run_host_tests(ui, cfg.repo_root),
+        )
+        _run_test_stage(
+            ui, results, "GoogleTest unit tests",
+            lambda: run_gtests(ui, cfg.repo_root),
+        )
         if args.all_tests:
-            from sim.run_full import require_docker
-            try:
-                require_docker()
-            except RuntimeError as exc:
-                raise FriendlyError(str(exc)) from None
-        run_host_tests(ui, cfg.repo_root)
-        if args.all_tests:
-            build_selected_artifact(ui, cfg, "factory", None, None, False)
-            build_selected_artifact(ui, cfg, "ota", None, None, False)
-            from sim.run_full import run_full_simulation
-            run_full_simulation(
-                ui, cfg.repo_root, "stm32g4", cfg.build_subdir
+            from sim.run_full import require_docker, run_full_simulation
+            _run_test_stage(ui, results, "Docker readiness", require_docker)
+            _run_test_stage(
+                ui, results, "Factory firmware build",
+                lambda: build_selected_artifact(
+                    ui, cfg, "factory", None, None, False
+                ),
             )
+            _run_test_stage(
+                ui, results, "OTA package build",
+                lambda: build_selected_artifact(
+                    ui, cfg, "ota", None, None, False
+                ),
+            )
+            _run_test_stage(
+                ui, results, "Firmware simulation",
+                lambda: run_full_simulation(
+                    ui, cfg.repo_root, "stm32g4", cfg.build_subdir
+                ),
+            )
+        _print_test_summary(ui, results)
         return
 
     if args.cmd == "build":
