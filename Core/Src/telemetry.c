@@ -31,6 +31,10 @@ static void print_data_no_telem(void *data, size_t len) {
 #define TELEMETRY_TIMESYNC_MASTER_PRIO (-1)
 #endif
 
+#ifndef SEDS_FIRMWARE_SIM_TEST
+#define SEDS_FIRMWARE_SIM_TEST 0
+#endif
+
 #ifndef TELEMETRY_TIMESYNC_SOURCE_TIMEOUT_MS
 #define TELEMETRY_TIMESYNC_SOURCE_TIMEOUT_MS 5000U
 #endif
@@ -116,6 +120,14 @@ static uint8_t g_pending_can_count = 0U;
 static uint32_t g_pending_can_drops = 0U;
 
 RouterState g_router = {.r = NULL, .created = 0U, .start_time = 0ULL};
+
+/* Exported simulator/HIL health signals. A linked-bay test requires both a
+ * remote discovery topology change and a valid SEDSNet network clock. */
+volatile uint32_t g_telemetry_discovery_seen = 0U;
+volatile uint32_t g_telemetry_timesync_valid = 0U;
+volatile uint32_t g_telemetry_network_ready = 0U;
+volatile uint32_t g_telemetry_timesync_queued = 0U;
+static int32_t g_telemetry_discovery_baseline_len = -1;
 
 static SedsResult telemetry_send_or_queue_can_packet(const uint8_t *bytes, size_t len);
 
@@ -430,6 +442,17 @@ static SedsResult telemetry_configure_timesync_locked(SedsRouter *router) {
     return result;
   }
 
+
+#if SEDS_FIRMWARE_SIM_TEST
+  /* The simulator GPS exercises SPI but does not synthesize an NMEA date.
+   * Seed only qualification builds so the linked firmware must complete the
+   * real SEDSNet time-sync exchange; production still waits for valid GPS. */
+  if (telemetry_timesync_is_source() && !g_local_unix_valid) {
+    g_local_unix_ms = 1767225600000ULL + tx_raw_now_ms_locked();
+    g_local_unix_valid = 1U;
+  }
+#endif
+
   return telemetry_apply_local_unix_time_locked(router);
 }
 
@@ -655,6 +678,23 @@ static UNUSED_FUNCTION void rx_synchronous(const uint8_t *bytes, size_t len) {
 #endif
 }
 
+static void telemetry_update_network_health(SedsRouter *router) {
+  uint64_t network_time_ms = 0ULL;
+  const int32_t topology_len = seds_router_export_topology_len(router);
+
+  if (g_telemetry_discovery_baseline_len > 0 &&
+      topology_len > g_telemetry_discovery_baseline_len) {
+    g_telemetry_discovery_seen = 1U;
+  }
+  if (seds_router_get_network_time_ms(router, &network_time_ms) == SEDS_OK) {
+    g_telemetry_timesync_valid = 1U;
+  }
+  if (g_telemetry_discovery_seen != 0U &&
+      g_telemetry_timesync_valid != 0U) {
+    g_telemetry_network_ready = 1U;
+  }
+}
+
 SedsResult telemetry_poll_timesync(void) {
 #ifndef TELEMETRY_ENABLED
   return SEDS_OK;
@@ -663,7 +703,13 @@ SedsResult telemetry_poll_timesync(void) {
     return SEDS_ERR;
   }
 
-  return seds_router_poll_timesync(g_router.r, NULL);
+  bool did_queue = false;
+  const SedsResult result = seds_router_poll_timesync(g_router.r, &did_queue);
+  if (did_queue) {
+    g_telemetry_timesync_queued++;
+  }
+  telemetry_update_network_health(g_router.r);
+  return result;
 #endif
 }
 
@@ -687,7 +733,9 @@ SedsResult telemetry_poll_discovery(void) {
     return SEDS_ERR;
   }
 
-  return seds_router_poll_discovery(g_router.r, NULL);
+  const SedsResult result = seds_router_poll_discovery(g_router.r, NULL);
+  telemetry_update_network_health(g_router.r);
+  return result;
 #endif
 }
 
@@ -743,19 +791,12 @@ SedsResult init_telemetry_router(void) {
   }
   telemetry_memory_profile_mark(1U);
 
-  g_can_side_id = seds_router_add_side_packed(r, "can", 3U, tx_send, NULL, true);
+  g_can_side_id = seds_router_add_side_packed(r, "can", 3U, tx_send, NULL, false);
   if (g_can_side_id < 0) {
     printf("Error: failed to add CAN side: %ld\r\n", (long)g_can_side_id);
     g_can_side_id = -1;
   }
   telemetry_memory_profile_mark(2U);
-
-  g_radio_side_id = seds_router_add_side_packed(r, "radio", 5U, radio_tx_send, NULL, false);
-  if (g_radio_side_id < 0) {
-    printf("Error: failed to add radio side: %ld\r\n", (long)g_radio_side_id);
-    g_radio_side_id = -1;
-  }
-  telemetry_memory_profile_mark(3U);
 
   result = telemetry_configure_timesync_locked(r);
   if (result != SEDS_OK) {
@@ -781,22 +822,52 @@ SedsResult init_telemetry_router(void) {
   }
   telemetry_memory_profile_mark(5U);
 
-  result = seds_router_announce_discovery(r);
-  if (result != SEDS_OK) {
-    printf("Error: failed to announce discovery: %d\r\n", (int)result);
-    seds_router_free(r);
-    g_router.r = NULL;
-    g_router.created = 0U;
-    g_can_side_id = -1;
-    g_radio_side_id = -1;
-    g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
-    return result;
-  }
+  g_telemetry_discovery_baseline_len = seds_router_export_topology_len(r);
+  /* Discovery begins from the normal poll loop after link startup. */
   telemetry_memory_profile_mark(6U);
 
   g_router.r = r;
   g_router.created = 1U;
   g_router.start_time = tx_raw_now_ms_locked();
+  /* Prime the first source announcement after the router clock and sides are
+   * fully live.  This avoids depending on a later scheduler tick to make a
+   * newly booted bay discover a valid network clock. */
+  {
+    bool did_queue = false;
+    result = seds_router_poll_timesync(r, &did_queue);
+    if (result != SEDS_OK) {
+      seds_router_free(r);
+      g_router.r = NULL;
+      g_router.created = 0U;
+      g_can_side_id = -1;
+      g_radio_side_id = -1;
+      g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
+      return result;
+    }
+    if (did_queue) {
+      g_telemetry_timesync_queued++;
+      result = seds_router_process_tx_queue(r);
+      if (result != SEDS_OK) {
+        seds_router_free(r);
+        g_router.r = NULL;
+        g_router.created = 0U;
+        g_can_side_id = -1;
+        g_radio_side_id = -1;
+        g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
+        return result;
+      }
+    }
+  }
+
+  /* Add the ground-radio route only after the first CAN time-source
+   * announcement has been emitted.  Otherwise route selection can consume
+   * the startup control item on radio before the avionics CAN peers see it. */
+  g_radio_side_id = seds_router_add_side_packed(r, "radio", 5U, radio_tx_send, NULL, false);
+  if (g_radio_side_id < 0) {
+    printf("Error: failed to add radio side: %ld\r\n", (long)g_radio_side_id);
+    g_radio_side_id = -1;
+  }
+  telemetry_memory_profile_mark(3U);
   g_router_retry_after_ms = 0ULL;
   return SEDS_OK;
 #endif

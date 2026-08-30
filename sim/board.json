@@ -37,6 +37,10 @@
     "sample_count": 5,
     "memory_probe_warmup_samples": 2,
     "memory_probes": [
+      {"name": "network_ready", "symbol": "g_telemetry_network_ready"},
+      {"name": "discovery_seen", "symbol": "g_telemetry_discovery_seen"},
+      {"name": "timesync_valid", "symbol": "g_telemetry_timesync_valid"},
+      {"name": "timesync_queued", "symbol": "g_telemetry_timesync_queued"},
       {"name": "pool_available", "symbol": "g_telemetry_pool_available", "minimum": 4096, "max_end_drop": 4096},
       {"name": "pool_low_water", "symbol": "g_telemetry_pool_low_water", "minimum": 2048},
       {"name": "alloc_failure_request", "symbol": "g_telemetry_alloc_failure_request", "maximum": 0},

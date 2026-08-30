@@ -44,6 +44,12 @@ enable_language(C ASM)
 
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
+option(SEDS_FIRMWARE_SIM_TEST
+    "Seed deterministic external time for linked firmware qualification" OFF)
+if(SEDS_FIRMWARE_SIM_TEST)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
+        SEDS_FIRMWARE_SIM_TEST=1)
+endif()
 target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
     -T "${CMAKE_SOURCE_DIR}/STM32G491XX_FLASH.ld")
 

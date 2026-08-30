@@ -179,6 +179,16 @@ def _test_failure_help(stage: str) -> str:
             "Confirm the ARM GNU toolchain, CMake, Ninja, Rust, and Cargo are on PATH.\n"
             "Remove only this board's selected build directory if its CMake cache is stale."
         )
+    if stage == "Long-duration memory profile":
+        return (
+            "Inspect the memory-probe table for pool loss, low-water, allocation failures, "
+            "or stack errors. A falling reserve usually indicates a missing free or queue drain."
+        )
+    if stage == "Network discovery and time sync":
+        return (
+            "Check that this board and its RF/Power peer export network_ready, use the configured "
+            "FDCAN peripheral, and reach discovery plus a valid SEDSNet network clock."
+        )
     return (
         "Review the simulator matrix above for the failing row. Check missing ELF symbols, "
         "memory thresholds, peripheral configuration, and boot/OTA artifact paths.\n"
@@ -394,6 +404,11 @@ def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> 
     cfg.build_dir.mkdir(parents=True, exist_ok=True)
 
     telemetry_flag = f"-DENABLE_TELEMETRY={'ON' if cfg.telemetry else 'OFF'}"
+    simulation_flag = (
+        "-DSEDS_FIRMWARE_SIM_TEST=ON"
+        if os.environ.get("SEDS_FIRMWARE_SIM_TEST") == "1"
+        else "-DSEDS_FIRMWARE_SIM_TEST=OFF"
+    )
 
     if cfg.use_preset:
         run(ui, [
@@ -401,6 +416,7 @@ def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> 
             "--preset", cfg.build_type,
             "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
             telemetry_flag,
+            simulation_flag,
         ], cwd=cfg.repo_root)
         assert_embedded_cache(ui, cfg.build_dir)
         build_cmd = ["cmake", "--build", "--preset", cfg.build_type]
@@ -416,6 +432,7 @@ def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> 
             f"-DCMAKE_TOOLCHAIN_FILE={str(cfg.toolchain_file)}",
             "-DCMAKE_COMMAND=cmake",
             telemetry_flag,
+            simulation_flag,
             "-S", str(cfg.repo_root),
             "-B", str(cfg.build_dir),
             "-G", cfg.generator,
@@ -866,7 +883,12 @@ def main() -> None:
             lambda: run_gtests(ui, cfg.repo_root),
         )
         if args.all_tests:
-            from sim.run_full import require_docker, run_full_simulation
+            from sim.run_full import (
+                require_docker,
+                run_full_simulation,
+                run_memory_profile,
+                run_network_simulation,
+            )
             _run_test_stage(ui, results, "Docker readiness", require_docker)
             _run_test_stage(
                 ui, results, "Factory firmware build",
@@ -883,6 +905,18 @@ def main() -> None:
             _run_test_stage(
                 ui, results, "Firmware simulation",
                 lambda: run_full_simulation(
+                    ui, cfg.repo_root, "stm32g4", cfg.build_subdir
+                ),
+            )
+            _run_test_stage(
+                ui, results, "Long-duration memory profile",
+                lambda: run_memory_profile(
+                    ui, cfg.repo_root, "stm32g4", cfg.build_subdir
+                ),
+            )
+            _run_test_stage(
+                ui, results, "Network discovery and time sync",
+                lambda: run_network_simulation(
                     ui, cfg.repo_root, "stm32g4", cfg.build_subdir
                 ),
             )
