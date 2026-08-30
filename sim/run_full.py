@@ -63,6 +63,7 @@ def _image_exists(docker: str, image: str) -> bool:
 def _build_simulator_image(ui, docker: str, source: Path, image: str) -> None:
     build = [
         docker, "build", "--platform", "linux/amd64",
+        "--progress=plain",
         "-t", image, str(source),
     ]
     ui.say("run", " ".join(build))
@@ -86,12 +87,9 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str
         return local
 
     ui.say("run", f"{docker} pull {requested}")
-    pull = subprocess.run(
-        [docker, "pull", requested],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
+    # Inherit the terminal streams so layer downloads and extraction remain
+    # visible. Capturing these pipes makes a large image pull look hung.
+    pull = subprocess.run([docker, "pull", requested])
     if pull.returncode == 0:
         return requested
     if _image_exists(docker, requested):
@@ -122,11 +120,9 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str
             )
             _build_simulator_image(ui, docker, source, local)
         except subprocess.CalledProcessError as exc:
-            detail = (pull.stderr or pull.stdout).strip()
             raise RuntimeError(
                 "The simulator image could not be pulled and its source fallback "
                 "could not be built."
-                + (f"\nRegistry reported: {detail}" if detail else "")
             ) from exc
     return local
 

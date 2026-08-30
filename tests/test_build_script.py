@@ -77,7 +77,20 @@ class OtaBuildScriptTests(unittest.TestCase):
             ],
             commands,
         )
+        pull_call = next(
+            call for call in execute.call_args_list
+            if call.args[0][:2] == ["/usr/bin/docker", "pull"]
+        )
+        self.assertNotIn("stdout", pull_call.kwargs)
+        self.assertNotIn("stderr", pull_call.kwargs)
         self.assertTrue(any("clone" in command for command in commands))
+        self.assertTrue(
+            any(
+                command[:2] == ["/usr/bin/docker", "build"]
+                and "--progress=plain" in command
+                for command in commands
+            )
+        )
         self.assertFalse(
             any("SIM_ARCH" in argument for command in commands for argument in command)
         )
