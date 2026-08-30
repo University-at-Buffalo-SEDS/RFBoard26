@@ -89,7 +89,9 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str
     ui.say("run", f"{docker} pull {requested}")
     # Inherit the terminal streams so layer downloads and extraction remain
     # visible. Capturing these pipes makes a large image pull look hung.
-    pull = subprocess.run([docker, "pull", requested])
+    pull = subprocess.run(
+        [docker, "pull", "--platform", "linux/amd64", requested]
+    )
     if pull.returncode == 0:
         return requested
     if _image_exists(docker, requested):

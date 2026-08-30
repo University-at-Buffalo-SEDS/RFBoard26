@@ -73,6 +73,8 @@ class OtaBuildScriptTests(unittest.TestCase):
             [
                 "/usr/bin/docker",
                 "pull",
+                "--platform",
+                "linux/amd64",
                 "ghcr.io/university-at-buffalo-seds/firmwaresimulator:latest",
             ],
             commands,
