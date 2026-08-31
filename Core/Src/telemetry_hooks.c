@@ -273,9 +273,19 @@ void telemetry_panic_hook(const char *str, size_t len)
 {
     g_telemetry_panic_count++;
 
+    /* USB CDC is the RF board's available post-mortem channel.  Emit the
+     * allocator snapshot before interrupts are disabled by the LED loop. */
+    printf("\r\nSEDSNet panic: request=%lu available=%lu fragments=%lu "
+           "low_water=%lu allocs=%lu frees=%lu\r\n",
+           (unsigned long)g_telemetry_alloc_failure_request,
+           (unsigned long)g_telemetry_alloc_failure_available,
+           (unsigned long)g_telemetry_alloc_failure_fragments,
+           (unsigned long)g_telemetry_pool_low_water,
+           (unsigned long)g_telemetry_alloc_count,
+           (unsigned long)g_telemetry_free_count);
     if (str != NULL && len > 0U)
     {
-        // printf("PANIC: %.*s\r\n", (int)len, str);
+        printf("PANIC: %.*s\r\n", (int)len, str);
     }
 
     /* Prefer explicit text match if available. */
