@@ -23,7 +23,7 @@ class SedsnetMemoryTests(unittest.TestCase):
         )
         recent = int(re.search(r'set\(SEDSNET_MAX_RECENT_RX_IDS "(\d+)"', cmake).group(1))
 
-        self.assertEqual(pool, 28672)
+        self.assertEqual(pool, 34816)
         self.assertEqual(budget, 12288)
         self.assertGreaterEqual(pool - budget, 16384)
         self.assertEqual(start, 1024)
@@ -34,11 +34,11 @@ class SedsnetMemoryTests(unittest.TestCase):
             encoding="utf-8"
         )
         threadx = (ROOT / "Core" / "Inc" / "tx_user.h").read_text(encoding="utf-8")
-        self.assertIn("TELEMETRY_THREAD_STACK_SIZE (16U * 1024U)", telemetry_thread)
+        self.assertIn("TELEMETRY_THREAD_STACK_SIZE (12U * 1024U)", telemetry_thread)
         gps_thread = (ROOT / "Core" / "Src" / "neom9n_thread.c").read_text(
             encoding="utf-8"
         )
-        self.assertIn("NEOM9N_THREAD_STACK_SIZE (9U * 1024U)", gps_thread)
+        self.assertIn("NEOM9N_THREAD_STACK_SIZE (7U * 1024U)", gps_thread)
         self.assertRegex(threadx, r"(?m)^#define TX_ENABLE_STACK_CHECKING$")
         app = (ROOT / "Core" / "Src" / "app_threadx.c").read_text(encoding="utf-8")
         self.assertIn("g_thread_stack_error_count", app)

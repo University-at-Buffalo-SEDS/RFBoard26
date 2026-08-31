@@ -72,7 +72,7 @@ static void print_data_no_telem(void *data, size_t len) {
 #define TELEMETRY_ROUTER_RETRY_MS 5000ULL
 
 #ifndef RF_SEDSNET_MEMORY_POOL_SIZE
-#define RF_SEDSNET_MEMORY_POOL_SIZE 28672U
+#define RF_SEDSNET_MEMORY_POOL_SIZE 34816U
 #endif
 #ifndef RF_SEDSNET_QUEUE_BUDGET
 #define RF_SEDSNET_QUEUE_BUDGET 12288U

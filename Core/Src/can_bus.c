@@ -206,6 +206,7 @@ static uint32_t g_own_std_id = 0xFFFFFFFFu;
 
 /* IRQ counter incremented by ISR to help debug whether interrupts fire. */
 volatile uint32_t g_fdcan_irq_count __attribute__((used, externally_visible)) = 0;
+volatile uint32_t g_fdcan_rx_count __attribute__((used, externally_visible)) = 0;
 volatile uint32_t g_fdcan_tx_ok_count __attribute__((used, externally_visible)) = 0;
 volatile uint32_t g_fdcan_tx_fail_count __attribute__((used, externally_visible)) = 0;
 
@@ -719,6 +720,8 @@ static void can_bus_drain_rx_fifo(FDCAN_HandleTypeDef *hfdcan, uint32_t fifo)
   {
     if (HAL_FDCAN_GetRxMessage(hfdcan, fifo, &hdr, data) != HAL_OK)
       break;
+
+    g_fdcan_rx_count++;
 
     uint32_t std_id = hdr.Identifier & 0x7FFu;
 

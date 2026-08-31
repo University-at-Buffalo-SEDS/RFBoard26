@@ -55,6 +55,7 @@
       {"name": "allocations", "symbol": "g_telemetry_alloc_count"},
       {"name": "frees", "symbol": "g_telemetry_free_count"},
       {"name": "fdcan_irqs", "symbol": "g_fdcan_irq_count"},
+      {"name": "fdcan_rx", "symbol": "g_fdcan_rx_count"},
       {"name": "fdcan_tx_ok", "symbol": "g_fdcan_tx_ok_count"},
       {"name": "fdcan_tx_fail", "symbol": "g_fdcan_tx_fail_count"}
     ]

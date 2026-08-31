@@ -34,6 +34,7 @@ class QualificationContractTests(unittest.TestCase):
         self.assertEqual(probes["network_ready"], "g_telemetry_network_ready")
         self.assertEqual(probes["discovery_seen"], "g_telemetry_discovery_seen")
         self.assertEqual(probes["timesync_valid"], "g_telemetry_timesync_valid")
+        self.assertEqual(probes["fdcan_rx"], "g_fdcan_rx_count")
 
         telemetry = (root / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
         for symbol in (
@@ -42,6 +43,9 @@ class QualificationContractTests(unittest.TestCase):
             "g_telemetry_timesync_valid",
         ):
             self.assertIn(symbol, telemetry)
+
+        can_bus = (root / "Core" / "Src" / "can_bus.c").read_text(encoding="utf-8")
+        self.assertIn("g_fdcan_rx_count++", can_bus)
 
     def test_source_primes_can_timesync_before_radio(self):
         root = Path(build.__file__).resolve().parent
