@@ -17,6 +17,8 @@ class QualificationContractTests(unittest.TestCase):
         self.assertIn('"bay"', runner)
         self.assertIn('"activity_probe": "network_ready"', runner)
         self.assertIn('simulation_env["SEDS_FIRMWARE_SIM_TEST"] = "1"', runner)
+        self.assertIn('run_live(command, "firmware simulation")', runner)
+        self.assertIn('running ({int(now - started)}s elapsed)', runner)
         self.assertIn("current_build", runner)
         self.assertIn("Long-duration memory profile", script)
         self.assertIn("Network discovery and time sync", script)

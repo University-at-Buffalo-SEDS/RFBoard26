@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 SIMULATOR_REPOSITORY = (
     "https://github.com/University-at-Buffalo-SEDS/FirmwareSimulator.git"
@@ -14,6 +15,23 @@ SIMULATOR_REPOSITORY = (
 SIMULATOR_INTERFACE_VERSION = "0.3.0"
 FIRMWARE_BRANCH = "migration/sedlaunch-sedsnet-mainline"
 FIRMWARE_ORGANIZATION = "University-at-Buffalo-SEDS"
+
+
+def run_live(command: list[str], label: str) -> None:
+    """Run a quiet simulator command with visible liveness updates."""
+    print(f"[SIM] {label} started", flush=True)
+    started = time.monotonic()
+    next_update = started + 5.0
+    process = subprocess.Popen(command)
+    while process.poll() is None:
+        now = time.monotonic()
+        if now >= next_update:
+            print(f"[SIM] {label} running ({int(now - started)}s elapsed)", flush=True)
+            next_update = now + 5.0
+        time.sleep(0.25)
+    if process.returncode != 0:
+        raise subprocess.CalledProcessError(process.returncode, command)
+    print(f"[SIM] {label} completed ({int(time.monotonic() - started)}s)", flush=True)
 
 
 def require_docker() -> str:
@@ -76,7 +94,7 @@ def _build_simulator_image(ui, docker: str, source: Path, image: str) -> None:
 def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str) -> str:
     requested = os.environ.get(
         "SEDS_FIRMWARE_SIM_IMAGE",
-        "ghcr.io/university-at-buffalo-seds/firmwaresimulator:latest",
+        f"ghcr.io/university-at-buffalo-seds/firmwaresimulator:v{SIMULATOR_INTERFACE_VERSION}",
     )
     local = f"seds-firmware-simulator:local-v{SIMULATOR_INTERFACE_VERSION}"
     configured_source = os.environ.get("SEDS_FIRMWARE_SIM_SOURCE")
@@ -159,7 +177,7 @@ def run_full_simulation(
             "--firmware-root", "/firmware",
         ]
         ui.say("run", " ".join(command))
-        subprocess.run(command, check=True)
+        run_live(command, "firmware simulation")
 
 
 def run_memory_profile(
@@ -190,7 +208,7 @@ def run_memory_profile(
             "--traffic-iterations", "1000000",
         ]
         ui.say("run", " ".join(command))
-        subprocess.run(command, check=True)
+        run_live(command, "long-duration memory profile")
 
 
 def _network_peer(repo_root: Path) -> tuple[str, Path]:
@@ -310,4 +328,4 @@ def run_network_simulation(
             image, "bay", "--topology", "/simulation/topology.json",
         ]
         ui.say("run", " ".join(command))
-        subprocess.run(command, check=True)
+        run_live(command, "linked network simulation")

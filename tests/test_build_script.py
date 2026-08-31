@@ -73,7 +73,7 @@ class OtaBuildScriptTests(unittest.TestCase):
             [
                 "/usr/bin/docker",
                 "pull",
-                "ghcr.io/university-at-buffalo-seds/firmwaresimulator:latest",
+                "ghcr.io/university-at-buffalo-seds/firmwaresimulator:v0.3.0",
             ],
             commands,
         )
