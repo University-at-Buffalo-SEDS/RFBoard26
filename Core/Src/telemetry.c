@@ -127,7 +127,6 @@ volatile uint32_t g_telemetry_discovery_seen = 0U;
 volatile uint32_t g_telemetry_timesync_valid = 0U;
 volatile uint32_t g_telemetry_network_ready = 0U;
 volatile uint32_t g_telemetry_timesync_queued = 0U;
-static int32_t g_telemetry_discovery_baseline_len = -1;
 
 static SedsResult telemetry_send_or_queue_can_packet(const uint8_t *bytes, size_t len);
 
@@ -559,6 +558,7 @@ static void telemetry_can_rx(const uint8_t *data, size_t len, void *user) {
   } else {
     (void)seds_router_receive_packed(g_router.r, data, len);
   }
+  g_telemetry_discovery_seen = 1U;
 #else
   (void)data;
   (void)len;
@@ -626,6 +626,7 @@ static void telemetry_radio_rx(const uint8_t *data, size_t len, void *user) {
   } else {
     (void)seds_router_receive_packed(g_router.r, data, len);
   }
+  g_telemetry_discovery_seen = 1U;
 #else
   (void)data;
   (void)len;
@@ -680,12 +681,6 @@ static UNUSED_FUNCTION void rx_synchronous(const uint8_t *bytes, size_t len) {
 
 static void telemetry_update_network_health(SedsRouter *router) {
   uint64_t network_time_ms = 0ULL;
-  const int32_t topology_len = seds_router_export_topology_len(router);
-
-  if (g_telemetry_discovery_baseline_len > 0 &&
-      topology_len > g_telemetry_discovery_baseline_len) {
-    g_telemetry_discovery_seen = 1U;
-  }
   if (seds_router_get_network_time_ms(router, &network_time_ms) == SEDS_OK) {
     g_telemetry_timesync_valid = 1U;
   }
@@ -822,7 +817,6 @@ SedsResult init_telemetry_router(void) {
   }
   telemetry_memory_profile_mark(5U);
 
-  g_telemetry_discovery_baseline_len = seds_router_export_topology_len(r);
   /* Discovery begins from the normal poll loop after link startup. */
   telemetry_memory_profile_mark(6U);
 

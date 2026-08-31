@@ -125,6 +125,21 @@ class SedsnetMemoryTests(unittest.TestCase):
         )
         self.assertNotIn("process_rx_queue_timeout", thread)
 
+    def test_allocator_panic_reports_snapshot_over_usb_cdc(self):
+        hooks = (ROOT / "Core" / "Src" / "telemetry_hooks.c").read_text(
+            encoding="utf-8"
+        )
+        report = hooks.index("SEDSNet panic: request=")
+        led_loop = hooks.index("telemetry_panic_led_loop_memory();", report)
+        self.assertLess(report, led_loop)
+        for symbol in (
+            "g_telemetry_alloc_failure_request",
+            "g_telemetry_alloc_failure_available",
+            "g_telemetry_alloc_failure_fragments",
+            "g_telemetry_pool_low_water",
+        ):
+            self.assertIn(symbol, hooks[report:led_loop])
+
 
 if __name__ == "__main__":
     unittest.main()

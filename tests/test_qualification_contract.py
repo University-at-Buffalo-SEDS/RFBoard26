@@ -52,5 +52,11 @@ class QualificationContractTests(unittest.TestCase):
         self.assertLess(prime, radio)
 
 
+    def test_periodic_health_check_does_not_serialize_topology(self):
+        root = Path(build.__file__).resolve().parent
+        telemetry = (root / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
+        self.assertNotIn("seds_router_export_topology_len", telemetry)
+        self.assertGreaterEqual(telemetry.count("g_telemetry_discovery_seen = 1U"), 2)
+
 if __name__ == "__main__":
     unittest.main()
