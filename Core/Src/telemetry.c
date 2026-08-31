@@ -856,7 +856,9 @@ SedsResult init_telemetry_router(void) {
   /* Add the ground-radio route only after the first CAN time-source
    * announcement has been emitted.  Otherwise route selection can consume
    * the startup control item on radio before the avionics CAN peers see it. */
-  g_radio_side_id = seds_router_add_side_packed(r, "radio", 5U, radio_tx_send, NULL, false);
+  /* The radio framing layer accepts complete SEDSNet v4 topology packets. */
+  g_radio_side_id =
+      seds_router_add_side_packed(r, "radio", 5U, radio_tx_send, NULL, false);
   if (g_radio_side_id < 0) {
     printf("Error: failed to add radio side: %ld\r\n", (long)g_radio_side_id);
     g_radio_side_id = -1;

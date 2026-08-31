@@ -51,6 +51,16 @@ class QualificationContractTests(unittest.TestCase):
         radio = telemetry.index('seds_router_add_side_packed(r, "radio"')
         self.assertLess(prime, radio)
 
+    def test_radio_side_accepts_complete_v4_topology_packets(self):
+        root = Path(__file__).resolve().parents[1]
+        telemetry = (root / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
+        radio = (root / "Core" / "Src" / "radio.c").read_text(encoding="utf-8")
+        self.assertIn(
+            'seds_router_add_side_packed(r, "radio", 5U, radio_tx_send, NULL, false)',
+            telemetry,
+        )
+        self.assertIn("#define RADIO_UART_MAX_PAYLOAD_SIZE    1024U", radio)
+
 
     def test_periodic_health_check_does_not_serialize_topology(self):
         root = Path(build.__file__).resolve().parent

@@ -71,7 +71,12 @@ class SedsnetMemoryTests(unittest.TestCase):
     def test_rf_startup_leaves_headroom_for_sedsnet(self):
         radio = (ROOT / "Core" / "Src" / "radio.c").read_text(encoding="utf-8")
         depth = int(re.search(r"#define RADIO_UART_TX_QUEUE_DEPTH\s+(\d+)", radio).group(1))
-        self.assertEqual(depth, 16)
+        payload = int(
+            re.search(r"#define RADIO_UART_MAX_PAYLOAD_SIZE\s+(\d+)U", radio).group(1)
+        )
+        self.assertEqual(depth, 4)
+        self.assertGreaterEqual(payload, 512)
+        self.assertLessEqual(depth * (payload + 4), 4200)
         self.assertIn(
             "g_tx_queue_storage[RADIO_UART_TX_QUEUE_DEPTH]", radio
         )
