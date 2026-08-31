@@ -12,7 +12,7 @@ import time
 SIMULATOR_REPOSITORY = (
     "https://github.com/University-at-Buffalo-SEDS/FirmwareSimulator.git"
 )
-SIMULATOR_INTERFACE_VERSION = "0.3.1"
+SIMULATOR_INTERFACE_VERSION = "0.3.2"
 FIRMWARE_BRANCH = "migration/sedlaunch-sedsnet-mainline"
 FIRMWARE_ORGANIZATION = "University-at-Buffalo-SEDS"
 
