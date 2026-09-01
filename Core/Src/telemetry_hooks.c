@@ -16,6 +16,15 @@ volatile uint32_t g_telemetry_lock_get_fail = 0U;
 volatile uint32_t g_telemetry_lock_put_fail = 0U;
 volatile uint32_t g_telemetry_alloc_fail = 0U;
 volatile uint32_t g_telemetry_panic_count = 0U;
+volatile size_t g_telemetry_last_alloc_request = 0U;
+volatile size_t g_telemetry_alloc_failure_request = 0U;
+volatile ULONG g_telemetry_alloc_failure_available = 0U;
+volatile ULONG g_telemetry_alloc_failure_fragments = 0U;
+volatile ULONG g_telemetry_pool_available = 0U;
+volatile ULONG g_telemetry_pool_low_water = ~0UL;
+volatile ULONG g_telemetry_pool_fragments = 0U;
+volatile uint32_t g_telemetry_alloc_count = 0U;
+volatile uint32_t g_telemetry_free_count = 0U;
 static volatile uint8_t g_last_err_memory_hint = 0U;
 static volatile uint8_t g_last_err_mutex_hint = 0U;
 
@@ -97,9 +106,31 @@ static int str_contains_ci_n(const char *s, size_t n, const char *needle)
     return 0;
 }
 
+static void telemetry_memory_profile_sample(void)
+{
+    ULONG available = 0U;
+    ULONG fragments = 0U;
+    if (rust_byte_pool_external == NULL)
+    {
+        return;
+    }
+    if (tx_byte_pool_info_get(rust_byte_pool_external, TX_NULL,
+                              &available, &fragments,
+                              TX_NULL, TX_NULL, TX_NULL) == TX_SUCCESS)
+    {
+        g_telemetry_pool_available = available;
+        g_telemetry_pool_fragments = fragments;
+        if (available < g_telemetry_pool_low_water)
+        {
+            g_telemetry_pool_low_water = available;
+        }
+    }
+}
+
 void telemetry_set_byte_pool(TX_BYTE_POOL *pool)
 {
     rust_byte_pool_external = pool;
+    telemetry_memory_profile_sample();
 }
 
 void telemetry_init_lock(void)
@@ -169,6 +200,7 @@ void *telemetryMalloc(size_t xSize)
         /* Rust allocator contract expects non-NULL for successful alloc. */
         xSize = 1U;
     }
+    g_telemetry_last_alloc_request = xSize;
 
     /*
      * Allow a brief wait so telemetry bursts don't immediately fail allocator
@@ -176,9 +208,19 @@ void *telemetryMalloc(size_t xSize)
      */
     if (tx_byte_allocate(rust_byte_pool_external, &ptr, xSize, 5) != TX_SUCCESS)
     {
+        ULONG available = 0U;
+        ULONG fragments = 0U;
+        (void)tx_byte_pool_info_get(rust_byte_pool_external, TX_NULL,
+                                    &available, &fragments,
+                                    TX_NULL, TX_NULL, TX_NULL);
+        g_telemetry_alloc_failure_request = xSize;
+        g_telemetry_alloc_failure_available = available;
+        g_telemetry_alloc_failure_fragments = fragments;
         g_telemetry_alloc_fail++;
         return NULL;
     }
+    g_telemetry_alloc_count++;
+    telemetry_memory_profile_sample();
     return ptr;
 }
 
@@ -187,6 +229,8 @@ void telemetryFree(void *pv)
     if (pv != NULL)
     {
         (void)tx_byte_release(pv);
+        g_telemetry_free_count++;
+        telemetry_memory_profile_sample();
     }
 }
 
@@ -210,6 +254,15 @@ void seds_error_msg(const char *str, size_t len)
 void telemetry_panic_hook(const char *str, size_t len)
 {
     g_telemetry_panic_count++;
+
+    printf("\r\nTelemetry panic: request=%lu available=%lu fragments=%lu "
+           "low_water=%lu allocs=%lu frees=%lu\r\n",
+           (unsigned long)g_telemetry_alloc_failure_request,
+           (unsigned long)g_telemetry_alloc_failure_available,
+           (unsigned long)g_telemetry_alloc_failure_fragments,
+           (unsigned long)g_telemetry_pool_low_water,
+           (unsigned long)g_telemetry_alloc_count,
+           (unsigned long)g_telemetry_free_count);
 
     if (str != NULL && len > 0U)
     {
