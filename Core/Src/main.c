@@ -232,7 +232,7 @@ static void MX_FDCAN2_Init(void)
   hfdcan2.Init.ClockDivider = FDCAN_CLOCK_DIV1;
   hfdcan2.Init.FrameFormat = FDCAN_FRAME_FD_NO_BRS;
   hfdcan2.Init.Mode = FDCAN_MODE_NORMAL;
-  hfdcan2.Init.AutoRetransmission = DISABLE;
+  hfdcan2.Init.AutoRetransmission = ENABLE;
   hfdcan2.Init.TransmitPause = DISABLE;
   hfdcan2.Init.ProtocolException = DISABLE;
   hfdcan2.Init.NominalPrescaler = 10;
@@ -312,7 +312,14 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
+#ifdef SEDS_FIRMWARE_SIM_TEST
+  /* The routed-serial simulator collapses the E22 air hop, GroundStation
+   * router, and Pico-Fi hop into one byte-preserving link. Normalize the two
+   * edge UART rates here; production retains the E22's RADIO_BAUD_RATE. */
+  huart1.Init.BaudRate = 115200;
+#else
   huart1.Init.BaudRate = RADIO_BAUD_RATE;
+#endif
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;

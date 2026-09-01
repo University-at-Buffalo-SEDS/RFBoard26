@@ -1,5 +1,6 @@
 // telemetry.c
 #include "telemetry.h"
+#include "sim_network_probe.h"
 #include "ota_stream.h"
 
 #include "app_threadx.h"
@@ -63,7 +64,14 @@ static void print_data_no_telem(void *data, size_t len) {
 #define TELEMETRY_TIMESYNC_ROLE_SOURCE 1U
 #define TELEMETRY_SEDS_FLAG_COMPRESSED_SENDER 0x02U
 #define TELEMETRY_SEDS_CRC_BYTES 4U
-#define TELEMETRY_FLIGHT_CAN_ID 0x03U
+#define TELEMETRY_FLIGHT_CAN_ID 0x101U
+#define TELEMETRY_FLIGHT_HEARTBEAT_CAN_ID 0x001U
+
+static uint32_t telemetry_flight_can_id(const uint8_t *bytes, size_t len) {
+  return sim_probe_packed_data_type(bytes, len) == (uint32_t)SEDS_DT_HEARTBEAT
+             ? TELEMETRY_FLIGHT_HEARTBEAT_CAN_ID
+             : TELEMETRY_FLIGHT_CAN_ID;
+}
 #define TELEMETRY_PENDING_CAN_DEPTH 8U
 #define TELEMETRY_PENDING_CAN_MAX_LEN 256U
 #define TELEMETRY_GPS_WIRE_MAX_LEN 96U
@@ -126,6 +134,12 @@ RouterState g_router = {.r = NULL, .created = 0U, .start_time = 0ULL};
 volatile uint32_t g_telemetry_discovery_seen = 0U;
 volatile uint32_t g_telemetry_timesync_valid = 0U;
 volatile uint32_t g_telemetry_network_ready = 0U;
+volatile uint32_t g_telemetry_peer_mask = 0U;
+volatile uint32_t g_sim_heartbeat_attempts = 0U;
+volatile uint32_t g_sim_heartbeat_ok = 0U;
+volatile uint32_t g_sim_heartbeat_fail = 0U;
+volatile uint32_t g_sim_heartbeat_wire_tx = 0U;
+volatile uint32_t g_sim_radio_egress_peer_mask = 0U;
 volatile uint32_t g_telemetry_timesync_queued = 0U;
 
 static SedsResult telemetry_send_or_queue_can_packet(const uint8_t *bytes, size_t len);
@@ -320,7 +334,7 @@ static HAL_StatusTypeDef telemetry_send_or_queue_can_command(const uint8_t *byte
     return HAL_ERROR;
   }
 
-  status = can_bus_send_large(bytes, len, TELEMETRY_FLIGHT_CAN_ID);
+  status = can_bus_send_large(bytes, len, telemetry_flight_can_id(bytes, len));
   if (status == HAL_OK) {
     telemetry_note_flight_command_sent(bytes, len);
     return HAL_OK;
@@ -330,7 +344,8 @@ static HAL_StatusTypeDef telemetry_send_or_queue_can_command(const uint8_t *byte
 }
 
 static SedsResult telemetry_send_or_queue_can_packet(const uint8_t *bytes, size_t len) {
-  const HAL_StatusTypeDef status = can_bus_send_large(bytes, len, TELEMETRY_FLIGHT_CAN_ID);
+  const HAL_StatusTypeDef status =
+      can_bus_send_large(bytes, len, telemetry_flight_can_id(bytes, len));
   if (status == HAL_OK) {
     telemetry_note_flight_command_sent(bytes, len);
     return SEDS_OK;
@@ -343,7 +358,8 @@ void telemetry_retry_pending_can_commands(void) {
   while (g_pending_can_count > 0U) {
     TelemetryPendingCanCommand *cmd = &g_pending_can[g_pending_can_head];
     const HAL_StatusTypeDef status =
-        can_bus_send_large(cmd->data, cmd->len, TELEMETRY_FLIGHT_CAN_ID);
+        can_bus_send_large(cmd->data, cmd->len,
+                           telemetry_flight_can_id(cmd->data, cmd->len));
     if (status != HAL_OK) {
       return;
     }
@@ -505,6 +521,7 @@ SedsResult tx_send(const uint8_t *bytes, size_t len, void *user) {
   if (!bytes || len == 0U) {
     return SEDS_BAD_ARG;
   }
+  sim_probe_observe_can_tx(bytes, len);
 
   is_radio_flight_command =
       (g_pending_radio_flight_commands > 0U) &&
@@ -532,6 +549,10 @@ static SedsResult radio_tx_send(const uint8_t *bytes, size_t len, void *user) {
     return SEDS_BAD_ARG;
   }
 
+#ifdef SEDS_FIRMWARE_SIM_TEST
+  g_sim_radio_egress_peer_mask |= sim_probe_peer_bit_packed(bytes, len);
+#endif
+
   status = radio_uart_send_bytes(bytes, len);
   if (status == HAL_BUSY && !radio_uart_tx_ready()) {
     return SEDS_OK;
@@ -542,6 +563,7 @@ static SedsResult radio_tx_send(const uint8_t *bytes, size_t len, void *user) {
 
 static void telemetry_can_rx(const uint8_t *data, size_t len, void *user) {
   (void)user;
+  sim_probe_observe_packed(data, len);
 
 #ifdef TELEMETRY_ENABLED
   if (!data || len == 0U) {
@@ -567,6 +589,7 @@ static void telemetry_can_rx(const uint8_t *data, size_t len, void *user) {
 
 static void telemetry_radio_rx(const uint8_t *data, size_t len, void *user) {
   (void)user;
+  sim_probe_observe_packed(data, len);
 
 #ifdef TELEMETRY_ENABLED
   if (!data || len == 0U) {
@@ -728,7 +751,11 @@ SedsResult telemetry_poll_discovery(void) {
     return SEDS_ERR;
   }
 
-  const SedsResult result = seds_router_poll_discovery(g_router.r, NULL);
+  bool did_queue = false;
+  const SedsResult result = seds_router_poll_discovery(g_router.r, &did_queue);
+  if (result == SEDS_OK) {
+    sim_probe_emit_heartbeat(g_router.r, telemetry_now_ms());
+  }
   telemetry_update_network_health(g_router.r);
   return result;
 #endif
@@ -862,6 +889,25 @@ SedsResult init_telemetry_router(void) {
   if (g_radio_side_id < 0) {
     printf("Error: failed to add radio side: %ld\r\n", (long)g_radio_side_id);
     g_radio_side_id = -1;
+  }
+  if (g_can_side_id < 0 || g_radio_side_id < 0 ||
+      seds_router_set_route(r, g_can_side_id, g_radio_side_id, true) != SEDS_OK ||
+      seds_router_set_route(r, g_radio_side_id, g_can_side_id, true) != SEDS_OK ||
+      seds_router_set_source_route_mode(r, -1, Seds_RSM_Fanout) != SEDS_OK ||
+      seds_router_set_source_route_mode(r, g_can_side_id, Seds_RSM_Fanout) != SEDS_OK ||
+      seds_router_set_source_route_mode(r, g_radio_side_id, Seds_RSM_Fanout) != SEDS_OK ||
+      seds_router_set_typed_route(r, g_can_side_id, SEDS_DT_HEARTBEAT,
+                                  g_radio_side_id, true) != SEDS_OK ||
+      seds_router_set_typed_route(r, g_radio_side_id, SEDS_DT_HEARTBEAT,
+                                  g_can_side_id, true) != SEDS_OK) {
+    printf("Error: failed to configure explicit CAN/radio relay routes\r\n");
+    seds_router_free(r);
+    g_router.r = NULL;
+    g_router.created = 0U;
+    g_can_side_id = -1;
+    g_radio_side_id = -1;
+    g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
+    return SEDS_ERR;
   }
   telemetry_memory_profile_mark(3U);
   g_router_retry_after_ms = 0ULL;

@@ -30,6 +30,8 @@ add_custom_command(
     OUTPUT "${sedsnet_SOURCE_DIR}/telemetry_config.json"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${SEDSNET_SCHEMA_FILE}" "${sedsnet_SOURCE_DIR}/telemetry_config.json"
+    COMMAND ${CMAKE_COMMAND} -E touch "${sedsnet_SOURCE_DIR}/build.rs"
+    COMMAND ${CMAKE_COMMAND} -E rm -f "${SEDSNET_STATIC_LIB_RELEASE}"
     DEPENDS "${SEDSNET_SCHEMA_FILE}"
     VERBATIM
 )

@@ -89,7 +89,7 @@ static uint64_t wrap_day_ms(uint64_t ms) {
 /* Stack + TCB for neom9n thread */
 TX_THREAD neom9n_thread;
 volatile uint8_t g_neom9n_has_fix = 0U;
-#define NEOM9N_THREAD_STACK_SIZE (7U * 1024U)
+#define NEOM9N_THREAD_STACK_SIZE (5U * 1024U)
 #define GPS_LINK_WARNING_INTERVAL_MS (5ULL * 60ULL * 1000ULL)
 #define GPS_DATA_LOG_INTERVAL_MS 750ULL
 #define GPS_SATELLITE_LOG_INTERVAL_MS 1000ULL

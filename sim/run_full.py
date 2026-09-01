@@ -12,7 +12,7 @@ import time
 SIMULATOR_REPOSITORY = (
     "https://github.com/University-at-Buffalo-SEDS/FirmwareSimulator.git"
 )
-SIMULATOR_INTERFACE_VERSION = "0.3.2"
+SIMULATOR_INTERFACE_VERSION = "0.4"
 FIRMWARE_BRANCH = "migration/sedlaunch-sedsnet-mainline"
 FIRMWARE_ORGANIZATION = "University-at-Buffalo-SEDS"
 
@@ -215,7 +215,12 @@ def _network_peer(repo_root: Path) -> tuple[str, Path]:
     current = json.loads(
         (repo_root / "sim" / "board.json").read_text(encoding="utf-8")
     )["name"]
-    peer_name = "PowerBoard26" if current == "RFBoard26" else "RFBoard26"
+    # Exercise the link this board uses in the vehicle. Actuation telemetry
+    # reaches GroundStation through Gateway, not through RFBoard directly.
+    if current == "ActuationBoard":
+        peer_name = "gateway-board26"
+    else:
+        peer_name = "PowerBoard26" if current == "RFBoard26" else "RFBoard26"
     configured = os.environ.get("SEDS_FIRMWARE_SIM_PEER_ROOT")
     if configured:
         peer_root = Path(configured).expanduser().resolve()
@@ -256,76 +261,103 @@ def _network_peer(repo_root: Path) -> tuple[str, Path]:
 def run_network_simulation(
     ui, repo_root: Path, architecture: str, build_subdir: str | None = None
 ) -> None:
-    """Boot this board with a real peer and require discovery + time sync."""
+    """Boot the complete seven-board network and prove bidirectional SEDSNet."""
     docker = require_docker()
     image = resolve_simulator_image(ui, docker, repo_root, architecture)
-    peer_name, peer_root = _network_peer(repo_root)
     release = build_subdir is not None and "release" in build_subdir.lower()
     simulation_env = os.environ.copy()
     simulation_env["SEDS_FIRMWARE_SIM_TEST"] = "1"
-    current_build = [
-        sys.executable, str(repo_root / "build.py"), "build",
-        "--release" if release else "--debug", "--image", "firmware",
+    boards = [
+        ("rf", "RFBoard26", "RFBoard26", 1, "fdcan2"),
+        ("power", "PowerBoard26", "PowerBoard26", 2, "fdcan2"),
+        ("flight", "FlightComputer26", "FlightComputer26", 4, "fdcan1"),
+        ("gateway", "gateway-board", "gateway_board", 8, "fdcan2"),
+        ("actuator", "ActuatorBoard26", "ActuationBoard", 16, "fdcan2"),
+        ("valve", "ValveBoard26", "Valve_Board26", 32, "fdcan2"),
+        ("daq", "DAQ-Board", "DAQ-Board", 64, "fdcan1"),
     ]
-    ui.say("run", " ".join(current_build))
-    subprocess.run(current_build, cwd=repo_root, env=simulation_env, check=True)
-    peer_build = [
-        sys.executable, str(peer_root / "build.py"), "build",
-        "--release" if release else "--debug", "--image", "firmware",
-    ]
-    ui.say("run", " ".join(peer_build))
-    subprocess.run(peer_build, cwd=peer_root, env=simulation_env, check=True)
+    current_name = json.loads((repo_root / "sim" / "board.json").read_text(encoding="utf-8"))["name"]
+    roots: dict[str, Path] = {}
+    suite_root = repo_root / "build" / "sim-full-bay"
+    git = shutil.which("git")
+    if git is None:
+        raise RuntimeError("git is required to obtain the full-bay firmware repositories.")
+    for node, repository, layout_name, _bit, _can in boards:
+        if layout_name == current_name:
+            root = repo_root
+        else:
+            root = suite_root / repository
+            remote = f"https://github.com/{FIRMWARE_ORGANIZATION}/{repository}.git"
+            if (root / ".git").is_dir():
+                subprocess.run([git, "fetch", "origin", FIRMWARE_BRANCH], cwd=root, check=True)
+                subprocess.run([git, "checkout", FIRMWARE_BRANCH], cwd=root, check=True)
+                subprocess.run([git, "pull", "--ff-only", "origin", FIRMWARE_BRANCH], cwd=root, check=True)
+            else:
+                root.parent.mkdir(parents=True, exist_ok=True)
+                subprocess.run([git, "clone", "--depth", "1", "--branch", FIRMWARE_BRANCH, remote, str(root)], check=True)
+        roots[node] = root
+        if repository == "FlightComputer26":
+            command = [sys.executable, str(root / "build.py"), "release" if release else "debug", "firmware"]
+        else:
+            command = [sys.executable, str(root / "build.py"), "build", "--release" if release else "--debug", "--image", "firmware"]
+        ui.say("run", " ".join(command))
+        subprocess.run(command, cwd=root, env=simulation_env, check=True)
 
-    current_layout = load_layout_for_build(repo_root, build_subdir)
-    peer_layout = load_layout_for_build(peer_root, None)
-    for layout in (current_layout, peer_layout):
-        probes = layout.get("execution", {}).get("memory_probes", [])
-        layout["execution"]["memory_probes"] = [
-            probe for probe in probes
-            if probe.get("name") in {"network_ready", "discovery_seen", "timesync_valid"}
-        ]
+    layouts: dict[str, dict] = {}
+    for node, _repository, _layout_name, _bit, _can in boards:
+        layout = load_layout_for_build(roots[node], None)
         layout["execution"]["memory_probe_warmup_samples"] = 3
-    current_can = "fdcan2" if current_layout["architecture"] == "stm32g4" else "fdcan1"
-    peer_can = "fdcan2"
+        layouts[node] = layout
     topology = {
-        "name": f"{current_layout['name']}-{peer_name}-compatibility",
+        "name": "complete-seds-avionics-and-fill-network",
         "quantum_seconds": 0.0001,
-        "virtual_time_ms": 10000,
-        "sample_count": 20,
+        "virtual_time_ms": 30000,
+        "sample_count": 30,
         "nodes": [
-            {"name": "board", "layout": "/simulation/board.json",
-             "firmware_root": "/board"},
-            {"name": "peer", "layout": "/simulation/peer.json",
-             "firmware_root": "/peer"},
+            {"name": node, "layout": f"/simulation/{node}.json", "firmware_root": f"/nodes/{node}"}
+            for node, *_ in boards
         ],
-        "links": [{
-            "name": "sedsnet_can", "kind": "can",
-            "endpoints": [
-                {"node": "board", "peripheral": current_can,
-                 "activity_probe": "network_ready", "minimum_activity": 1},
-                {"node": "peer", "peripheral": peer_can,
-                 "activity_probe": "network_ready", "minimum_activity": 1},
-            ],
-        }],
+        "links": [
+            {"name": "avionics_can", "kind": "can", "transport_path": ["RFBoard", "PowerBoard", "FlightComputer"],
+             "endpoints": [{"node": node, "peripheral": can, "tx_probe": "fdcan_tx_ok", "rx_probe": "fdcan_rx"} for node, _repo, _name, _bit, can in boards[:3]]},
+            {"name": "ground_radio_pico_path", "kind": "routed_serial",
+             "transport_path": ["RF E22 radio", "GroundStation SEDSNet router", "Pico-Fi pair", "Gateway USART2"],
+             "endpoints": [
+                 {"node": "rf", "peripheral": "usart1", "tx_probe": "radio_tx_frames", "rx_probe": "radio_rx_frames"},
+                 {"node": "gateway", "peripheral": "usart2", "tx_probe": "uart_tx_frames", "rx_probe": "uart_rx_frames"}]},
+            {"name": "fill_can", "kind": "can", "transport_path": ["Gateway", "Actuator", "Valve", "DAQ"],
+             "endpoints": [{"node": node, "peripheral": can, "tx_probe": "fdcan_tx_ok", "rx_probe": "fdcan_rx"} for node, _repo, _name, _bit, can in boards[3:]]},
+        ],
+        # A routed network is not a flat broadcast domain. Require every peer
+        # on each local CAN segment plus traffic in both directions across the
+        # RF/GroundStation/Pico-Fi/Gateway route.
+        "assertions": [
+            {"name": "rf decoded both avionics peers", "node": "rf", "probe": "peer_mask", "required_bits": 6},
+            {"name": "power decoded both avionics peers", "node": "power", "probe": "peer_mask", "required_bits": 5},
+            {"name": "flight decoded both avionics peers", "node": "flight", "probe": "peer_mask", "required_bits": 3},
+            {"name": "gateway decoded every fill peer", "node": "gateway", "probe": "peer_mask", "required_bits": 112},
+            {"name": "actuator decoded every fill peer", "node": "actuator", "probe": "peer_mask", "required_bits": 104},
+            {"name": "valve decoded every fill peer", "node": "valve", "probe": "peer_mask", "required_bits": 88},
+            {"name": "daq decoded every fill peer", "node": "daq", "probe": "peer_mask", "required_bits": 56},
+            {"name": "rf received traffic from gateway path", "node": "rf", "probe": "peer_mask", "required_bits": 8},
+            {"name": "gateway received traffic from avionics path", "node": "gateway", "probe": "peer_mask", "required_bits": 2},
+        ],
     }
 
     with tempfile.TemporaryDirectory(prefix="seds-firmware-network-") as directory:
         root = Path(directory)
-        write_container_layout(root, current_layout)
-        (root / "peer.json").write_text(
-            json.dumps(peer_layout, indent=2), encoding="utf-8"
-        )
+        root.chmod(0o755)
+        for node, layout in layouts.items():
+            path = root / f"{node}.json"
+            path.write_text(json.dumps(layout, indent=2), encoding="utf-8")
+            path.chmod(0o644)
         (root / "topology.json").write_text(
             json.dumps(topology, indent=2), encoding="utf-8"
         )
-        for path in (root / "peer.json", root / "topology.json"):
-            path.chmod(0o644)
-        command = [
-            docker, "run", "--rm",
-            "-v", f"{repo_root}:/board:ro",
-            "-v", f"{peer_root}:/peer:ro",
-            "-v", f"{directory}:/simulation:ro",
-            image, "bay", "--topology", "/simulation/topology.json",
-        ]
+        (root / "topology.json").chmod(0o644)
+        command = [docker, "run", "--rm"]
+        for node, path in roots.items():
+            command += ["-v", f"{path}:/nodes/{node}:ro"]
+        command += ["-v", f"{directory}:/simulation:ro", image, "bay", "--topology", "/simulation/topology.json"]
         ui.say("run", " ".join(command))
-        run_live(command, "linked network simulation")
+        run_live(command, "complete seven-board network simulation")

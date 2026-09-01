@@ -255,7 +255,12 @@ void telemetry_thread_entry(ULONG initial_input)
         telemetry_announce_discovery_if_due(now_ms, &next_discovery_announce_ms);
         (void)telemetry_poll_discovery();
         telemetry_retry_pending_can_commands();
-        (void)dispatch_tx_queue_timeout(TELEMETRY_QUEUE_BUDGET_MS);
+        /* RF is a relay between avionics CAN and the ground radio. Draining
+         * only TX leaves every packet received from either side stranded in
+         * the router RX queue, eventually exhausting the fixed allocator and
+         * preventing any cross-link forwarding. Interleave RX fanout and TX
+         * dispatch within the same bounded service window. */
+        (void)process_all_queues_timeout(TELEMETRY_QUEUE_BUDGET_MS);
         (void)telemetry_poll_timesync();
         ota_stream_poll();
 

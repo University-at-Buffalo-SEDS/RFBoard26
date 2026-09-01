@@ -46,7 +46,7 @@
 #endif
 
 #ifndef CAN_BUS_TX_ENQUEUE_TIMEOUT_MS
-#define CAN_BUS_TX_ENQUEUE_TIMEOUT_MS 5U
+#define CAN_BUS_TX_ENQUEUE_TIMEOUT_MS 50U
 #endif
 
 #define UNUSED_FUNCTION __attribute__((unused))
@@ -303,12 +303,14 @@ static inline void can_bus_notify_rx(const uint8_t *data, size_t len)
 // =========================
 
 #define CAN_BUS_FRAG_MAGIC ((uint16_t)('S') | ((uint16_t)('D') << 8)) /* 'S''D' in little-endian byte order */
+#define CAN_BUS_NODE_ID 1U
 #define CAN_BUS_FRAG_WIRE_LEN 64                                      // always send 64B payload frames for frags
-#define CAN_BUS_REASM_TIMEOUT_MS 250u                                 // drop partial message after this many ms
+#define CAN_BUS_REASM_TIMEOUT_MS 1000u                                // tolerate interleaved multi-sender packets
 
 typedef struct __attribute__((packed))
 {
   uint16_t magic;     // CAN_BUS_FRAG_MAGIC
+  uint8_t source;     // stable sender token
   uint8_t seq;        // message sequence (wrap OK)
   uint8_t frag_idx;   // 0..frag_cnt-1
   uint8_t frag_cnt;   // total fragments
@@ -520,6 +522,7 @@ typedef struct
 {
   uint8_t active;
   uint32_t std_id; // which CAN ID this slot is for
+  uint8_t source;
   uint8_t seq;
   uint8_t frag_cnt;
   uint16_t total_len;
@@ -536,6 +539,7 @@ static void reasm_reset(can_bus_reasm_slot_t *s)
 {
   s->active = 0;
   s->std_id = 0;
+  s->source = 0;
   s->seq = 0;
   s->frag_cnt = 0;
   s->total_len = 0;
@@ -545,17 +549,21 @@ static void reasm_reset(can_bus_reasm_slot_t *s)
   memset(s->got_mask, 0, sizeof(s->got_mask));
 }
 
-static can_bus_reasm_slot_t *reasm_get_slot(uint32_t std_id, uint8_t seq, uint32_t now_ms)
+static can_bus_reasm_slot_t *reasm_get_slot(uint32_t std_id, uint8_t source, uint8_t seq, uint32_t now_ms)
 {
   // First try to find existing active slot for std_id
   for (unsigned i = 0; i < CAN_BUS_REASM_SLOTS; i++)
   {
-    if (g_reasm[i].active && g_reasm[i].std_id == std_id)
+    if (g_reasm[i].active && g_reasm[i].std_id == std_id && g_reasm[i].source == source)
     {
       // If sequence changed, drop partial and reuse slot
       if (g_reasm[i].seq != seq)
       {
         reasm_reset(&g_reasm[i]);
+        g_reasm[i].active = 1;
+        g_reasm[i].std_id = std_id;
+        g_reasm[i].source = source;
+        g_reasm[i].seq = seq;
       }
       g_reasm[i].last_tick_ms = now_ms;
       return &g_reasm[i];
@@ -570,6 +578,7 @@ static can_bus_reasm_slot_t *reasm_get_slot(uint32_t std_id, uint8_t seq, uint32
       reasm_reset(&g_reasm[i]);
       g_reasm[i].active = 1;
       g_reasm[i].std_id = std_id;
+      g_reasm[i].source = source;
       g_reasm[i].seq = seq;
       g_reasm[i].last_tick_ms = now_ms;
       return &g_reasm[i];
@@ -591,6 +600,7 @@ static can_bus_reasm_slot_t *reasm_get_slot(uint32_t std_id, uint8_t seq, uint32
   reasm_reset(&g_reasm[stalest]);
   g_reasm[stalest].active = 1;
   g_reasm[stalest].std_id = std_id;
+  g_reasm[stalest].source = source;
   g_reasm[stalest].seq = seq;
   g_reasm[stalest].last_tick_ms = now_ms;
   return &g_reasm[stalest];
@@ -649,7 +659,7 @@ static void handle_rx_frame(const can_bus_rx_frame_t *f, uint32_t now_ms)
       const uint8_t *payload = f->data + sizeof(hdr);
       const uint8_t payload_len = (uint8_t)(f->len - sizeof(hdr));
 
-      can_bus_reasm_slot_t *s = reasm_get_slot(f->std_id, hdr.seq, now_ms);
+      can_bus_reasm_slot_t *s = reasm_get_slot(f->std_id, hdr.source, hdr.seq, now_ms);
 
       // If slot was newly created (or reset), initialize message params
       if (s->frag_cnt == 0)
@@ -954,6 +964,7 @@ HAL_StatusTypeDef can_bus_send_large(const uint8_t *bytes, size_t len, uint32_t 
 
     can_bus_frag_hdr_t hdr;
     hdr.magic = CAN_BUS_FRAG_MAGIC;
+    hdr.source = CAN_BUS_NODE_ID;
     hdr.seq = seq;
     hdr.frag_idx = idx;
     hdr.frag_cnt = frag_cnt;
@@ -1052,6 +1063,7 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
     return;
 
   g_fdcan_irq_count++;
+  g_fdcan_rx_count++;
   can_bus_drain_rx_fifo(hfdcan, FDCAN_RX_FIFO0);
   g_rx_fifo0_pending = 0;
 }
@@ -1064,6 +1076,7 @@ void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo1ITs)
     return;
 
   g_fdcan_irq_count++;
+  g_fdcan_rx_count++;
   can_bus_drain_rx_fifo(hfdcan, FDCAN_RX_FIFO1);
   g_rx_fifo1_pending = 0;
 }

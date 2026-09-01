@@ -12,7 +12,7 @@ class SedsnetMemoryTests(unittest.TestCase):
             encoding="utf-8"
         )
         size = int(re.search(r"TX_APP_MEM_POOL_SIZE\s+(\d+)", config).group(1))
-        self.assertEqual(size, 55000)
+        self.assertEqual(size, 66264)
 
     def test_shared_pool_is_not_the_legacy_per_queue_size(self):
         cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
@@ -23,10 +23,10 @@ class SedsnetMemoryTests(unittest.TestCase):
         )
         recent = int(re.search(r'set\(SEDSNET_MAX_RECENT_RX_IDS "(\d+)"', cmake).group(1))
 
-        self.assertEqual(pool, 34816)
-        self.assertEqual(budget, 12288)
+        self.assertEqual(pool, 46080)
+        self.assertEqual(budget, 8192)
         self.assertGreaterEqual(pool - budget, 16384)
-        self.assertEqual(start, 1024)
+        self.assertEqual(start, 512)
         self.assertGreater(budget, recent * 8 + start)
 
     def test_reclaimed_stack_space_is_guarded_by_threadx(self):
@@ -38,7 +38,7 @@ class SedsnetMemoryTests(unittest.TestCase):
         gps_thread = (ROOT / "Core" / "Src" / "neom9n_thread.c").read_text(
             encoding="utf-8"
         )
-        self.assertIn("NEOM9N_THREAD_STACK_SIZE (7U * 1024U)", gps_thread)
+        self.assertIn("NEOM9N_THREAD_STACK_SIZE (5U * 1024U)", gps_thread)
         self.assertRegex(threadx, r"(?m)^#define TX_ENABLE_STACK_CHECKING$")
         app = (ROOT / "Core" / "Src" / "app_threadx.c").read_text(encoding="utf-8")
         self.assertIn("g_thread_stack_error_count", app)
@@ -74,15 +74,14 @@ class SedsnetMemoryTests(unittest.TestCase):
         payload = int(
             re.search(r"#define RADIO_UART_MAX_PAYLOAD_SIZE\s+(\d+)U", radio).group(1)
         )
-        self.assertEqual(depth, 4)
+        self.assertEqual(depth, 2)
         self.assertGreaterEqual(payload, 512)
         self.assertLessEqual(depth * (payload + 4), 4200)
-        self.assertIn(
-            "g_tx_queue_storage[RADIO_UART_TX_QUEUE_DEPTH]", radio
-        )
+        self.assertIn("static radio_tx_item_t *g_tx_queue = NULL", radio)
         init = radio.split("UINT radio_uart_init_tx_queue", 1)[1]
         init = init.split("/* Arm RX-to-idle", 1)[0]
-        self.assertNotIn("tx_byte_allocate", init)
+        self.assertIn("tx_byte_allocate", init)
+        self.assertIn("sizeof(radio_tx_item_t) * RADIO_UART_TX_QUEUE_DEPTH", init)
 
     def test_memory_led_requires_a_confirmed_allocator_failure(self):
         hooks = (ROOT / "Core" / "Src" / "telemetry_hooks.c").read_text(

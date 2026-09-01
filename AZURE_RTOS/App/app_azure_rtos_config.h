@@ -43,7 +43,7 @@ extern "C" {
 
 #define USE_STATIC_ALLOCATION                    1
 
-#define TX_APP_MEM_POOL_SIZE                     55000
+#define TX_APP_MEM_POOL_SIZE                     66264
 
 #define UX_DEVICE_APP_MEM_POOL_SIZE              25000
 

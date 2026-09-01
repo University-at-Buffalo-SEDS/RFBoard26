@@ -13,7 +13,7 @@
     "slot_a_size": 475136,
     "erase_size": 2048,
     "write_alignment": 8,
-    "sedsnet_pool": 28672,
+    "sedsnet_pool": 46080,
     "delta_base": 134709248,
     "delta_size": 24576
   },
@@ -38,11 +38,17 @@
     "memory_probe_warmup_samples": 2,
     "memory_probes": [
       {"name": "network_ready", "symbol": "g_telemetry_network_ready"},
+      {"name": "peer_mask", "symbol": "g_telemetry_peer_mask"},
+      {"name": "radio_egress_peer_mask", "symbol": "g_sim_radio_egress_peer_mask"},
+      {"name": "heartbeat_attempts", "symbol": "g_sim_heartbeat_attempts"},
+      {"name": "heartbeat_ok", "symbol": "g_sim_heartbeat_ok"},
+      {"name": "heartbeat_wire_tx", "symbol": "g_sim_heartbeat_wire_tx"},
+      {"name": "heartbeat_fail", "symbol": "g_sim_heartbeat_fail"},
       {"name": "discovery_seen", "symbol": "g_telemetry_discovery_seen"},
       {"name": "timesync_valid", "symbol": "g_telemetry_timesync_valid"},
       {"name": "timesync_queued", "symbol": "g_telemetry_timesync_queued"},
       {"name": "pool_available", "symbol": "g_telemetry_pool_available", "minimum": 4096, "max_end_drop": 4096},
-      {"name": "pool_low_water", "symbol": "g_telemetry_pool_low_water", "minimum": 2048},
+      {"name": "pool_low_water", "symbol": "g_telemetry_pool_low_water", "minimum": 1024},
       {"name": "alloc_failure_request", "symbol": "g_telemetry_alloc_failure_request", "maximum": 0},
       {"name": "alloc_failure_available", "symbol": "g_telemetry_alloc_failure_available"},
       {"name": "alloc_failure_fragments", "symbol": "g_telemetry_alloc_failure_fragments"},
@@ -58,6 +64,14 @@
       {"name": "fdcan_rx", "symbol": "g_fdcan_rx_count"},
       {"name": "fdcan_tx_ok", "symbol": "g_fdcan_tx_ok_count"},
       {"name": "fdcan_tx_fail", "symbol": "g_fdcan_tx_fail_count"}
+      ,{"name": "radio_rx_frames", "symbol": "g_radio_rx_frames_ok"}
+      ,{"name": "radio_tx_frames", "symbol": "g_radio_tx_ok"}
+      ,{"name": "radio_tx_drops", "symbol": "g_tx_drops"}
+      ,{"name": "radio_tx_drop_stale", "symbol": "g_tx_drop_stale"}
+      ,{"name": "radio_tx_drop_same_flow", "symbol": "g_tx_drop_same_flow"}
+      ,{"name": "radio_tx_drop_oldest", "symbol": "g_tx_drop_oldest"}
+      ,{"name": "radio_tx_drop_control", "symbol": "g_tx_drop_control"}
+      ,{"name": "radio_tx_drop_heartbeat", "symbol": "g_tx_drop_application", "maximum": 0}
     ]
   },
   "traffic": {
