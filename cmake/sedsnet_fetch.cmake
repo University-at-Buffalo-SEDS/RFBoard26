@@ -26,16 +26,12 @@ FetchContent_MakeAvailable(sedsnet)
 # The final ELF still enforces a non-executable stack through -z noexecstack.
 set_property(TARGET sedsnet PROPERTY INTERFACE_COMPILE_OPTIONS "")
 
-add_custom_command(
-    OUTPUT "${sedsnet_SOURCE_DIR}/telemetry_config.json"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${SEDSNET_SCHEMA_FILE}" "${sedsnet_SOURCE_DIR}/telemetry_config.json"
-    COMMAND ${CMAKE_COMMAND} -E touch "${sedsnet_SOURCE_DIR}/build.rs"
-    COMMAND ${CMAKE_COMMAND} -E rm -f "${SEDSNET_STATIC_LIB_RELEASE}"
-    DEPENDS "${SEDSNET_SCHEMA_FILE}"
-    VERBATIM
-)
-add_custom_target(board_sedsnet_schema
-    DEPENDS "${sedsnet_SOURCE_DIR}/telemetry_config.json")
-add_dependencies(sedsnet_build board_sedsnet_schema)
+# Copy the board schema during configure, before Ninja calculates whether the
+# Rust archive is stale. Deleting/touching files from a build-time dependency
+# races Ninja's initial dirty check and can remove the archive immediately
+# before the firmware link step.
+configure_file("${SEDSNET_SCHEMA_FILE}"
+               "${sedsnet_SOURCE_DIR}/telemetry_config.json" COPYONLY)
+file(TOUCH "${sedsnet_SOURCE_DIR}/build.rs")
 target_link_libraries(${CMAKE_PROJECT_NAME} sedsnet::sedsnet)
+add_dependencies(${CMAKE_PROJECT_NAME} sedsnet_build)
