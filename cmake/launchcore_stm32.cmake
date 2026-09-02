@@ -17,7 +17,7 @@ endforeach()
 FetchContent_Declare(
     sedslaunchcore
     GIT_REPOSITORY https://github.com/University-at-Buffalo-SEDS/SEDSLaunchCore.git
-    GIT_TAG 5e5c9d52f91e53b0113aaee7355bc354118538a6
+    GIT_TAG ca4fc6e7722683e11f3a377a0d1bc82c2de6ee14
     GIT_SHALLOW FALSE
 )
 FetchContent_GetProperties(sedslaunchcore)
@@ -29,6 +29,8 @@ include("${sedslaunchcore_SOURCE_DIR}/cmake/launchcore_stm32.cmake")
 set(_launchcore_bsp_config "${CMAKE_SOURCE_DIR}/Bootloader/board_config.h")
 _launchcore_read_layout_define(
     "${_launchcore_bsp_config}" LAUNCHCORE_INTERNAL_FLASH_SIZE _launchcore_total_flash)
+_launchcore_read_layout_define(
+    "${_launchcore_bsp_config}" LAUNCHCORE_INTERNAL_SRAM_SIZE _launchcore_total_ram)
 _launchcore_read_layout_define(
     "${_launchcore_bsp_config}" LAUNCHCORE_BOOTLOADER_SIZE _launchcore_boot_capacity)
 _launchcore_read_layout_define(
@@ -151,5 +153,6 @@ launchcore_add_memory_report(
     FIRMWARE_BINARY "${_app_bin}"
     BOOTLOADER_CAPACITY "${_launchcore_boot_capacity}"
     FIRMWARE_CAPACITY "${_launchcore_firmware_capacity}"
-    TOTAL_FLASH_SIZE "${_launchcore_total_flash}")
+    TOTAL_FLASH_SIZE "${_launchcore_total_flash}"
+    RAM_CAPACITY "${_launchcore_total_ram}")
 add_dependencies(factory-image launchcore-memory-report)

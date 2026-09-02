@@ -49,10 +49,18 @@
 #define CAN_BUS_TX_ENQUEUE_TIMEOUT_MS 50U
 #endif
 
+/* A continuously busy CAN bus must not monopolize the telemetry thread.  A
+ * bounded service pass leaves time to drain the much slower radio, service
+ * SEDSNet timers, and process commands. */
+#ifndef CAN_BUS_RX_SERVICE_BUDGET
+#define CAN_BUS_RX_SERVICE_BUDGET 32U
+#endif
+
 #define UNUSED_FUNCTION __attribute__((unused))
 
 /* Forward declarations (avoid implicit decl / linkage mismatch) */
-static void can_bus_drain_rx_fifo(FDCAN_HandleTypeDef *hfdcan, uint32_t fifo);
+static uint32_t can_bus_drain_rx_fifo(FDCAN_HandleTypeDef *hfdcan,
+                                      uint32_t fifo, uint32_t budget);
 static UNUSED_FUNCTION void can_bus_drain_tx_events(FDCAN_HandleTypeDef *hfdcan);
 
 static void can_bus_debug_print(const char *fmt, ...)
@@ -478,14 +486,20 @@ static void can_bus_drain_hw_to_ring_thread(void)
   if (g_rx_fifo0_pending || (HAL_FDCAN_GetRxFifoFillLevel(g_hfdcan, FDCAN_RX_FIFO0) > 0))
   {
     g_rx_fifo0_pending = 0;
-    can_bus_drain_rx_fifo(g_hfdcan, FDCAN_RX_FIFO0);
+    (void)can_bus_drain_rx_fifo(g_hfdcan, FDCAN_RX_FIFO0,
+                                CAN_BUS_RX_SERVICE_BUDGET);
+    g_rx_fifo0_pending =
+        HAL_FDCAN_GetRxFifoFillLevel(g_hfdcan, FDCAN_RX_FIFO0) > 0U;
   }
 
   /* RX FIFO1 */
   if (g_rx_fifo1_pending || (HAL_FDCAN_GetRxFifoFillLevel(g_hfdcan, FDCAN_RX_FIFO1) > 0))
   {
     g_rx_fifo1_pending = 0;
-    can_bus_drain_rx_fifo(g_hfdcan, FDCAN_RX_FIFO1);
+    (void)can_bus_drain_rx_fifo(g_hfdcan, FDCAN_RX_FIFO1,
+                                CAN_BUS_RX_SERVICE_BUDGET);
+    g_rx_fifo1_pending =
+        HAL_FDCAN_GetRxFifoFillLevel(g_hfdcan, FDCAN_RX_FIFO1) > 0U;
   }
 
 #if CAN_BUS_DEBUG
@@ -721,16 +735,19 @@ static void handle_rx_frame(const can_bus_rx_frame_t *f, uint32_t now_ms)
 // RX drain helpers (used by polling and ISR wrappers)
 // =========================
 
-static void can_bus_drain_rx_fifo(FDCAN_HandleTypeDef *hfdcan, uint32_t fifo)
+static uint32_t can_bus_drain_rx_fifo(FDCAN_HandleTypeDef *hfdcan,
+                                      uint32_t fifo, uint32_t budget)
 {
   FDCAN_RxHeaderTypeDef hdr;
   uint8_t data[64];
+  uint32_t drained = 0U;
 
-  while (HAL_FDCAN_GetRxFifoFillLevel(hfdcan, fifo) > 0)
+  while (drained < budget && HAL_FDCAN_GetRxFifoFillLevel(hfdcan, fifo) > 0)
   {
     if (HAL_FDCAN_GetRxMessage(hfdcan, fifo, &hdr, data) != HAL_OK)
       break;
 
+    drained++;
     g_fdcan_rx_count++;
 
     uint32_t std_id = hdr.Identifier & 0x7FFu;
@@ -745,6 +762,7 @@ static void can_bus_drain_rx_fifo(FDCAN_HandleTypeDef *hfdcan, uint32_t fifo)
 
     rb_push_drop_oldest(std_id, data, (uint8_t)len);
   }
+  return drained;
 }
 
 static UNUSED_FUNCTION void can_bus_drain_tx_events(FDCAN_HandleTypeDef *hfdcan)
@@ -1038,8 +1056,10 @@ void can_bus_process_rx(void)
   }
 
   can_bus_rx_frame_t f;
-  while (rb_pop(&f))
+  uint32_t processed = 0U;
+  while (processed < CAN_BUS_RX_SERVICE_BUDGET && rb_pop(&f))
   {
+    processed++;
     CAN_BUS_DBG("CAN RX RAW: id=0x%03lx len=%u", (unsigned long)f.std_id, (unsigned)f.len);
     can_bus_dbg_dump_bytes(f.data, f.len);
     handle_rx_frame(&f, now);
@@ -1052,7 +1072,9 @@ void can_bus_process_rx(void)
 //
 // IMPORTANT: ensure only one definition exists in the entire link.
 //
-// These callbacks do minimal work: drain RX FIFO0/FIFO1 into our ring buffer.
+// These callbacks only flag work. Draining an unbounded FIFO in interrupt
+// context can starve ThreadX and prevent the RF radio/SEDSNet service loop from
+// running under sustained avionics traffic.
 // Reassembly and subscriber callbacks happen in can_bus_process_rx().
 
 void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
@@ -1063,9 +1085,7 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
     return;
 
   g_fdcan_irq_count++;
-  g_fdcan_rx_count++;
-  can_bus_drain_rx_fifo(hfdcan, FDCAN_RX_FIFO0);
-  g_rx_fifo0_pending = 0;
+  g_rx_fifo0_pending = 1U;
 }
 
 void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo1ITs)
@@ -1076,9 +1096,7 @@ void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo1ITs)
     return;
 
   g_fdcan_irq_count++;
-  g_fdcan_rx_count++;
-  can_bus_drain_rx_fifo(hfdcan, FDCAN_RX_FIFO1);
-  g_rx_fifo1_pending = 0;
+  g_rx_fifo1_pending = 1U;
 }
 
 // TX event FIFO callback (called in ISR context). We read all new events

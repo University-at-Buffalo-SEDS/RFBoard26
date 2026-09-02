@@ -61,7 +61,7 @@ class OtaBuildScriptTests(unittest.TestCase):
                 with mock.patch.object(
                     run_full.subprocess,
                     "run",
-                    side_effect=[missing, missing, missing, success, success],
+                    side_effect=[missing, missing, missing, missing, success, success],
                 ) as execute:
                     image = run_full.resolve_simulator_image(
                         ui, "/usr/bin/docker", Path("/board"), "stm32g4"

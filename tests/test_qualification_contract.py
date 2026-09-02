@@ -17,12 +17,18 @@ class QualificationContractTests(unittest.TestCase):
         self.assertIn('"bay"', runner)
         self.assertIn('"tx_probe": "fdcan_tx_ok"', runner)
         self.assertIn('"rx_probe": "fdcan_rx"', runner)
-        self.assertIn('"ground_radio_pico_path"', runner)
+        self.assertIn('"host_nodes"', runner)
+        self.assertIn('"groundstation"', runner)
+        self.assertIn('"rocket_radio"', runner)
+        self.assertIn('"fill_pico"', runner)
+        self.assertIn('"GS_SIM_VALIDATE_VALVE_ROUNDTRIP": "1"', runner)
+        self.assertIn('"probe": "valve_commands_received", "minimum": 1', runner)
+        self.assertIn("forwarded status ACK to GroundStation", runner)
         self.assertIn('simulation_env["SEDS_FIRMWARE_SIM_TEST"] = "1"', runner)
         self.assertIn('run_live(command, "firmware simulation")', runner)
         self.assertIn('running ({int(now - started)}s elapsed)', runner)
         self.assertIn('"rf decoded both avionics peers"', runner)
-        self.assertIn('"gateway received traffic from avionics path"', runner)
+        self.assertIn('"rf decoded both avionics peers"', runner)
         self.assertIn("Long-duration memory profile", script)
         self.assertIn("Network discovery and time sync", script)
 
@@ -57,6 +63,13 @@ class QualificationContractTests(unittest.TestCase):
         prime = telemetry.index("seds_router_process_tx_queue(r)")
         radio = telemetry.index('seds_router_add_side_packed(r, "radio"')
         self.assertLess(prime, radio)
+
+    def test_underglow_uses_only_native_network_variable_apis(self):
+        root = Path(build.__file__).resolve().parent
+        source = (root / "Core" / "Src" / "av_bay_underglow.c").read_text(encoding="utf-8")
+        self.assertIn("seds_router_enable_network_variable", source)
+        self.assertIn("seds_router_get_network_variable_packed_len", source)
+        self.assertNotIn("seds_router_request_managed_variable", source)
 
     def test_radio_side_accepts_complete_v4_topology_packets(self):
         root = Path(__file__).resolve().parents[1]

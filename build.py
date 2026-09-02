@@ -883,6 +883,9 @@ def main() -> None:
             lambda: run_gtests(ui, cfg.repo_root),
         )
         if args.all_tests:
+            # Qualification needs observability probes that are intentionally
+            # excluded from production/flash builds.
+            os.environ["SEDS_FIRMWARE_SIM_TEST"] = "1"
             from sim.run_full import (
                 require_docker,
                 run_full_simulation,

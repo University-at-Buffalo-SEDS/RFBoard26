@@ -25,7 +25,8 @@
 #include "neom9n_config.h"
 #include "gps_time.h"
 #include "telemetry.h"
-#include "tx_api.h" 
+#include "tx_api.h"
+#include "tx_thread.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
@@ -88,6 +89,8 @@ static uint64_t wrap_day_ms(uint64_t ms) {
 
 /* Stack + TCB for neom9n thread */
 TX_THREAD neom9n_thread;
+volatile uint32_t g_neom9n_stack_used = 0U;
+volatile uint32_t g_neom9n_stack_remaining = 0U;
 volatile uint8_t g_neom9n_has_fix = 0U;
 #define NEOM9N_THREAD_STACK_SIZE (5U * 1024U)
 #define GPS_LINK_WARNING_INTERVAL_MS (5ULL * 60ULL * 1000ULL)
@@ -487,6 +490,13 @@ void neom9n_thread_entry(ULONG initial_input)
                 }
             }
         }
+        _tx_thread_stack_analyze(&neom9n_thread);
+        g_neom9n_stack_used = (uint32_t)(
+            (uintptr_t)neom9n_thread.tx_thread_stack_end -
+            (uintptr_t)neom9n_thread.tx_thread_stack_highest_ptr + sizeof(ULONG));
+        g_neom9n_stack_remaining = (uint32_t)(
+            (uintptr_t)neom9n_thread.tx_thread_stack_highest_ptr -
+            (uintptr_t)neom9n_thread.tx_thread_stack_start);
         tx_thread_sleep(50);
     }
 }

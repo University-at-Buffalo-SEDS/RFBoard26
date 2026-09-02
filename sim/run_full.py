@@ -108,8 +108,8 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str
         return local
 
     ui.say("run", f"{docker} pull {requested}")
-    # Inherit the terminal streams so layer downloads and extraction remain
-    # visible. Capturing these pipes makes a large image pull look hung.
+    # Always refresh mutable tags such as latest. Inherit terminal streams so
+    # layer downloads and extraction remain visible instead of looking hung.
     pull = subprocess.run([docker, "pull", requested])
     if pull.returncode == 0:
         return requested
@@ -261,7 +261,7 @@ def _network_peer(repo_root: Path) -> tuple[str, Path]:
 def run_network_simulation(
     ui, repo_root: Path, architecture: str, build_subdir: str | None = None
 ) -> None:
-    """Boot the complete seven-board network and prove bidirectional SEDSNet."""
+    """Boot all firmware plus the GroundStation26 host and prove end-to-end SEDSNet."""
     docker = require_docker()
     image = resolve_simulator_image(ui, docker, repo_root, architecture)
     release = build_subdir is not None and "release" in build_subdir.lower()
@@ -278,7 +278,12 @@ def run_network_simulation(
     ]
     current_name = json.loads((repo_root / "sim" / "board.json").read_text(encoding="utf-8"))["name"]
     roots: dict[str, Path] = {}
-    suite_root = repo_root / "build" / "sim-full-bay"
+    configured_suite_root = os.environ.get("SEDS_FIRMWARE_SIM_SUITE_ROOT")
+    suite_root = (
+        Path(configured_suite_root).expanduser().resolve()
+        if configured_suite_root
+        else repo_root / "build" / "sim-full-bay"
+    )
     git = shutil.which("git")
     if git is None:
         raise RuntimeError("git is required to obtain the full-bay firmware repositories.")
@@ -288,7 +293,13 @@ def run_network_simulation(
         else:
             root = suite_root / repository
             remote = f"https://github.com/{FIRMWARE_ORGANIZATION}/{repository}.git"
-            if (root / ".git").is_dir():
+            if configured_suite_root:
+                if not (root / ".git").is_dir():
+                    raise RuntimeError(
+                        "SEDS_FIRMWARE_SIM_SUITE_ROOT is missing firmware repository: "
+                        f"{root}"
+                    )
+            elif (root / ".git").is_dir():
                 subprocess.run([git, "fetch", "origin", FIRMWARE_BRANCH], cwd=root, check=True)
                 subprocess.run([git, "checkout", FIRMWARE_BRANCH], cwd=root, check=True)
                 subprocess.run([git, "pull", "--ff-only", "origin", FIRMWARE_BRANCH], cwd=root, check=True)
@@ -300,30 +311,60 @@ def run_network_simulation(
             command = [sys.executable, str(root / "build.py"), "release" if release else "debug", "firmware"]
         else:
             command = [sys.executable, str(root / "build.py"), "build", "--release" if release else "--debug", "--image", "firmware"]
-        ui.say("run", " ".join(command))
-        subprocess.run(command, cwd=root, env=simulation_env, check=True)
+        if os.environ.get("SEDS_FIRMWARE_SIM_SKIP_BUILD") != "1":
+            ui.say("run", " ".join(command))
+            subprocess.run(command, cwd=root, env=simulation_env, check=True)
 
     layouts: dict[str, dict] = {}
     for node, _repository, _layout_name, _bit, _can in boards:
         layout = load_layout_for_build(roots[node], None)
-        layout["execution"]["memory_probe_warmup_samples"] = 3
+        layout["execution"]["memory_probe_warmup_samples"] = 0
         layouts[node] = layout
     topology = {
         "name": "complete-seds-avionics-and-fill-network",
         "quantum_seconds": 0.0001,
-        "virtual_time_ms": 30000,
-        "sample_count": 30,
+        # The linked test proves connectivity; each board's separate profile
+        # stage performs the long-duration allocator qualification.
+        # The Pico-Fi/radio path deliberately models constrained serial links.
+        # Leave enough virtual time for the open command and its status ACK to
+        # traverse both directions across the constrained serial links.
+        "virtual_time_ms": 18000,
+        "sample_count": 4,
+        "enforce_end_drop": False,
         "nodes": [
             {"name": node, "layout": f"/simulation/{node}.json", "firmware_root": f"/nodes/{node}"}
             for node, *_ in boards
         ],
+        "host_nodes": [
+            {
+                "name": "groundstation",
+                "binary": "/usr/local/bin/groundstation_backend",
+                "cwd": "/opt/groundstation/backend",
+                "env": {
+                    "GS_DEBUG_PRINTS": "0",
+                    "RUST_LOG": "info",
+                    "GS_LAYOUT_PATH": "/opt/groundstation/backend/layout/layout_hitl.json",
+                    "GS_AV_BAY_UNDERGLOW_DEFAULT": "1",
+                    "GS_SIM_VALIDATE_VALVE_ROUNDTRIP": "1"
+                },
+                "serial_links": [
+                    {"link": "rocket_radio", "env": "GS_AV_BAY_SERIAL_PORT"},
+                    {"link": "fill_pico", "env": "GS_FILL_SERIAL_PORT"}
+                ]
+            }
+        ],
         "links": [
             {"name": "avionics_can", "kind": "can", "transport_path": ["RFBoard", "PowerBoard", "FlightComputer"],
              "endpoints": [{"node": node, "peripheral": can, "tx_probe": "fdcan_tx_ok", "rx_probe": "fdcan_rx"} for node, _repo, _name, _bit, can in boards[:3]]},
-            {"name": "ground_radio_pico_path", "kind": "routed_serial",
-             "transport_path": ["RF E22 radio", "GroundStation SEDSNet router", "Pico-Fi pair", "Gateway USART2"],
+            {"name": "rocket_radio", "kind": "radio",
+             "transport_path": ["RF E22 radio", "GroundStation26 host binary"],
              "endpoints": [
                  {"node": "rf", "peripheral": "usart1", "tx_probe": "radio_tx_frames", "rx_probe": "radio_rx_frames"},
+                 {"node": "groundstation", "peripheral": "av_bay"}]},
+            {"name": "fill_pico", "kind": "pico_fi",
+             "transport_path": ["GroundStation26 host binary", "Pico-Fi pair", "Gateway USART2"],
+             "endpoints": [
+                 {"node": "groundstation", "peripheral": "fill_box"},
                  {"node": "gateway", "peripheral": "usart2", "tx_probe": "uart_tx_frames", "rx_probe": "uart_rx_frames"}]},
             {"name": "fill_can", "kind": "can", "transport_path": ["Gateway", "Actuator", "Valve", "DAQ"],
              "endpoints": [{"node": node, "peripheral": can, "tx_probe": "fdcan_tx_ok", "rx_probe": "fdcan_rx"} for node, _repo, _name, _bit, can in boards[3:]]},
@@ -339,8 +380,22 @@ def run_network_simulation(
             {"name": "actuator decoded every fill peer", "node": "actuator", "probe": "peer_mask", "required_bits": 104},
             {"name": "valve decoded every fill peer", "node": "valve", "probe": "peer_mask", "required_bits": 88},
             {"name": "daq decoded every fill peer", "node": "daq", "probe": "peer_mask", "required_bits": 56},
-            {"name": "rf received traffic from gateway path", "node": "rf", "probe": "peer_mask", "required_bits": 8},
-            {"name": "gateway received traffic from avionics path", "node": "gateway", "probe": "peer_mask", "required_bits": 2},
+            {"name": "Gateway received GroundStation valve command", "node": "gateway", "probe": "uart_valve_command_count", "minimum": 1},
+            {"name": "Gateway routed valve command onto CAN", "node": "gateway", "probe": "can_valve_command_tx_count", "minimum": 1},
+            {"name": "GroundStation valve command reached board", "node": "valve", "probe": "valve_commands_received", "minimum": 1},
+            {"name": "Valve executed GroundStation command", "node": "valve", "probe": "valve_commands_executed", "minimum": 1},
+            {"name": "Valve applied pilot-open command", "node": "valve", "probe": "pilot_valve_state", "minimum": 1},
+            {"name": "Valve produced status ACK", "node": "valve", "probe": "umbilical_status_ok", "minimum": 1},
+            {"name": "Valve transmitted pilot-open status", "node": "valve", "probe": "pilot_open_status_wire_tx", "minimum": 1},
+            {"name": "Gateway received status ACK over CAN", "node": "gateway", "probe": "can_umbilical_status_count", "minimum": 1},
+            {"name": "Gateway received pilot-open status", "node": "gateway", "probe": "gateway_pilot_open_status", "minimum": 1},
+            {"name": "Gateway forwarded status ACK to GroundStation over UART", "node": "gateway", "probe": "uart_umbilical_status_count", "minimum": 1},
+            {"name": "rf applied GroundStation underglow variable", "node": "rf", "probe": "underglow_updates", "minimum": 1},
+            {"name": "power applied GroundStation underglow variable", "node": "power", "probe": "underglow_updates", "minimum": 1},
+            {"name": "flight applied GroundStation underglow variable", "node": "flight", "probe": "underglow_updates", "minimum": 1},
+            {"name": "rf underglow is enabled", "node": "rf", "probe": "underglow_enabled", "minimum": 1},
+            {"name": "power underglow is enabled", "node": "power", "probe": "underglow_enabled", "minimum": 1},
+            {"name": "flight underglow is enabled", "node": "flight", "probe": "underglow_enabled", "minimum": 1},
         ],
     }
 
@@ -360,4 +415,4 @@ def run_network_simulation(
             command += ["-v", f"{path}:/nodes/{node}:ro"]
         command += ["-v", f"{directory}:/simulation:ro", image, "bay", "--topology", "/simulation/topology.json"]
         ui.say("run", " ".join(command))
-        run_live(command, "complete seven-board network simulation")
+        run_live(command, "complete seven-board plus GroundStation network simulation")

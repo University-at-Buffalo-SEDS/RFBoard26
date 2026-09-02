@@ -1,6 +1,7 @@
 // telemetry_thread.c
 #include "RF-Threads.h"
 #include "tx_api.h"
+#include "tx_thread.h"
 #include "telemetry.h"
 #include "ota_stream.h"
 #include "can_bus.h"
@@ -9,6 +10,8 @@
 #include <stdio.h>
 
 TX_THREAD telemetry_thread;
+volatile uint32_t g_telemetry_stack_used = 0U;
+volatile uint32_t g_telemetry_stack_remaining = 0U;
 #define TELEMETRY_THREAD_STACK_SIZE (12U * 1024U)
 #define TELEMETRY_THREAD_SLEEP_TICKS 1U
 #define TELEMETRY_QUEUE_BUDGET_MS 5U
@@ -351,6 +354,13 @@ void telemetry_thread_entry(ULONG initial_input)
         (void)radio_uart_process_tx();
 #endif
 
+        _tx_thread_stack_analyze(&telemetry_thread);
+        g_telemetry_stack_used = (uint32_t)(
+            (uintptr_t)telemetry_thread.tx_thread_stack_end -
+            (uintptr_t)telemetry_thread.tx_thread_stack_highest_ptr + sizeof(ULONG));
+        g_telemetry_stack_remaining = (uint32_t)(
+            (uintptr_t)telemetry_thread.tx_thread_stack_highest_ptr -
+            (uintptr_t)telemetry_thread.tx_thread_stack_start);
         tx_thread_sleep(TELEMETRY_THREAD_SLEEP_TICKS);
 
         // HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);

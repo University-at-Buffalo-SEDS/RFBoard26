@@ -1,5 +1,6 @@
 // telemetry.c
 #include "telemetry.h"
+#include "av_bay_underglow.h"
 #include "sim_network_probe.h"
 #include "ota_stream.h"
 
@@ -755,6 +756,7 @@ SedsResult telemetry_poll_discovery(void) {
   const SedsResult result = seds_router_poll_discovery(g_router.r, &did_queue);
   if (result == SEDS_OK) {
     sim_probe_emit_heartbeat(g_router.r, telemetry_now_ms());
+    (void)av_bay_underglow_poll(g_router.r);
   }
   telemetry_update_network_health(g_router.r);
   return result;
@@ -843,6 +845,13 @@ SedsResult init_telemetry_router(void) {
     return result;
   }
   telemetry_memory_profile_mark(5U);
+
+  result = av_bay_underglow_init(r);
+  if (result != SEDS_OK) {
+    seds_router_free(r);
+    g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
+    return result;
+  }
 
   /* Discovery begins from the normal poll loop after link startup. */
   telemetry_memory_profile_mark(6U);

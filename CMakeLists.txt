@@ -44,6 +44,8 @@ enable_language(C ASM)
 
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
+target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
+    USER_VECT_TAB_ADDRESS VECT_TAB_OFFSET=0x00004200U)
 option(SEDS_FIRMWARE_SIM_TEST
     "Seed deterministic external time for linked firmware qualification" OFF)
 if(SEDS_FIRMWARE_SIM_TEST)
@@ -59,6 +61,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_hooks.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_thread.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/av_bay_underglow.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/neom9n.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/neom9n_config.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/neom9n_thread.c
@@ -74,6 +77,8 @@ set_source_files_properties(
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
+target_compile_definitions(STM32_Drivers PRIVATE
+    USER_VECT_TAB_ADDRESS VECT_TAB_OFFSET=0x00004200U)
 
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE

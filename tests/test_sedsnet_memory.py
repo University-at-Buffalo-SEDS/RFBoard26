@@ -7,6 +7,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class SedsnetMemoryTests(unittest.TestCase):
+    def test_pending_can_retry_dequeues_each_packet_exactly_once(self):
+        source = (ROOT / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
+        retry = source.split("void telemetry_retry_pending_can_commands(void)", 1)[1]
+        retry = retry.split("static bool telemetry_unix_ms_to_utc", 1)[0]
+        self.assertEqual(retry.count("g_pending_can_count--;"), 1)
+
     def test_threadx_byte_pool_stays_at_known_working_size(self):
         config = (ROOT / "AZURE_RTOS" / "App" / "app_azure_rtos_config.h").read_text(
             encoding="utf-8"
@@ -82,6 +88,19 @@ class SedsnetMemoryTests(unittest.TestCase):
         init = init.split("/* Arm RX-to-idle", 1)[0]
         self.assertIn("tx_byte_allocate", init)
         self.assertIn("sizeof(radio_tx_item_t) * RADIO_UART_TX_QUEUE_DEPTH", init)
+
+    def test_radio_coalescing_is_not_reported_as_application_loss(self):
+        radio = (ROOT / "Core" / "Src" / "radio.c").read_text(encoding="utf-8")
+        full_queue = radio.split("if (g_tx_count >= RADIO_UART_TX_QUEUE_DEPTH)", 1)[1]
+        full_queue = full_queue.split("g_tx_queue[g_tx_tail].len", 1)[0]
+        coalesced = full_queue.index(
+            "found_same_flow && incoming_priority == lowest_priority"
+        )
+        application_loss = full_queue.index(
+            "g_tx_queue[drop].priority == 2U"
+        )
+        self.assertLess(coalesced, application_loss)
+        self.assertIn("g_tx_drop_same_flow++", full_queue[coalesced:application_loss])
 
     def test_memory_led_requires_a_confirmed_allocator_failure(self):
         hooks = (ROOT / "Core" / "Src" / "telemetry_hooks.c").read_text(

@@ -518,12 +518,16 @@ static HAL_StatusTypeDef radio_uart_enqueue_frame(const uint8_t *data, uint16_t 
     }
 
     g_tx_drops++;
-    if (g_tx_queue[drop].priority == 0U) {
+    /* Replacing an older packet from the same flow is intentional
+     * coalescing, including for heartbeats.  Account for it separately from
+     * dropping unique application traffic so the health probes distinguish
+     * a fresh-value replacement from actual data loss. */
+    if (found_same_flow && incoming_priority == lowest_priority) {
+      g_tx_drop_same_flow++;
+    } else if (g_tx_queue[drop].priority == 0U) {
       g_tx_drop_control++;
     } else if (g_tx_queue[drop].priority == 2U) {
       g_tx_drop_application++;
-    } else if (found_same_flow && incoming_priority == lowest_priority) {
-      g_tx_drop_same_flow++;
     } else {
       g_tx_drop_oldest++;
     }

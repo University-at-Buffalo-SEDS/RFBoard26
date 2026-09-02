@@ -50,3 +50,4 @@
 #define SEDS_DT_BAROMETER_LOCAL ((SedsDataType)130U)
 #define SEDS_DT_ASCENT_LOCAL ((SedsDataType)131U)
 #define SEDS_DT_DESCENT_LOCAL ((SedsDataType)132U)
+#define SEDS_DT_AV_BAY_UNDERGLOW ((SedsDataType)133U)
