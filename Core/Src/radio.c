@@ -138,10 +138,10 @@ static volatile uint32_t g_rx_pin_edges = 0U;
 static volatile uint8_t g_rx_pin_last = 0xFFU;
 static TX_MUTEX g_radio_tx_queue_mutex;
 static uint8_t g_radio_tx_queue_mutex_ready = 0U;
-/* Storage is carved from the existing ThreadX pool at startup. This permits
- * two full-size application frames without adding another fixed .bss region;
- * the GPS stack was reduced by the same number of bytes. */
-static radio_tx_item_t *g_tx_queue = NULL;
+/* Keep the fixed transport queue outside the ThreadX byte pool. The recovered
+ * pool space is assigned to the isolated SEDSNet allocator so routed bursts
+ * cannot fragment networking memory needed by the next large packet. */
+static radio_tx_item_t g_tx_queue[RADIO_UART_TX_QUEUE_DEPTH];
 static uint32_t g_tx_head = 0U;
 static uint32_t g_tx_tail = 0U;
 static uint32_t g_tx_count = 0U;
@@ -425,7 +425,7 @@ static uint32_t radio_uart_flow_count_locked(uint32_t flow_id) {
 static void radio_uart_drop_item_stale_or_requeue_front(const radio_tx_item_t *item) {
   const uint32_t now_ms = radio_now_ms();
 
-  if (item == NULL || g_tx_queue == NULL) {
+  if (item == NULL) {
     return;
   }
 
@@ -483,7 +483,7 @@ static HAL_StatusTypeDef radio_uart_enqueue_frame(const uint8_t *data, uint16_t 
   uint32_t flow_id;
   uint8_t incoming_priority = 0U;
 
-  if (!data || len == 0U || len > RADIO_UART_FRAME_BUF_SIZE || g_tx_queue == NULL) return HAL_ERROR;
+  if (!data || len == 0U || len > RADIO_UART_FRAME_BUF_SIZE) return HAL_ERROR;
   flow_id = radio_uart_flow_id_from_frame(data, len, &incoming_priority);
   if (radio_uart_lock_tx_queue() != HAL_OK) return HAL_ERROR;
 
@@ -548,7 +548,7 @@ static HAL_StatusTypeDef radio_uart_enqueue_frame(const uint8_t *data, uint16_t 
 
 static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32_t budget_ms) {
   uint8_t have = 0U;
-  if (!out || g_tx_queue == NULL) return 0U;
+  if (!out) return 0U;
   if (radio_uart_lock_tx_queue() != HAL_OK) return 0U;
 
   radio_uart_drop_stale_locked(radio_now_ms());
@@ -757,26 +757,17 @@ void radio_uart_init(UART_HandleTypeDef *huart) {
 }
 
 UINT radio_uart_init_tx_queue(TX_BYTE_POOL *byte_pool) {
-  VOID *queue_memory = NULL;
-  if (g_tx_queue != NULL) {
+  (void)byte_pool;
+  if (g_radio_tx_queue_mutex_ready) {
     return TX_SUCCESS;
   }
-  if (byte_pool == NULL ||
-      tx_byte_allocate(byte_pool, &queue_memory,
-                       sizeof(radio_tx_item_t) * RADIO_UART_TX_QUEUE_DEPTH,
-                       TX_NO_WAIT) != TX_SUCCESS) {
-    return TX_POOL_ERROR;
-  }
-  g_tx_queue = (radio_tx_item_t *)queue_memory;
-  memset(g_tx_queue, 0,
-         sizeof(radio_tx_item_t) * RADIO_UART_TX_QUEUE_DEPTH);
+  memset(g_tx_queue, 0, sizeof(g_tx_queue));
 
-  if (!g_radio_tx_queue_mutex_ready &&
-      tx_mutex_create(&g_radio_tx_queue_mutex, "radio_txq_mutex", TX_INHERIT) == TX_SUCCESS) {
-    g_radio_tx_queue_mutex_ready = 1U;
+  if (tx_mutex_create(&g_radio_tx_queue_mutex, "radio_txq_mutex", TX_INHERIT) != TX_SUCCESS) {
+    return TX_MUTEX_ERROR;
   }
-
-  return g_radio_tx_queue_mutex_ready ? TX_SUCCESS : TX_MUTEX_ERROR;
+  g_radio_tx_queue_mutex_ready = 1U;
+  return TX_SUCCESS;
 }
 
 /* Arm RX-to-idle interrupt reception. */

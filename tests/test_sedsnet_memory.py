@@ -19,6 +19,8 @@ class SedsnetMemoryTests(unittest.TestCase):
         )
         size = int(re.search(r"TX_APP_MEM_POOL_SIZE\s+(\d+)", config).group(1))
         self.assertEqual(size, 66264)
+        ioc = (ROOT / "RFBoard26.ioc").read_text(encoding="utf-8")
+        self.assertIn("TX_APP_MEM_POOL_SIZE=66264", ioc)
 
     def test_shared_pool_is_not_the_legacy_per_queue_size(self):
         cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
@@ -29,7 +31,7 @@ class SedsnetMemoryTests(unittest.TestCase):
         )
         recent = int(re.search(r'set\(SEDSNET_MAX_RECENT_RX_IDS "(\d+)"', cmake).group(1))
 
-        self.assertEqual(pool, 46080)
+        self.assertEqual(pool, 48000)
         self.assertEqual(budget, 8192)
         self.assertGreaterEqual(pool - budget, 16384)
         self.assertEqual(start, 512)
@@ -83,11 +85,11 @@ class SedsnetMemoryTests(unittest.TestCase):
         self.assertEqual(depth, 2)
         self.assertGreaterEqual(payload, 512)
         self.assertLessEqual(depth * (payload + 4), 4200)
-        self.assertIn("static radio_tx_item_t *g_tx_queue = NULL", radio)
+        self.assertIn("static radio_tx_item_t g_tx_queue[RADIO_UART_TX_QUEUE_DEPTH]", radio)
         init = radio.split("UINT radio_uart_init_tx_queue", 1)[1]
         init = init.split("/* Arm RX-to-idle", 1)[0]
-        self.assertIn("tx_byte_allocate", init)
-        self.assertIn("sizeof(radio_tx_item_t) * RADIO_UART_TX_QUEUE_DEPTH", init)
+        self.assertNotIn("tx_byte_allocate", init)
+        self.assertIn("memset(g_tx_queue, 0, sizeof(g_tx_queue))", init)
 
     def test_radio_coalescing_is_not_reported_as_application_loss(self):
         radio = (ROOT / "Core" / "Src" / "radio.c").read_text(encoding="utf-8")
