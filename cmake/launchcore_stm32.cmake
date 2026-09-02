@@ -17,7 +17,7 @@ endforeach()
 FetchContent_Declare(
     sedslaunchcore
     GIT_REPOSITORY https://github.com/University-at-Buffalo-SEDS/SEDSLaunchCore.git
-    GIT_TAG ca4fc6e7722683e11f3a377a0d1bc82c2de6ee14
+    GIT_TAG 59255a784c31cc53be2c1ee276d0d94224ed13f0
     GIT_SHALLOW FALSE
 )
 FetchContent_GetProperties(sedslaunchcore)
@@ -48,6 +48,7 @@ if(DEFINED LAUNCHCORE_DELTA_SIZE)
         "${CMAKE_SOURCE_DIR}/Core/Src/launchcore_delta_format.c"
         "${sedslaunchcore_SOURCE_DIR}/bootloader/src/crc32.c"
         "${sedslaunchcore_SOURCE_DIR}/bootloader/src/metadata.c"
+        "${sedslaunchcore_SOURCE_DIR}/bootloader/src/persist.c"
         "${sedslaunchcore_SOURCE_DIR}/update_lib/src/delta_update.c"
         "${sedslaunchcore_SOURCE_DIR}/update_lib/src/confirm_boot.c"
         "${sedslaunchcore_SOURCE_DIR}/update_lib/src/update_status.c"

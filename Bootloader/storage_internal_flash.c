@@ -17,6 +17,7 @@ static const launchcore_storage_layout_t layout = {
     .persistent_data_base = BOARD_PERSIST_BASE,
     .persistent_data_size = BOARD_PERSIST_SIZE,
     .persistent_data_erase_size = LAUNCHCORE_FLASH_ERASE_SIZE,
+    .persistent_data_write_size = 8u,
     .slot_erase_size = LAUNCHCORE_FLASH_ERASE_SIZE,
     .slot_b_is_delta = true,
     .supports_xip = true,
