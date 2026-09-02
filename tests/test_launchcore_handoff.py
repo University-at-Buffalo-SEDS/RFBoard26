@@ -30,6 +30,7 @@ class LaunchCoreHandoffContract(unittest.TestCase):
         self.assertIn("launchcore_storage_set_driver", source)
         self.assertIn("launchcore_persist_get", source)
         self.assertIn("launchcore_persist_set", source)
+        self.assertIn("NETWORK_VARIABLE_REFRESH_INTERVAL_MS", source)
         self.assertIn(".persistent_data_write_size = 8u", storage)
         self.assertIn('bootloader/src/persist.c"', cmake)
 

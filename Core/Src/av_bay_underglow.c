@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 #define UNDERGLOW_PERSIST_KEY 0x55474C57u
+#define NETWORK_VARIABLE_REFRESH_INTERVAL_MS 1000U
 
 extern const launchcore_storage_driver_t launchcore_board_storage_driver;
 
@@ -100,7 +101,12 @@ SedsResult av_bay_underglow_init(SedsRouter *router)
 
 SedsResult av_bay_underglow_poll(SedsRouter *router)
 {
+    static uint32_t last_refresh_ms = 0U;
     if (router == NULL) return SEDS_BAD_ARG;
+    const uint32_t now_ms = HAL_GetTick();
+    if ((uint32_t)(now_ms - last_refresh_ms) <
+        NETWORK_VARIABLE_REFRESH_INTERVAL_MS) return SEDS_OK;
+    last_refresh_ms = now_ms;
     const int32_t result = seds_router_get_network_variable_packed_len(
         router, SEDS_DT_AV_BAY_UNDERGLOW, 5000U);
     return result < 0 ? (SedsResult)result : SEDS_OK;
