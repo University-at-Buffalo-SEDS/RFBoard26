@@ -13,7 +13,7 @@
     "slot_a_size": 475136,
     "erase_size": 2048,
     "write_alignment": 8,
-    "sedsnet_pool": 48000,
+    "sedsnet_pool": 44000,
     "persistent_data_base": 134737920,
     "persistent_data_size": 4096,
     "delta_base": 134709248,
@@ -41,6 +41,8 @@
     "require_stack_probe": true,
     "memory_probes": [
       {"name": "network_ready", "symbol": "g_telemetry_network_ready"},
+      {"name": "telemetry_init_stage", "symbol": "g_telemetry_init_stage"},
+      {"name": "telemetry_init_result", "symbol": "g_telemetry_init_result"},
       {"name": "peer_mask", "symbol": "g_telemetry_peer_mask"},
       {"name": "radio_egress_peer_mask", "symbol": "g_sim_radio_egress_peer_mask"},
       {"name": "heartbeat_attempts", "symbol": "g_sim_heartbeat_attempts"},
@@ -84,6 +86,23 @@
       ,{"name": "radio_tx_drop_oldest", "symbol": "g_tx_drop_oldest"}
       ,{"name": "radio_tx_drop_control", "symbol": "g_tx_drop_control"}
       ,{"name": "radio_tx_drop_heartbeat", "symbol": "g_tx_drop_application", "maximum": 0}
+      ,{"name": "hardfault_mmfar", "symbol": "g_hardfault_mmfar"}
+      ,{"name": "hardfault_bfar", "symbol": "g_hardfault_bfar"}
+      ,{"name": "hardfault_stacked_lr", "symbol": "g_hardfault_stacked_lr"}
+      ,{"name": "hardfault_stacked_pc", "symbol": "g_hardfault_stacked_pc"}
+      ,{"name": "hardfault_stacked_xpsr", "symbol": "g_hardfault_stacked_xpsr"}
+      ,{"name": "hardfault_psp", "symbol": "g_hardfault_psp"}
+      ,{"name": "hardfault_exc_return", "symbol": "g_hardfault_exc_return"}
+      ,{"name": "telemetry_stack_start_at_fault", "symbol": "g_telemetry_stack_start"}
+      ,{"name": "telemetry_stack_end_at_fault", "symbol": "g_telemetry_stack_end"}
+      ,{"name": "flight_state_cache", "symbol": "g_flight_state_cache_value", "maximum": 15}
+      ,{"name": "flight_state_restores", "symbol": "g_flight_state_cache_restores"}
+      ,{"name": "flight_state_writes", "symbol": "g_flight_state_cache_writes"}
+      ,{"name": "flight_state_updates", "symbol": "g_flight_state_cache_updates"}
+      ,{"name": "flight_state_errors", "symbol": "g_flight_state_cache_errors", "maximum": 0}
+      ,{"name": "hardfault_count", "symbol": "g_hardfault_count", "maximum": 0}
+      ,{"name": "hardfault_cfsr", "symbol": "g_hardfault_cfsr", "maximum": 0}
+      ,{"name": "hardfault_hfsr", "symbol": "g_hardfault_hfsr", "maximum": 0}
     ]
   },
   "traffic": {

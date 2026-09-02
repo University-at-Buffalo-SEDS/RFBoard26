@@ -1,6 +1,7 @@
 // telemetry.c
 #include "telemetry.h"
 #include "av_bay_underglow.h"
+#include "flight_state_cache.h"
 #include "sim_network_probe.h"
 #include "ota_stream.h"
 
@@ -723,6 +724,7 @@ SedsResult telemetry_poll_timesync(void) {
   }
 
   bool did_queue = false;
+  (void)flight_state_cache_poll(g_router.r);
   const SedsResult result = seds_router_poll_timesync(g_router.r, &did_queue);
   if (did_queue) {
     g_telemetry_timesync_queued++;
@@ -857,6 +859,7 @@ SedsResult init_telemetry_router(void) {
   telemetry_memory_profile_mark(6U);
 
   g_router.r = r;
+  (void)flight_state_cache_init(r);
   g_router.created = 1U;
   g_router.start_time = tx_raw_now_ms_locked();
   /* Prime the first source announcement after the router clock and sides are
@@ -874,19 +877,7 @@ SedsResult init_telemetry_router(void) {
       g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
       return result;
     }
-    if (did_queue) {
-      g_telemetry_timesync_queued++;
-      result = seds_router_process_tx_queue(r);
-      if (result != SEDS_OK) {
-        seds_router_free(r);
-        g_router.r = NULL;
-        g_router.created = 0U;
-        g_can_side_id = -1;
-        g_radio_side_id = -1;
-        g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
-        return result;
-      }
-    }
+    if (did_queue) g_telemetry_timesync_queued++;
   }
 
   /* Add the ground-radio route only after the first CAN time-source

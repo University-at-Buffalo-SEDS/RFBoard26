@@ -6,6 +6,23 @@ import build
 
 
 class QualificationContractTests(unittest.TestCase):
+    def test_telemetry_stack_covers_profiled_sedsnet_call_depth(self):
+        root = Path(build.__file__).resolve().parent
+        source = (root / "Core" / "Src" / "telemetry_thread.c").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("TELEMETRY_THREAD_STACK_SIZE (16U * 1024U)", source)
+
+    def test_can_transport_starts_before_router(self):
+        root = Path(build.__file__).resolve().parent
+        source = (root / "Core" / "Src" / "telemetry_thread.c").read_text(
+            encoding="utf-8"
+        )
+        self.assertLess(
+            source.index("can_bus_init(&hfdcan2);"),
+            source.index("init_telemetry_router();"),
+        )
+
     def test_full_runner_profiles_memory_and_linked_network(self):
         root = Path(build.__file__).resolve().parent
         runner = (root / "sim" / "run_full.py").read_text(encoding="utf-8")
@@ -56,13 +73,14 @@ class QualificationContractTests(unittest.TestCase):
         can_bus = (root / "Core" / "Src" / "can_bus.c").read_text(encoding="utf-8")
         self.assertIn("g_fdcan_rx_count++", can_bus)
 
-    def test_source_primes_can_timesync_before_radio(self):
+    def test_source_queues_can_timesync_before_radio_without_blocking_startup(self):
         root = Path(build.__file__).resolve().parent
         telemetry = (root / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
         self.assertIn('seds_router_add_side_packed(r, "can", 3U, tx_send, NULL, false)', telemetry)
-        prime = telemetry.index("seds_router_process_tx_queue(r)")
+        prime = telemetry.index("seds_router_poll_timesync(r, &did_queue)")
         radio = telemetry.index('seds_router_add_side_packed(r, "radio"')
         self.assertLess(prime, radio)
+        self.assertNotIn("seds_router_process_tx_queue(r)", telemetry[prime:radio])
 
     def test_underglow_uses_only_native_network_variable_apis(self):
         root = Path(build.__file__).resolve().parent

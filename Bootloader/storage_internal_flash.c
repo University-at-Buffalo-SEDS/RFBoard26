@@ -82,6 +82,7 @@ static launchcore_storage_status_t storage_erase(uint32_t addr, uint32_t len)
         }
     }
     (void)HAL_FLASH_Lock();
+    __HAL_FLASH_INSTRUCTION_CACHE_RESET();
     return status;
 }
 
@@ -113,6 +114,7 @@ static launchcore_storage_status_t storage_write(uint32_t addr, const void *data
         }
     }
     (void)HAL_FLASH_Lock();
+    __HAL_FLASH_INSTRUCTION_CACHE_RESET();
     if (status == LAUNCHCORE_STORAGE_OK &&
         memcmp((const void *)(uintptr_t)addr, data, len) != 0)
     {

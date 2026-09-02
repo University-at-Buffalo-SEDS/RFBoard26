@@ -31,7 +31,7 @@ class SedsnetMemoryTests(unittest.TestCase):
         )
         recent = int(re.search(r'set\(SEDSNET_MAX_RECENT_RX_IDS "(\d+)"', cmake).group(1))
 
-        self.assertEqual(pool, 48000)
+        self.assertEqual(pool, 44000)
         self.assertEqual(budget, 8192)
         self.assertGreaterEqual(pool - budget, 16384)
         self.assertEqual(start, 512)
@@ -42,7 +42,7 @@ class SedsnetMemoryTests(unittest.TestCase):
             encoding="utf-8"
         )
         threadx = (ROOT / "Core" / "Inc" / "tx_user.h").read_text(encoding="utf-8")
-        self.assertIn("TELEMETRY_THREAD_STACK_SIZE (12U * 1024U)", telemetry_thread)
+        self.assertIn("TELEMETRY_THREAD_STACK_SIZE (16U * 1024U)", telemetry_thread)
         gps_thread = (ROOT / "Core" / "Src" / "neom9n_thread.c").read_text(
             encoding="utf-8"
         )
@@ -51,6 +51,21 @@ class SedsnetMemoryTests(unittest.TestCase):
         app = (ROOT / "Core" / "Src" / "app_threadx.c").read_text(encoding="utf-8")
         self.assertIn("g_thread_stack_error_count", app)
         self.assertIn("tx_thread_stack_error_notify(thread_stack_error_handler)", app)
+
+    def test_half_duplex_radio_scheduler_is_enabled_and_stack_health_is_early(self):
+        cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+        thread = (ROOT / "Core" / "Src" / "telemetry_thread.c").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            "set(ENABLE_RADIO_SCHEDULER ON CACHE BOOL",
+            cmake,
+        )
+        entry = thread.split("void telemetry_thread_entry", 1)[1]
+        self.assertLess(
+            entry.index("telemetry_update_stack_profile();"),
+            entry.index("init_telemetry_router();"),
+        )
 
     def test_normal_telemetry_does_not_use_the_fallback_tx_queue(self):
         source = (ROOT / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")

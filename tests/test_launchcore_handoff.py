@@ -11,6 +11,14 @@ UNSAFE_HANDOFFS = {
 
 
 class LaunchCoreHandoffContract(unittest.TestCase):
+    def test_underglow_is_restored_before_threadx_and_network_sync(self):
+        main = (ROOT / "Core/Src/main.c").read_text()
+        restore = main.index("av_bay_underglow_restore();")
+        self.assertLess(restore, main.index("MX_ThreadX_Init();", restore))
+        source = (ROOT / "Core/Src/av_bay_underglow.c").read_text()
+        persistent_store = (ROOT / "Core/Src/persistent_store.c").read_text()
+        self.assertIn("if (g_restore_attempted) return;", source)
+
     def test_bootloader_uses_stack_safe_application_handoff(self):
         cmake = (ROOT / "cmake/launchcore_stm32.cmake").read_text()
         self.assertIn(f"GIT_TAG {FIXED_LAUNCHCORE}", cmake)
@@ -24,12 +32,13 @@ class LaunchCoreHandoffContract(unittest.TestCase):
 
     def test_underglow_uses_launchcore_managed_persistent_storage(self):
         source = (ROOT / "Core/Src/av_bay_underglow.c").read_text()
+        persistent_store = (ROOT / "Core/Src/persistent_store.c").read_text()
         storage = (ROOT / "Bootloader/storage_internal_flash.c").read_text()
         cmake = (ROOT / "cmake/launchcore_stm32.cmake").read_text()
-        self.assertIn('#include "launchcore/persist.h"', source)
-        self.assertIn("launchcore_storage_set_driver", source)
-        self.assertIn("launchcore_persist_get", source)
-        self.assertIn("launchcore_persist_set", source)
+        self.assertIn('#include "persistent_store.h"', source)
+        self.assertIn("launchcore_storage_set_driver", persistent_store)
+        self.assertIn("launchcore_persist_get", persistent_store)
+        self.assertIn("launchcore_persist_set", persistent_store)
         self.assertIn("NETWORK_VARIABLE_REFRESH_INTERVAL_MS", source)
         self.assertIn(".persistent_data_write_size = 8u", storage)
         self.assertIn('bootloader/src/persist.c"', cmake)

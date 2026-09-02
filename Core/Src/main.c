@@ -31,6 +31,8 @@
 #include "telemetry.h"
 #include "can_bus.h"
 #include "radio.h"
+#include "av_bay_underglow.h"
+#include "flight_state_cache.h"
 
 extern UX_SLAVE_CLASS_CDC_ACM *cdc_acm;
 
@@ -123,32 +125,13 @@ int main(void)
   MX_USB_PCD_Init();
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
-  /* Quick hardware check: blink GREEN then BLUE so user can confirm LEDs */
-  can_bus_init(&hfdcan2);
+  /* Start the radio RX transport; the telemetry thread owns CAN startup. */
   radio_uart_init(&huart1);
   radio_uart_start_rx();   /* after UART is initialized */
 
-
-  FDCAN_FilterTypeDef sFilter = {0};
-
-  sFilter.IdType = FDCAN_STANDARD_ID; // or EXTENDED
-  sFilter.FilterIndex = 0;
-  sFilter.FilterType = FDCAN_FILTER_MASK;
-  sFilter.FilterConfig = FDCAN_FILTER_TO_RXFIFO1;
-  sFilter.FilterID1 = 0x000; // accept-all example
-  sFilter.FilterID2 = 0x000; // mask=0 => accept all IDs
-
-  HAL_FDCAN_ConfigFilter(&hfdcan2, &sFilter);
-
-  // Also enable global filter behavior if you need it:
-  HAL_FDCAN_ConfigGlobalFilter(&hfdcan2,
-                               FDCAN_ACCEPT_IN_RX_FIFO1, // non-matching std
-                               FDCAN_ACCEPT_IN_RX_FIFO1, // non-matching ext
-                               FDCAN_REJECT_REMOTE,      // std remote
-                               FDCAN_REJECT_REMOTE       // ext remote
-  );
-  HAL_FDCAN_Start(&hfdcan2);
-  HAL_FDCAN_ActivateNotification(&hfdcan2, FDCAN_IT_RX_FIFO1_NEW_MESSAGE, 0);
+  /* Apply persistent local state before ThreadX and SEDSNet synchronization. */
+  av_bay_underglow_restore();
+  flight_state_cache_restore();
 
   /* USER CODE END 2 */
 

@@ -24,6 +24,19 @@
 /* USER CODE BEGIN Includes */
 /* USER CODE END Includes */
 
+/* Retain the architectural fault status so hardware and simulator failures
+ * report their cause instead of looking like a silent board hang. */
+volatile uint32_t g_hardfault_count __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_hardfault_cfsr __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_hardfault_hfsr __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_hardfault_mmfar __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_hardfault_bfar __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_hardfault_stacked_lr __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_hardfault_stacked_pc __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_hardfault_stacked_xpsr __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_hardfault_psp __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_hardfault_exc_return __attribute__((used, externally_visible)) = 0U;
+
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN TD */
 
@@ -139,7 +152,19 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
-
+  g_hardfault_count++;
+  g_hardfault_cfsr = SCB->CFSR;
+  g_hardfault_hfsr = SCB->HFSR;
+  g_hardfault_mmfar = SCB->MMFAR;
+  g_hardfault_bfar = SCB->BFAR;
+  uint32_t exc_return;
+  __asm volatile ("mov %0, lr" : "=r" (exc_return));
+  const uint32_t *fault_stack = (const uint32_t *)__get_PSP();
+  g_hardfault_psp = (uint32_t)fault_stack;
+  g_hardfault_exc_return = exc_return;
+  g_hardfault_stacked_lr = fault_stack[5];
+  g_hardfault_stacked_pc = fault_stack[6];
+  g_hardfault_stacked_xpsr = fault_stack[7];
   /* USER CODE END HardFault_IRQn 0 */
   while (1)
   {

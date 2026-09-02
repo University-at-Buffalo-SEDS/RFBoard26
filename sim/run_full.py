@@ -345,6 +345,7 @@ def run_network_simulation(
                     "RUST_LOG": "info",
                     "GS_LAYOUT_PATH": "/opt/groundstation/backend/layout/layout_hitl.json",
                     "GS_AV_BAY_UNDERGLOW_DEFAULT": "1",
+                    "GS_FLIGHT_STATE_DEFAULT": "1",
                     "GS_SIM_VALIDATE_VALVE_ROUNDTRIP": "1"
                 },
                 "serial_links": [
@@ -396,6 +397,8 @@ def run_network_simulation(
             {"name": "rf underglow is enabled", "node": "rf", "probe": "underglow_enabled", "minimum": 1},
             {"name": "power underglow is enabled", "node": "power", "probe": "underglow_enabled", "minimum": 1},
             {"name": "flight underglow is enabled", "node": "flight", "probe": "underglow_enabled", "minimum": 1},
+            *[{"name": f"{node} received GroundStation flight state", "node": node, "probe": "flight_state_updates", "minimum": 1} for node, *_ in boards],
+            *[{"name": f"{node} cached GroundStation flight state", "node": node, "probe": "flight_state_cache", "minimum": 1, "maximum": 1} for node, *_ in boards],
         ],
     }
 

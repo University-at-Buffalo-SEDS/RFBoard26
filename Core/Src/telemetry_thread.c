@@ -10,11 +10,16 @@
 #include <stdio.h>
 
 TX_THREAD telemetry_thread;
+extern FDCAN_HandleTypeDef hfdcan2;
 volatile uint32_t g_telemetry_stack_used = 0U;
 volatile uint32_t g_telemetry_stack_remaining = 0U;
-#define TELEMETRY_THREAD_STACK_SIZE (12U * 1024U)
+volatile uint32_t g_telemetry_stack_start __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_telemetry_stack_end __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_telemetry_init_stage __attribute__((used, externally_visible)) = 0U;
+volatile int32_t g_telemetry_init_result __attribute__((used, externally_visible)) = 0;
+#define TELEMETRY_THREAD_STACK_SIZE (16U * 1024U)
 #define TELEMETRY_THREAD_SLEEP_TICKS 1U
-#define TELEMETRY_QUEUE_BUDGET_MS 5U
+#define TELEMETRY_QUEUE_BUDGET_MS 1U
 #define TELEMETRY_ALIVE_PRINT_INTERVAL_MS 5000ULL
 #define RADIO_SCHED_MAGIC_0 0x52U
 #define RADIO_SCHED_MAGIC_1 0x53U
@@ -211,6 +216,23 @@ static void telemetry_print_alive_if_due(uint64_t now_ms, uint64_t *next_print_m
 #endif
 }
 
+static void telemetry_update_stack_profile(void)
+{
+    _tx_thread_stack_analyze(&telemetry_thread);
+    const uintptr_t start = (uintptr_t)telemetry_thread.tx_thread_stack_start;
+    const uintptr_t end = (uintptr_t)telemetry_thread.tx_thread_stack_end;
+    const uintptr_t highest =
+        (uintptr_t)telemetry_thread.tx_thread_stack_highest_ptr;
+    /* ThreadX leaves highest_ptr null when stack checking is unavailable or
+     * before its first successful scan. Do not turn that instrumentation gap
+     * into a false zero-margin result. */
+    if ((highest >= start) && (highest <= end)) {
+        g_telemetry_stack_used =
+            (uint32_t)(end - highest + sizeof(ULONG));
+        g_telemetry_stack_remaining = (uint32_t)(highest - start);
+    }
+}
+
 #if RADIO_SCHEDULER_ENABLED
 static uint32_t telemetry_radio_downlink_budget_ms(uint64_t now_ms,
                                                    uint64_t turn_started_ms)
@@ -245,9 +267,22 @@ void telemetry_thread_entry(ULONG initial_input)
     uint64_t next_discovery_announce_ms = 0U;
     uint64_t next_alive_print_ms = 0U;
 
+    // Publish a nonzero stack margin before router/flash/link initialization.
+    // Keeping this updated at the start of every service pass also lets the
+    // health monitor distinguish a busy relay from a thread that never ran.
+    telemetry_update_stack_profile();
+
+    /* The transport must be fully configured before router initialization can
+     * emit its initial time-source and discovery traffic. */
+    g_telemetry_init_stage = 1U;
+    can_bus_init(&hfdcan2);
+    g_telemetry_init_stage = 2U;
+
     // Ensure router exists early (so we can send requests immediately)
-    (void)init_telemetry_router();
+    g_telemetry_init_result = (int32_t)init_telemetry_router();
+    g_telemetry_init_stage = 3U;
     for (;;) {
+        telemetry_update_stack_profile();
         const uint64_t now_ms = radio_window_now_ms();
         telemetry_print_alive_if_due(now_ms, &next_alive_print_ms);
 
@@ -354,13 +389,6 @@ void telemetry_thread_entry(ULONG initial_input)
         (void)radio_uart_process_tx();
 #endif
 
-        _tx_thread_stack_analyze(&telemetry_thread);
-        g_telemetry_stack_used = (uint32_t)(
-            (uintptr_t)telemetry_thread.tx_thread_stack_end -
-            (uintptr_t)telemetry_thread.tx_thread_stack_highest_ptr + sizeof(ULONG));
-        g_telemetry_stack_remaining = (uint32_t)(
-            (uintptr_t)telemetry_thread.tx_thread_stack_highest_ptr -
-            (uintptr_t)telemetry_thread.tx_thread_stack_start);
         tx_thread_sleep(TELEMETRY_THREAD_SLEEP_TICKS);
 
         // HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
@@ -382,6 +410,10 @@ UINT create_telemetry_thread(TX_BYTE_POOL *byte_pool)
   {
     return TX_POOL_ERROR;
   }
+
+    g_telemetry_stack_start = (uint32_t)(uintptr_t)pointer;
+    g_telemetry_stack_end = (uint32_t)(uintptr_t)pointer + TELEMETRY_THREAD_STACK_SIZE;
+    g_telemetry_stack_remaining = TELEMETRY_THREAD_STACK_SIZE;
 
     UINT status = tx_thread_create(&telemetry_thread,
                                    "Telemetry Thread",

@@ -62,6 +62,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_thread.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/av_bay_underglow.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/flight_state_cache.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/persistent_store.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/neom9n.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/neom9n_config.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/neom9n_thread.c
@@ -110,7 +112,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 # SEDSNet v4
 set(SEDSNET_DEVICE_IDENTIFIER "RF" CACHE STRING "" FORCE)
 set(SEDSNET_MAX_STACK_PAYLOAD "128" CACHE STRING "" FORCE)
-set(RF_SEDSNET_MEMORY_POOL_SIZE "48000" CACHE STRING
+set(RF_SEDSNET_MEMORY_POOL_SIZE "44000" CACHE STRING
     "Isolated SEDSNet allocator pool, including router state, allocator metadata, and reserve" FORCE)
 set(RF_SEDSNET_QUEUE_BUDGET "8192" CACHE STRING
     "Bound fallback, reliable, and discovery storage on the two-sided RF router" FORCE)
@@ -134,7 +136,8 @@ set(TELEMETRY_TIMESYNC_ANNOUNCE_INTERVAL_MS "2000" CACHE STRING "Time sync annou
 set(TELEMETRY_TIMESYNC_REQUEST_INTERVAL_MS "2000" CACHE STRING "Time sync request interval in milliseconds." FORCE)
 # Option defaults
 option(ENABLE_TELEMETRY "Enable the telemetry subsystem" ON)
-option(ENABLE_RADIO_SCHEDULER "Enable the radio turn/grant scheduler" OFF)
+set(ENABLE_RADIO_SCHEDULER ON CACHE BOOL
+    "Enable the half-duplex radio turn/grant scheduler" FORCE)
 option(ENABLE_COMMAND_TRACE_PRINTS "Print ground-station command RX and flight-computer CAN TX events" OFF)
 set(ENABLE_COMMAND_TRACE_PRINTS OFF CACHE BOOL "Print ground-station command RX and flight-computer CAN TX events" FORCE)
 
