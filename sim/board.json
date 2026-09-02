@@ -38,6 +38,7 @@
     "virtual_time_ms": 250,
     "sample_count": 5,
     "memory_probe_warmup_samples": 2,
+    "require_stack_probe": true,
     "memory_probes": [
       {"name": "network_ready", "symbol": "g_telemetry_network_ready"},
       {"name": "peer_mask", "symbol": "g_telemetry_peer_mask"},
