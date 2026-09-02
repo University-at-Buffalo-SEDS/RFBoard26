@@ -288,9 +288,16 @@ static uint32_t radio_uart_flow_id_from_frame(const uint8_t *data, uint16_t len,
   const uint32_t flow_id = radio_uart_flow_id_from_payload(
       &data[RADIO_UART_FRAME_HEADER_SIZE], payload_len, &data_type);
   if (priority_out != NULL && flow_id != RADIO_UART_SCHED_FALLBACK_FLOW) {
-    *priority_out = (data_type <= RADIO_UART_INTERNAL_TYPE_MAX)
-                        ? 0U
-                        : ((data_type == (uint64_t)SEDS_DT_HEARTBEAT) ? 2U : 1U);
+    /* Address and topology advertisements are what make every subsequent
+     * endpoint-directed packet routable.  They must not be starved by the
+     * steady application/heartbeat load in this deliberately tiny queue. */
+    if (data_type >= 7ULL && data_type <= 17ULL) {
+      *priority_out = 3U;
+    } else if (data_type == (uint64_t)SEDS_DT_HEARTBEAT) {
+      *priority_out = 2U;
+    } else {
+      *priority_out = (data_type <= RADIO_UART_INTERNAL_TYPE_MAX) ? 0U : 1U;
+    }
   }
   return flow_id;
 }

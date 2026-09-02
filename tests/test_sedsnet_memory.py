@@ -119,6 +119,12 @@ class SedsnetMemoryTests(unittest.TestCase):
         self.assertLess(coalesced, application_loss)
         self.assertIn("g_tx_drop_same_flow++", full_queue[coalesced:application_loss])
 
+    def test_discovery_cannot_be_starved_by_normal_radio_traffic(self):
+        radio = (ROOT / "Core" / "Src" / "radio.c").read_text(encoding="utf-8")
+        self.assertIn("data_type >= 7ULL && data_type <= 17ULL", radio)
+        self.assertIn("*priority_out = 3U", radio)
+        self.assertIn("if (incoming_priority < lowest_priority)", radio)
+
     def test_memory_led_requires_a_confirmed_allocator_failure(self):
         hooks = (ROOT / "Core" / "Src" / "telemetry_hooks.c").read_text(
             encoding="utf-8"
