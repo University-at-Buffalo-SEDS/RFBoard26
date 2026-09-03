@@ -400,6 +400,27 @@ def assert_embedded_cache(ui: UI, build_dir: Path) -> None:
     )
 
 
+def clean_build(ui: UI, repo_root: Path, build_subdir: str | None = None) -> None:
+    """Remove generated build artifacts without allowing paths outside build/."""
+    build_root = (repo_root / "build").resolve()
+    target = build_root if build_subdir is None else (build_root / build_subdir).resolve()
+    try:
+        target.relative_to(build_root)
+    except ValueError as exc:
+        raise FriendlyError(
+            f"Refusing to clean outside the build directory: {target}"
+        ) from exc
+
+    if not target.exists():
+        ui.say("info", f"Already clean: {target}")
+        return
+    if target.is_symlink():
+        raise FriendlyError(f"Refusing to recursively clean a symbolic link: {target}")
+
+    shutil.rmtree(target)
+    ui.say("ok", f"Cleaned build artifacts: {target}")
+
+
 def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> tuple[Path, Path]:
     cfg.build_dir.mkdir(parents=True, exist_ok=True)
 
@@ -779,6 +800,8 @@ def make_parser() -> argparse.ArgumentParser:
 
     sub = p.add_subparsers(dest="cmd", required=True)
 
+    sub.add_parser("clean", help="Remove generated files under ./build")
+
     def add_mode_and_common(sp: argparse.ArgumentParser) -> None:
         mode = sp.add_mutually_exclusive_group()
         mode.add_argument("--debug", action="store_true", help="Debug build (default).")
@@ -869,6 +892,10 @@ def main() -> None:
 
     if not args.trace:
         sys.excepthook = _wrap_unhandled(ui)
+
+    if args.cmd == "clean":
+        clean_build(ui, find_repo_root(Path(__file__).resolve().parent), args.build_subdir)
+        return
 
     cfg = build_cfg_from_args(ui, args)
 

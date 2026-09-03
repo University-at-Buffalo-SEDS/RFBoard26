@@ -9,6 +9,35 @@ import build
 
 
 class OtaBuildScriptTests(unittest.TestCase):
+    def test_clean_command_removes_all_or_selected_build_artifacts(self):
+        self.assertEqual(build.make_parser().parse_args(["clean"]).cmd, "clean")
+        ui = mock.Mock()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            debug_file = root / "build" / "Debug" / "artifact.elf"
+            release_file = root / "build" / "Release" / "artifact.elf"
+            debug_file.parent.mkdir(parents=True)
+            release_file.parent.mkdir(parents=True)
+            debug_file.write_bytes(b"debug")
+            release_file.write_bytes(b"release")
+
+            build.clean_build(ui, root, "Debug")
+            self.assertFalse(debug_file.parent.exists())
+            self.assertTrue(release_file.exists())
+
+            build.clean_build(ui, root)
+            self.assertFalse((root / "build").exists())
+
+    def test_clean_rejects_paths_outside_build_directory(self):
+        ui = mock.Mock()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            outside = root / "outside"
+            outside.mkdir()
+            with self.assertRaisesRegex(build.FriendlyError, "outside"):
+                build.clean_build(ui, root, "../outside")
+            self.assertTrue(outside.exists())
+
     def test_all_tests_preserve_the_selected_build_mode(self):
         release = build.make_parser().parse_args(["test", "--all", "--release"])
         debug = build.make_parser().parse_args(["test", "--all"])
