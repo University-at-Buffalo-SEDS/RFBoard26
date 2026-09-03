@@ -74,8 +74,8 @@ static uint32_t telemetry_flight_can_id(const uint8_t *bytes, size_t len) {
              ? TELEMETRY_FLIGHT_HEARTBEAT_CAN_ID
              : TELEMETRY_FLIGHT_CAN_ID;
 }
-#define TELEMETRY_PENDING_CAN_DEPTH 8U
-#define TELEMETRY_PENDING_CAN_MAX_LEN 256U
+#define TELEMETRY_PENDING_CAN_DEPTH 3U
+#define TELEMETRY_PENDING_CAN_MAX_LEN 128U
 #define TELEMETRY_GPS_WIRE_MAX_LEN 96U
 #define TELEMETRY_DEVICE_IDENTIFIER "RF"
 #define TELEMETRY_DEVICE_IDENTIFIER_LEN 2U
@@ -85,7 +85,7 @@ static uint32_t telemetry_flight_can_id(const uint8_t *bytes, size_t len) {
 #define RF_SEDSNET_MEMORY_POOL_SIZE 34816U
 #endif
 #ifndef RF_SEDSNET_QUEUE_BUDGET
-#define RF_SEDSNET_QUEUE_BUDGET 12288U
+#define RF_SEDSNET_QUEUE_BUDGET 9984U
 #endif
 #ifndef RF_SEDSNET_MAX_RECENT_RX_IDS
 #define RF_SEDSNET_MAX_RECENT_RX_IDS 16U
@@ -93,6 +93,9 @@ static uint32_t telemetry_flight_can_id(const uint8_t *bytes, size_t len) {
 #ifndef RF_SEDSNET_STARTING_ALLOCATION
 #define RF_SEDSNET_STARTING_ALLOCATION 1024U
 #endif
+#define RF_RADIO_MAX_FRAME_BYTES 1024U
+#define RF_CAN_MAX_FRAME_BYTES 128U
+#define RF_SIDE_TRANSPORT_TEMPLATES 4U
 
 _Static_assert(RF_SEDSNET_QUEUE_BUDGET >=
                    (RF_SEDSNET_MAX_RECENT_RX_IDS * sizeof(uint64_t)) +
@@ -115,6 +118,8 @@ static uint64_t g_radio_last_gps_tx_ms = 0ULL;
 static uint8_t g_radio_gps_tx_seen = 0U;
 static volatile uint32_t g_radio_gps_throttle_drops = 0U;
 static uint64_t g_router_retry_after_ms = 0ULL;
+static uint8_t g_bootstrap_fanout_active = 0U;
+static uint8_t g_radio_link_seen = 0U;
 
 extern void telemetry_memory_profile_mark(uint32_t stage);
 
@@ -556,10 +561,6 @@ static SedsResult radio_tx_send(const uint8_t *bytes, size_t len, void *user) {
 #endif
 
   status = radio_uart_send_bytes(bytes, len);
-  if (status == HAL_BUSY && !radio_uart_tx_ready()) {
-    return SEDS_OK;
-  }
-
   return (status == HAL_OK) ? SEDS_OK : SEDS_IO;
 }
 
@@ -651,6 +652,7 @@ static void telemetry_radio_rx(const uint8_t *data, size_t len, void *user) {
   } else {
     (void)seds_router_receive_packed(g_router.r, data, len);
   }
+  g_radio_link_seen = 1U;
   g_telemetry_discovery_seen = 1U;
 #else
   (void)data;
@@ -709,9 +711,15 @@ static void telemetry_update_network_health(SedsRouter *router) {
   if (seds_router_get_network_time_ms(router, &network_time_ms) == SEDS_OK) {
     g_telemetry_timesync_valid = 1U;
   }
-  if (g_telemetry_discovery_seen != 0U &&
+  if (g_telemetry_discovery_seen != 0U && g_radio_link_seen != 0U &&
       g_telemetry_timesync_valid != 0U) {
     g_telemetry_network_ready = 1U;
+    if (g_bootstrap_fanout_active != 0U &&
+        seds_router_clear_source_route_mode(router, -1) == SEDS_OK) {
+      /* Discovery now owns normal path selection. Bootstrap fanout is only
+       * needed until both physical networks have exchanged control state. */
+      g_bootstrap_fanout_active = 0U;
+    }
   }
 }
 
@@ -817,7 +825,10 @@ SedsResult init_telemetry_router(void) {
   }
   telemetry_memory_profile_mark(1U);
 
-  g_can_side_id = seds_router_add_side_packed(r, "can", 3U, tx_send, NULL, false);
+  g_can_side_id = seds_router_add_side_packed_profile(
+      r, "can", 3U, tx_send, NULL, false,
+      SEDS_SIDE_TRANSPORT_PROFILE_IPV6_LIKE, RF_CAN_MAX_FRAME_BYTES, 0U,
+      RF_SIDE_TRANSPORT_TEMPLATES);
   if (g_can_side_id < 0) {
     printf("Error: failed to add CAN side: %ld\r\n", (long)g_can_side_id);
     g_can_side_id = -1;
@@ -883,24 +894,23 @@ SedsResult init_telemetry_router(void) {
   /* Add the ground-radio route only after the first CAN time-source
    * announcement has been emitted.  Otherwise route selection can consume
    * the startup control item on radio before the avionics CAN peers see it. */
-  /* The radio framing layer accepts complete SEDSNet v4 topology packets. */
-  g_radio_side_id =
-      seds_router_add_side_packed(r, "radio", 5U, radio_tx_send, NULL, false);
+  /* Discovery topology can exceed one E22 frame. Let SEDSNet split/reassemble
+   * those packets instead of rejecting them at the radio framing boundary. */
+  g_radio_side_id = seds_router_add_side_packed_profile(
+      r, "radio", 5U, radio_tx_send, NULL, false,
+      SEDS_SIDE_TRANSPORT_PROFILE_IPV6_LIKE, RF_RADIO_MAX_FRAME_BYTES, 0U,
+      RF_SIDE_TRANSPORT_TEMPLATES);
   if (g_radio_side_id < 0) {
     printf("Error: failed to add radio side: %ld\r\n", (long)g_radio_side_id);
     g_radio_side_id = -1;
   }
   if (g_can_side_id < 0 || g_radio_side_id < 0 ||
-      seds_router_set_route(r, g_can_side_id, g_radio_side_id, true) != SEDS_OK ||
-      seds_router_set_route(r, g_radio_side_id, g_can_side_id, true) != SEDS_OK ||
       seds_router_set_source_route_mode(r, -1, Seds_RSM_Fanout) != SEDS_OK ||
-      seds_router_set_source_route_mode(r, g_can_side_id, Seds_RSM_Fanout) != SEDS_OK ||
-      seds_router_set_source_route_mode(r, g_radio_side_id, Seds_RSM_Fanout) != SEDS_OK ||
       seds_router_set_typed_route(r, g_can_side_id, SEDS_DT_HEARTBEAT,
                                   g_radio_side_id, true) != SEDS_OK ||
       seds_router_set_typed_route(r, g_radio_side_id, SEDS_DT_HEARTBEAT,
                                   g_can_side_id, true) != SEDS_OK) {
-    printf("Error: failed to configure explicit CAN/radio relay routes\r\n");
+    printf("Error: failed to configure CAN/radio relay policy\r\n");
     seds_router_free(r);
     g_router.r = NULL;
     g_router.created = 0U;
@@ -909,6 +919,7 @@ SedsResult init_telemetry_router(void) {
     g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
     return SEDS_ERR;
   }
+  g_bootstrap_fanout_active = 1U;
   telemetry_memory_profile_mark(3U);
   g_router_retry_after_ms = 0ULL;
   return SEDS_OK;

@@ -17,7 +17,7 @@ volatile uint32_t g_telemetry_stack_start __attribute__((used, externally_visibl
 volatile uint32_t g_telemetry_stack_end __attribute__((used, externally_visible)) = 0U;
 volatile uint32_t g_telemetry_init_stage __attribute__((used, externally_visible)) = 0U;
 volatile int32_t g_telemetry_init_result __attribute__((used, externally_visible)) = 0;
-#define TELEMETRY_THREAD_STACK_SIZE (16U * 1024U)
+#define TELEMETRY_THREAD_STACK_SIZE (12U * 1024U)
 #define TELEMETRY_THREAD_SLEEP_TICKS 1U
 #define TELEMETRY_QUEUE_BUDGET_MS 1U
 #define TELEMETRY_ALIVE_PRINT_INTERVAL_MS 5000ULL
@@ -38,7 +38,6 @@ volatile int32_t g_telemetry_init_result __attribute__((used, externally_visible
 #define RADIO_SCHED_TURNAROUND_MS 75ULL
 #define RADIO_SCHED_UPLINK_TO_DOWNLINK_TURNAROUND_MS 150ULL
 #define RADIO_SCHED_GS_TX_TURNAROUND_MS 600U
-#define TELEMETRY_DISCOVERY_ANNOUNCE_INTERVAL_MS 2000ULL
 #define TELEMETRY_THREAD_PRIORITY 3U
 
 #ifndef RADIO_SCHEDULER_ENABLED
@@ -115,17 +114,6 @@ static HAL_StatusTypeDef telemetry_emit_radio_grant(uint8_t turn, uint8_t seq)
     return status;
 }
 #endif
-
-static void telemetry_announce_discovery_if_due(uint64_t now_ms,
-                                                uint64_t *next_emit_ms)
-{
-    if (now_ms < *next_emit_ms || !radio_uart_tx_ready()) {
-        return;
-    }
-
-    (void)telemetry_announce_discovery();
-    *next_emit_ms = now_ms + TELEMETRY_DISCOVERY_ANNOUNCE_INTERVAL_MS;
-}
 
 static void telemetry_print_alive_if_due(uint64_t now_ms, uint64_t *next_print_ms)
 {
@@ -264,7 +252,6 @@ void telemetry_thread_entry(ULONG initial_input)
     uint64_t next_grant_reannounce_ms = 0U;
     uint64_t next_idle_uplink_poll_ms = 0U;
 #endif
-    uint64_t next_discovery_announce_ms = 0U;
     uint64_t next_alive_print_ms = 0U;
 
     // Publish a nonzero stack margin before router/flash/link initialization.
@@ -290,7 +277,9 @@ void telemetry_thread_entry(ULONG initial_input)
         radio_uart_process_rx();
         can_bus_process_rx();
         telemetry_retry_pending_can_commands();
-        telemetry_announce_discovery_if_due(now_ms, &next_discovery_announce_ms);
+        /* SEDSNet owns discovery cadence.  Forcing an additional full snapshot
+         * here creates a burst larger than the constrained radio queue and
+         * bypasses its adaptive fast/slow discovery behavior. */
         (void)telemetry_poll_discovery();
         telemetry_retry_pending_can_commands();
         /* RF is a relay between avionics CAN and the ground radio. Draining

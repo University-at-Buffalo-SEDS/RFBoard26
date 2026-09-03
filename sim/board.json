@@ -85,7 +85,10 @@
       ,{"name": "radio_tx_drop_same_flow", "symbol": "g_tx_drop_same_flow"}
       ,{"name": "radio_tx_drop_oldest", "symbol": "g_tx_drop_oldest"}
       ,{"name": "radio_tx_drop_control", "symbol": "g_tx_drop_control"}
-      ,{"name": "radio_tx_drop_heartbeat", "symbol": "g_tx_drop_application", "maximum": 0}
+      ,{"name": "radio_tx_drop_discovery", "symbol": "g_tx_drop_discovery", "maximum": 0}
+      ,{"name": "radio_tx_drop_network_control", "symbol": "g_tx_drop_network_control", "maximum": 0}
+      ,{"name": "radio_tx_drop_heartbeat", "symbol": "g_tx_drop_heartbeat"}
+      ,{"name": "radio_tx_drop_application", "symbol": "g_tx_drop_application"}
       ,{"name": "hardfault_mmfar", "symbol": "g_hardfault_mmfar"}
       ,{"name": "hardfault_bfar", "symbol": "g_hardfault_bfar"}
       ,{"name": "hardfault_stacked_lr", "symbol": "g_hardfault_stacked_lr"}

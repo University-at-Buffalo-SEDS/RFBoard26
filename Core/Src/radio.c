@@ -11,14 +11,11 @@
 #define RADIO_UART_MAX_SUBSCRIBERS     8
 #define RADIO_UART_TX_TIMEOUT_FLOOR_MS 100U
 #define RADIO_UART_TX_TIMEOUT_MARGIN_MS 100U
-#ifdef SEDS_FIRMWARE_SIM_TEST
-/* Preserve the hardware guard time in production while allowing the linked
- * functional test to exercise the radio route before its resource-bounded
- * multi-machine Renode window ends. */
-#define RADIO_UART_TX_STARTUP_DELAY_MS 100U
-#else
-#define RADIO_UART_TX_STARTUP_DELAY_MS 5000U
-#endif
+/* The E22 mode pins only require RADIO_E22_MODE_SETTLE_MS before AUX becomes
+ * authoritative. A multi-second hold lets discovery fill the bounded radio
+ * queue before its first byte can drain, delaying route convergence and
+ * discarding the control packets needed to establish it. */
+#define RADIO_UART_TX_STARTUP_DELAY_MS 5U
 #define RADIO_UART_FRAME_SYNC_0        0xA5U
 #define RADIO_UART_FRAME_SYNC_1        0x5AU
 #define RADIO_UART_COMMAND_SYNC_0      0xA6U
@@ -30,7 +27,12 @@
 #define RADIO_UART_FRAME_BUF_SIZE      (RADIO_UART_FRAME_HEADER_SIZE + RADIO_UART_MAX_PAYLOAD_SIZE)
 #define RADIO_UART_SCHED_FALLBACK_FLOW 0U
 #define RADIO_UART_SCHED_CONTROL_FLOW  0xFFFFFFFFUL
-#define RADIO_UART_INTERNAL_TYPE_MAX   16ULL
+#define RADIO_UART_PRIORITY_DISCOVERY       255U
+#define RADIO_UART_PRIORITY_NETWORK_CONTROL 254U
+#define RADIO_UART_PRIORITY_USER_MAX        253U
+#define RADIO_UART_CLASS_APPLICATION         0U
+#define RADIO_UART_CLASS_DISCOVERY           1U
+#define RADIO_UART_CLASS_NETWORK_CONTROL     2U
 
 /* How many RX chunks we can queue from ISR */
 #ifndef RADIO_UART_RX_RING_DEPTH
@@ -40,6 +42,13 @@
 #ifndef RADIO_UART_TX_QUEUE_DEPTH
 #define RADIO_UART_TX_QUEUE_DEPTH   2
 #endif
+
+#ifndef RADIO_UART_TX_QUEUE_SLOTS
+#define RADIO_UART_TX_QUEUE_SLOTS   12U
+#endif
+
+#define RADIO_UART_TX_QUEUE_BYTE_CAPACITY \
+  (RADIO_UART_TX_QUEUE_DEPTH * RADIO_UART_FRAME_BUF_SIZE)
 
 #ifndef RADIO_UART_TX_MAX_AGE_MS
 #define RADIO_UART_TX_MAX_AGE_MS 1500U
@@ -101,8 +110,20 @@ typedef struct {
   uint32_t flow_id;
   uint32_t enqueued_ms;
   uint8_t priority;
+  uint8_t is_heartbeat;
+  uint8_t control_class;
   uint8_t data[RADIO_UART_FRAME_BUF_SIZE];
 } radio_tx_item_t;
+
+typedef struct {
+  uint16_t len;
+  uint16_t offset;
+  uint32_t flow_id;
+  uint32_t enqueued_ms;
+  uint8_t priority;
+  uint8_t is_heartbeat;
+  uint8_t control_class;
+} radio_tx_queue_item_t;
 
 static UART_HandleTypeDef *g_huart = NULL;
 static uint8_t g_rx_buf[RADIO_UART_RX_BUF_SIZE];
@@ -141,16 +162,19 @@ static uint8_t g_radio_tx_queue_mutex_ready = 0U;
 /* Keep the fixed transport queue outside the ThreadX byte pool. The recovered
  * pool space is assigned to the isolated SEDSNet allocator so routed bursts
  * cannot fragment networking memory needed by the next large packet. */
-static radio_tx_item_t g_tx_queue[RADIO_UART_TX_QUEUE_DEPTH];
-static uint32_t g_tx_head = 0U;
-static uint32_t g_tx_tail = 0U;
+static radio_tx_queue_item_t g_tx_queue[RADIO_UART_TX_QUEUE_SLOTS];
+static uint8_t g_tx_queue_bytes[RADIO_UART_TX_QUEUE_BYTE_CAPACITY];
+static uint32_t g_tx_queue_bytes_used = 0U;
 static uint32_t g_tx_count = 0U;
 volatile uint32_t g_tx_drops = 0U;
 volatile uint32_t g_tx_drop_oldest = 0U;
 volatile uint32_t g_tx_drop_same_flow = 0U;
 volatile uint32_t g_tx_drop_stale = 0U;
 volatile uint32_t g_tx_drop_control = 0U;
+volatile uint32_t g_tx_drop_discovery = 0U;
+volatile uint32_t g_tx_drop_network_control = 0U;
 volatile uint32_t g_tx_drop_application = 0U;
+volatile uint32_t g_tx_drop_heartbeat = 0U;
 static volatile uint32_t g_tx_enqueued = 0U;
 static volatile uint32_t g_tx_budget_misses = 0U;
 volatile uint32_t g_radio_tx_ok = 0U;
@@ -261,13 +285,71 @@ static uint32_t radio_uart_flow_id_from_payload(const uint8_t *payload, size_t l
   return radio_hash_type_and_sender(data_type, source_bytes, sizeof(source_bytes));
 }
 
+static uint8_t radio_uart_user_priority(uint64_t data_type) {
+  SedsDataTypeInfo info = {0};
+
+  if (data_type > UINT32_MAX ||
+      seds_dtype_get_info((uint32_t)data_type, NULL, 0U, &info) != SEDS_OK ||
+      !info.exists) {
+    return 0U;
+  }
+
+  return (info.priority > RADIO_UART_PRIORITY_USER_MAX)
+             ? RADIO_UART_PRIORITY_USER_MAX
+             : info.priority;
+}
+
+static uint8_t radio_uart_packet_priority(uint64_t data_type) {
+  /* Discovery establishes the routes required by every other packet. */
+  if ((data_type >= 7ULL && data_type <= 12ULL) ||
+      (data_type >= 15ULL && data_type <= 17ULL)) {
+    return RADIO_UART_PRIORITY_DISCOVERY;
+  }
+
+  /* Managed-variable control/value traffic and the network's persisted
+   * variables share the same transport priority as time synchronization. */
+  if ((data_type >= 4ULL && data_type <= 6ULL) ||
+      data_type == 13ULL || data_type == 14ULL ||
+      data_type == (uint64_t)SEDS_DT_FLIGHT_STATE ||
+      data_type == (uint64_t)SEDS_DT_AV_BAY_UNDERGLOW ||
+      data_type == 134ULL) {
+    return RADIO_UART_PRIORITY_NETWORK_CONTROL;
+  }
+
+  /* Preserve the schema's custom ordering below the reserved network bands. */
+  return radio_uart_user_priority(data_type);
+}
+
+static uint8_t radio_uart_packet_class(uint64_t data_type) {
+  if ((data_type >= 7ULL && data_type <= 12ULL) ||
+      (data_type >= 15ULL && data_type <= 17ULL)) {
+    return RADIO_UART_CLASS_DISCOVERY;
+  }
+  if ((data_type >= 4ULL && data_type <= 6ULL) ||
+      data_type == 13ULL || data_type == 14ULL ||
+      data_type == (uint64_t)SEDS_DT_FLIGHT_STATE ||
+      data_type == (uint64_t)SEDS_DT_AV_BAY_UNDERGLOW ||
+      data_type == 134ULL) {
+    return RADIO_UART_CLASS_NETWORK_CONTROL;
+  }
+  return RADIO_UART_CLASS_APPLICATION;
+}
+
 static uint32_t radio_uart_flow_id_from_frame(const uint8_t *data, uint16_t len,
-                                              uint8_t *priority_out) {
+                                              uint8_t *priority_out,
+                                              uint8_t *is_heartbeat_out,
+                                              uint8_t *control_class_out) {
   uint16_t payload_len;
   uint64_t data_type = 0ULL;
 
   if (priority_out != NULL) {
     *priority_out = 0U;
+  }
+  if (is_heartbeat_out != NULL) {
+    *is_heartbeat_out = 0U;
+  }
+  if (control_class_out != NULL) {
+    *control_class_out = RADIO_UART_CLASS_APPLICATION;
   }
 
   if (!data || len < RADIO_UART_FRAME_HEADER_SIZE) {
@@ -288,18 +370,33 @@ static uint32_t radio_uart_flow_id_from_frame(const uint8_t *data, uint16_t len,
   const uint32_t flow_id = radio_uart_flow_id_from_payload(
       &data[RADIO_UART_FRAME_HEADER_SIZE], payload_len, &data_type);
   if (priority_out != NULL && flow_id != RADIO_UART_SCHED_FALLBACK_FLOW) {
-    /* Address and topology advertisements are what make every subsequent
-     * endpoint-directed packet routable.  They must not be starved by the
-     * steady application/heartbeat load in this deliberately tiny queue. */
-    if (data_type >= 7ULL && data_type <= 17ULL) {
-      *priority_out = 3U;
-    } else if (data_type == (uint64_t)SEDS_DT_HEARTBEAT) {
-      *priority_out = 2U;
-    } else {
-      *priority_out = (data_type <= RADIO_UART_INTERNAL_TYPE_MAX) ? 0U : 1U;
-    }
+    *priority_out = radio_uart_packet_priority(data_type);
+  }
+  if (is_heartbeat_out != NULL) {
+    *is_heartbeat_out =
+        (data_type == (uint64_t)SEDS_DT_HEARTBEAT) ? 1U : 0U;
+  }
+  if (control_class_out != NULL && flow_id != RADIO_UART_SCHED_FALLBACK_FLOW) {
+    *control_class_out = radio_uart_packet_class(data_type);
   }
   return flow_id;
+}
+
+static void radio_uart_classify_packet_drop(uint8_t priority,
+                                            uint8_t is_heartbeat,
+                                            uint8_t control_class) {
+  if (priority >= RADIO_UART_PRIORITY_NETWORK_CONTROL) {
+    g_tx_drop_control++;
+    if (control_class == RADIO_UART_CLASS_DISCOVERY) {
+      g_tx_drop_discovery++;
+    } else {
+      g_tx_drop_network_control++;
+    }
+  } else if (is_heartbeat) {
+    g_tx_drop_heartbeat++;
+  } else {
+    g_tx_drop_application++;
+  }
 }
 
 static void radio_uart_store_preview(volatile uint8_t *dst,
@@ -349,7 +446,7 @@ static void radio_uart_sample_rx_pin(void)
 }
 
 static uint32_t radio_uart_queue_index_at_offset(uint32_t offset) {
-  return (g_tx_head + offset) % RADIO_UART_TX_QUEUE_DEPTH;
+  return offset;
 }
 
 static uint32_t radio_uart_air_ms(uint16_t len);
@@ -391,12 +488,29 @@ static uint8_t radio_e22_ready_for_uart(void)
 }
 
 static void radio_uart_remove_queue_index(uint32_t index) {
-  while (index != g_tx_head) {
-    uint32_t prev = (index == 0U) ? (RADIO_UART_TX_QUEUE_DEPTH - 1U) : (index - 1U);
-    g_tx_queue[index] = g_tx_queue[prev];
-    index = prev;
+  if (index >= g_tx_count) {
+    return;
   }
-  g_tx_head = (g_tx_head + 1U) % RADIO_UART_TX_QUEUE_DEPTH;
+
+  const uint32_t removed_offset = g_tx_queue[index].offset;
+  const uint32_t removed_len = g_tx_queue[index].len;
+  const uint32_t bytes_after =
+      g_tx_queue_bytes_used - removed_offset - removed_len;
+  if (bytes_after > 0U) {
+    memmove(&g_tx_queue_bytes[removed_offset],
+            &g_tx_queue_bytes[removed_offset + removed_len], bytes_after);
+  }
+  g_tx_queue_bytes_used -= removed_len;
+
+  for (uint32_t i = 0U; i < g_tx_count; i++) {
+    if (i != index && g_tx_queue[i].offset > removed_offset) {
+      g_tx_queue[i].offset = (uint16_t)(g_tx_queue[i].offset - removed_len);
+    }
+  }
+  if (index + 1U < g_tx_count) {
+    memmove(&g_tx_queue[index], &g_tx_queue[index + 1U],
+            (g_tx_count - index - 1U) * sizeof(g_tx_queue[0]));
+  }
   g_tx_count--;
 }
 
@@ -405,7 +519,7 @@ static void radio_uart_drop_stale_locked(uint32_t now_ms) {
 
   while (i < g_tx_count) {
     uint32_t idx = radio_uart_queue_index_at_offset(i);
-    if (g_tx_queue[idx].priority != 2U &&
+    if (g_tx_queue[idx].priority < RADIO_UART_PRIORITY_NETWORK_CONTROL &&
         (uint32_t)(now_ms - g_tx_queue[idx].enqueued_ms) >= RADIO_UART_TX_MAX_AGE_MS) {
       radio_uart_remove_queue_index(idx);
       g_tx_drops++;
@@ -414,19 +528,6 @@ static void radio_uart_drop_stale_locked(uint32_t now_ms) {
     }
     i++;
   }
-}
-
-static uint32_t radio_uart_flow_count_locked(uint32_t flow_id) {
-  uint32_t count = 0U;
-
-  for (uint32_t i = 0U; i < g_tx_count; i++) {
-    uint32_t idx = radio_uart_queue_index_at_offset(i);
-    if (g_tx_queue[idx].flow_id == flow_id) {
-      count++;
-    }
-  }
-
-  return count;
 }
 
 static void radio_uart_drop_item_stale_or_requeue_front(const radio_tx_item_t *item) {
@@ -440,7 +541,7 @@ static void radio_uart_drop_item_stale_or_requeue_front(const radio_tx_item_t *i
     return;
   }
 
-  if (item->priority != 2U &&
+  if (item->priority < RADIO_UART_PRIORITY_NETWORK_CONTROL &&
       (uint32_t)(now_ms - item->enqueued_ms) >= RADIO_UART_TX_MAX_AGE_MS) {
     g_tx_drops++;
     g_tx_drop_stale++;
@@ -448,105 +549,103 @@ static void radio_uart_drop_item_stale_or_requeue_front(const radio_tx_item_t *i
     return;
   }
 
-  if (g_tx_count < RADIO_UART_TX_QUEUE_DEPTH) {
-    g_tx_head = (g_tx_head == 0U) ? (RADIO_UART_TX_QUEUE_DEPTH - 1U) : (g_tx_head - 1U);
-    g_tx_queue[g_tx_head] = *item;
+  if (g_tx_count < RADIO_UART_TX_QUEUE_SLOTS &&
+      g_tx_queue_bytes_used + item->len <= RADIO_UART_TX_QUEUE_BYTE_CAPACITY) {
+    radio_tx_queue_item_t *queued = &g_tx_queue[g_tx_count];
+    queued->len = item->len;
+    queued->offset = (uint16_t)g_tx_queue_bytes_used;
+    queued->flow_id = item->flow_id;
+    queued->enqueued_ms = item->enqueued_ms;
+    queued->priority = item->priority;
+    queued->is_heartbeat = item->is_heartbeat;
+    queued->control_class = item->control_class;
+    memcpy(&g_tx_queue_bytes[g_tx_queue_bytes_used], item->data, item->len);
+    g_tx_queue_bytes_used += item->len;
     g_tx_count++;
   } else {
     g_tx_drops++;
     g_tx_drop_oldest++;
+    radio_uart_classify_packet_drop(item->priority, item->is_heartbeat,
+                                    item->control_class);
   }
 
   radio_uart_unlock_tx_queue();
 }
 
-static uint32_t radio_uart_select_drop_index_locked(uint32_t incoming_flow_id,
-                                                    uint8_t *drop_same_flow) {
-  if (drop_same_flow) {
-    *drop_same_flow = 0U;
-  }
-
-  for (uint32_t i = 0U; i < g_tx_count; i++) {
-    uint32_t idx = radio_uart_queue_index_at_offset(i);
-    if (g_tx_queue[idx].flow_id == incoming_flow_id) {
-      if (drop_same_flow) {
-        *drop_same_flow = 1U;
-      }
-      return idx;
-    }
-  }
-
-  for (uint32_t i = 0U; i < g_tx_count; i++) {
-    uint32_t idx = radio_uart_queue_index_at_offset(i);
-    if (radio_uart_flow_count_locked(g_tx_queue[idx].flow_id) > 1U) {
-      return idx;
-    }
-  }
-
-  return g_tx_head;
-}
-
 static HAL_StatusTypeDef radio_uart_enqueue_frame(const uint8_t *data, uint16_t len) {
   uint32_t flow_id;
   uint8_t incoming_priority = 0U;
+  uint8_t incoming_is_heartbeat = 0U;
+  uint8_t incoming_control_class = RADIO_UART_CLASS_APPLICATION;
 
   if (!data || len == 0U || len > RADIO_UART_FRAME_BUF_SIZE) return HAL_ERROR;
-  flow_id = radio_uart_flow_id_from_frame(data, len, &incoming_priority);
+  flow_id = radio_uart_flow_id_from_frame(data, len, &incoming_priority,
+                                           &incoming_is_heartbeat,
+                                           &incoming_control_class);
   if (radio_uart_lock_tx_queue() != HAL_OK) return HAL_ERROR;
 
   radio_uart_drop_stale_locked(radio_now_ms());
 
-  if (g_tx_count >= RADIO_UART_TX_QUEUE_DEPTH) {
-    uint8_t found_same_flow = 0U;
-    uint32_t drop = radio_uart_select_drop_index_locked(flow_id, &found_same_flow);
-    uint8_t lowest_priority = g_tx_queue[drop].priority;
-    for (uint32_t i = 0U; i < g_tx_count; ++i) {
-      const uint32_t idx = radio_uart_queue_index_at_offset(i);
-      if (g_tx_queue[idx].priority < lowest_priority) {
-        lowest_priority = g_tx_queue[idx].priority;
-        drop = idx;
-        found_same_flow = 0U;
+  /* Latest-value traffic, heartbeats, and repeated discovery snapshots are
+   * replaceable while still pending.  Coalesce them before considering any
+   * capacity eviction so a burst cannot consume one slot per stale value. */
+  for (uint32_t i = 0U; i < g_tx_count; i++) {
+    if ((incoming_control_class != RADIO_UART_CLASS_APPLICATION ||
+         incoming_is_heartbeat) &&
+        g_tx_queue[i].flow_id == flow_id) {
+      radio_uart_remove_queue_index(i);
+      g_tx_drop_same_flow++;
+      break;
+    }
+  }
+
+  while (g_tx_count >= RADIO_UART_TX_QUEUE_SLOTS ||
+         g_tx_queue_bytes_used + len > RADIO_UART_TX_QUEUE_BYTE_CAPACITY) {
+    uint32_t drop = 0U;
+    uint8_t lowest_priority = g_tx_queue[0].priority;
+    for (uint32_t i = 1U; i < g_tx_count; ++i) {
+      if (g_tx_queue[i].priority < lowest_priority) {
+        lowest_priority = g_tx_queue[i].priority;
+        drop = i;
       }
     }
-
-    /* Lower-priority traffic cannot evict application data already awaiting
-     * the slow radio. Discovery/timesync state is reconstructible. */
+    /* Never claim that discovery or network-control traffic was delivered by
+     * deleting an equally important pending frame. Backpressure leaves the
+     * packet in SEDSNet's bounded queue so the next service pass retries it
+     * after the UART drains. Higher-priority discovery may still replace a
+     * lower-priority network-variable/timesync frame. */
+    if (incoming_priority >= RADIO_UART_PRIORITY_NETWORK_CONTROL &&
+        lowest_priority >= RADIO_UART_PRIORITY_NETWORK_CONTROL) {
+      radio_uart_unlock_tx_queue();
+      return HAL_BUSY;
+    }
     if (incoming_priority < lowest_priority) {
       g_tx_drops++;
-      if (incoming_priority == 0U) {
-        g_tx_drop_control++;
-      } else if (incoming_priority == 2U) {
-        g_tx_drop_application++;
-      } else {
-        g_tx_drop_oldest++;
-      }
+      radio_uart_classify_packet_drop(incoming_priority,
+                                      incoming_is_heartbeat,
+                                      incoming_control_class);
       radio_uart_unlock_tx_queue();
       return HAL_OK;
     }
 
     g_tx_drops++;
-    /* Replacing an older packet from the same flow is intentional
-     * coalescing, including for heartbeats.  Account for it separately from
-     * dropping unique application traffic so the health probes distinguish
-     * a fresh-value replacement from actual data loss. */
-    if (found_same_flow && incoming_priority == lowest_priority) {
-      g_tx_drop_same_flow++;
-    } else if (g_tx_queue[drop].priority == 0U) {
-      g_tx_drop_control++;
-    } else if (g_tx_queue[drop].priority == 2U) {
-      g_tx_drop_application++;
-    } else {
-      g_tx_drop_oldest++;
-    }
+    g_tx_drop_oldest++;
+    radio_uart_classify_packet_drop(g_tx_queue[drop].priority,
+                                    g_tx_queue[drop].is_heartbeat,
+                                    g_tx_queue[drop].control_class);
     radio_uart_remove_queue_index(drop);
   }
 
-  g_tx_queue[g_tx_tail].len = len;
-  g_tx_queue[g_tx_tail].flow_id = flow_id;
-  g_tx_queue[g_tx_tail].enqueued_ms = radio_now_ms();
-  g_tx_queue[g_tx_tail].priority = incoming_priority;
-  memcpy(g_tx_queue[g_tx_tail].data, data, len);
-  g_tx_tail = (g_tx_tail + 1U) % RADIO_UART_TX_QUEUE_DEPTH;
+  radio_tx_queue_item_t *queued = &g_tx_queue[g_tx_count];
+  queued->len = len;
+  queued->offset = (uint16_t)g_tx_queue_bytes_used;
+  queued->flow_id = flow_id;
+  queued->enqueued_ms = radio_now_ms();
+  queued->priority = incoming_priority;
+  queued->is_heartbeat = incoming_is_heartbeat;
+  queued->control_class = incoming_control_class;
+  memcpy(&g_tx_queue_bytes[g_tx_queue_bytes_used], data, len);
+  g_tx_queue_bytes_used += len;
   g_tx_count++;
   g_tx_enqueued++;
   radio_uart_unlock_tx_queue();
@@ -562,24 +661,34 @@ static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32
 
   if (g_tx_count > 0U) {
     uint8_t selected_valid = 0U;
-    uint32_t selected = g_tx_head;
+    uint32_t selected = 0U;
+    uint8_t selected_priority = 0U;
 
-    for (uint32_t pass = 0U; pass < 2U && !selected_valid; pass++) {
-      for (uint32_t i = 0U; i < g_tx_count; i++) {
-        uint32_t idx = radio_uart_queue_index_at_offset(i);
-        if (pass == 0U && g_tx_count > 1U && g_tx_queue[idx].flow_id == g_tx_last_flow_id) {
-          continue;
-        }
-        if (radio_uart_air_ms(g_tx_queue[idx].len) <= budget_ms) {
-          selected = idx;
-          selected_valid = 1U;
-          break;
-        }
+    for (uint32_t i = 0U; i < g_tx_count; i++) {
+      uint32_t idx = radio_uart_queue_index_at_offset(i);
+      const uint8_t candidate_avoids_last_flow =
+          (g_tx_queue[idx].flow_id != g_tx_last_flow_id) ? 1U : 0U;
+      const uint8_t selected_avoids_last_flow =
+          (g_tx_queue[selected].flow_id != g_tx_last_flow_id) ? 1U : 0U;
+      if (radio_uart_air_ms(g_tx_queue[idx].len) <= budget_ms &&
+          (!selected_valid ||
+           g_tx_queue[idx].priority > selected_priority ||
+           (g_tx_queue[idx].priority == selected_priority &&
+            candidate_avoids_last_flow > selected_avoids_last_flow))) {
+        selected = idx;
+        selected_valid = 1U;
+        selected_priority = g_tx_queue[idx].priority;
       }
     }
 
     if (selected_valid) {
-      *out = g_tx_queue[selected];
+      out->len = g_tx_queue[selected].len;
+      out->flow_id = g_tx_queue[selected].flow_id;
+      out->enqueued_ms = g_tx_queue[selected].enqueued_ms;
+      out->priority = g_tx_queue[selected].priority;
+      out->is_heartbeat = g_tx_queue[selected].is_heartbeat;
+      out->control_class = g_tx_queue[selected].control_class;
+      memcpy(out->data, &g_tx_queue_bytes[g_tx_queue[selected].offset], out->len);
       radio_uart_remove_queue_index(selected);
       g_tx_last_flow_id = out->flow_id;
       have = 1U;

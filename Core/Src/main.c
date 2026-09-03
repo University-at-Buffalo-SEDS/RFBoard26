@@ -299,7 +299,7 @@ static void MX_USART1_UART_Init(void)
   /* The routed-serial simulator collapses the E22 air hop, GroundStation
    * router, and Pico-Fi hop into one byte-preserving link. Normalize the two
    * edge UART rates here; production retains the E22's RADIO_BAUD_RATE. */
-  huart1.Init.BaudRate = 115200;
+  huart1.Init.BaudRate = RADIO_BAUD_RATE;
 #else
   huart1.Init.BaudRate = RADIO_BAUD_RATE;
 #endif

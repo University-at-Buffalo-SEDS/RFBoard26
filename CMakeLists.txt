@@ -112,7 +112,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 # SEDSNet v4
 set(SEDSNET_DEVICE_IDENTIFIER "RF" CACHE STRING "" FORCE)
 set(SEDSNET_MAX_STACK_PAYLOAD "128" CACHE STRING "" FORCE)
-set(RF_SEDSNET_MEMORY_POOL_SIZE "44000" CACHE STRING
+set(RF_SEDSNET_MEMORY_POOL_SIZE "48096" CACHE STRING
     "Isolated SEDSNet allocator pool, including router state, allocator metadata, and reserve" FORCE)
 set(RF_SEDSNET_QUEUE_BUDGET "8192" CACHE STRING
     "Bound fallback, reliable, and discovery storage on the two-sided RF router" FORCE)

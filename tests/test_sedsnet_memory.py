@@ -31,7 +31,7 @@ class SedsnetMemoryTests(unittest.TestCase):
         )
         recent = int(re.search(r'set\(SEDSNET_MAX_RECENT_RX_IDS "(\d+)"', cmake).group(1))
 
-        self.assertEqual(pool, 44000)
+        self.assertEqual(pool, 48096)
         self.assertEqual(budget, 8192)
         self.assertGreaterEqual(pool - budget, 16384)
         self.assertEqual(start, 512)
@@ -42,7 +42,7 @@ class SedsnetMemoryTests(unittest.TestCase):
             encoding="utf-8"
         )
         threadx = (ROOT / "Core" / "Inc" / "tx_user.h").read_text(encoding="utf-8")
-        self.assertIn("TELEMETRY_THREAD_STACK_SIZE (16U * 1024U)", telemetry_thread)
+        self.assertIn("TELEMETRY_THREAD_STACK_SIZE (12U * 1024U)", telemetry_thread)
         gps_thread = (ROOT / "Core" / "Src" / "neom9n_thread.c").read_text(
             encoding="utf-8"
         )
@@ -100,7 +100,20 @@ class SedsnetMemoryTests(unittest.TestCase):
         self.assertEqual(depth, 2)
         self.assertGreaterEqual(payload, 512)
         self.assertLessEqual(depth * (payload + 4), 4200)
-        self.assertIn("static radio_tx_item_t g_tx_queue[RADIO_UART_TX_QUEUE_DEPTH]", radio)
+        self.assertIn(
+            "static radio_tx_queue_item_t g_tx_queue[RADIO_UART_TX_QUEUE_SLOTS]",
+            radio,
+        )
+        self.assertIn(
+            "static uint8_t g_tx_queue_bytes[RADIO_UART_TX_QUEUE_BYTE_CAPACITY]",
+            radio,
+        )
+        telemetry = (ROOT / "Core" / "Src" / "telemetry.c").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("#define RF_SEDSNET_QUEUE_BUDGET 9984U", telemetry)
+        self.assertIn("#define TELEMETRY_PENDING_CAN_DEPTH 3U", telemetry)
+        self.assertIn("#define TELEMETRY_PENDING_CAN_MAX_LEN 128U", telemetry)
         init = radio.split("UINT radio_uart_init_tx_queue", 1)[1]
         init = init.split("/* Arm RX-to-idle", 1)[0]
         self.assertNotIn("tx_byte_allocate", init)
@@ -108,22 +121,78 @@ class SedsnetMemoryTests(unittest.TestCase):
 
     def test_radio_coalescing_is_not_reported_as_application_loss(self):
         radio = (ROOT / "Core" / "Src" / "radio.c").read_text(encoding="utf-8")
-        full_queue = radio.split("if (g_tx_count >= RADIO_UART_TX_QUEUE_DEPTH)", 1)[1]
-        full_queue = full_queue.split("g_tx_queue[g_tx_tail].len", 1)[0]
-        coalesced = full_queue.index(
-            "found_same_flow && incoming_priority == lowest_priority"
-        )
-        application_loss = full_queue.index(
-            "g_tx_queue[drop].priority == 2U"
-        )
-        self.assertLess(coalesced, application_loss)
-        self.assertIn("g_tx_drop_same_flow++", full_queue[coalesced:application_loss])
+        coalescing_branch = radio.split(
+            "if ((incoming_control_class != RADIO_UART_CLASS_APPLICATION", 1
+        )[1].split("while (g_tx_count", 1)[0]
+        self.assertIn("g_tx_drop_same_flow++", coalescing_branch)
+        self.assertNotIn("g_tx_drop_application++", coalescing_branch)
+        self.assertIn("incoming_is_heartbeat", coalescing_branch)
+
+    def test_expected_heartbeat_eviction_is_separate_from_application_loss(self):
+        radio = (ROOT / "Core" / "Src" / "radio.c").read_text(encoding="utf-8")
+        self.assertIn("volatile uint32_t g_tx_drop_heartbeat = 0U", radio)
+        classifier = radio.split("static void radio_uart_classify_packet_drop", 1)[1]
+        classifier = classifier.split("static void", 1)[0]
+        self.assertIn("else if (is_heartbeat)", classifier)
+        self.assertIn("g_tx_drop_heartbeat++", classifier)
+        self.assertIn("g_tx_drop_application++", classifier)
+
+        layout = (ROOT / "sim" / "board.json").read_text(encoding="utf-8")
+        self.assertIn('"symbol": "g_tx_drop_heartbeat"', layout)
+        self.assertIn('"symbol": "g_tx_drop_application"', layout)
+        self.assertIn('"symbol": "g_tx_drop_control"', layout)
+        self.assertIn('"symbol": "g_tx_drop_discovery"', layout)
+        self.assertIn('"symbol": "g_tx_drop_network_control"', layout)
 
     def test_discovery_cannot_be_starved_by_normal_radio_traffic(self):
         radio = (ROOT / "Core" / "Src" / "radio.c").read_text(encoding="utf-8")
-        self.assertIn("data_type >= 7ULL && data_type <= 17ULL", radio)
-        self.assertIn("*priority_out = 3U", radio)
+        self.assertIn("RADIO_UART_PRIORITY_DISCOVERY       255U", radio)
+        self.assertIn("data_type >= 7ULL && data_type <= 12ULL", radio)
+        self.assertIn("data_type >= 15ULL && data_type <= 17ULL", radio)
         self.assertIn("if (incoming_priority < lowest_priority)", radio)
+        self.assertIn(
+            "lowest_priority >= RADIO_UART_PRIORITY_NETWORK_CONTROL", radio
+        )
+        telemetry = (ROOT / "Core" / "Src" / "telemetry.c").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn(
+            "status == HAL_BUSY && !radio_uart_tx_ready()", telemetry
+        )
+
+    def test_radio_priority_reserves_network_control_then_uses_schema_order(self):
+        radio = (ROOT / "Core" / "Src" / "radio.c").read_text(encoding="utf-8")
+        self.assertIn("RADIO_UART_PRIORITY_NETWORK_CONTROL 254U", radio)
+        self.assertIn("data_type >= 4ULL && data_type <= 6ULL", radio)
+        self.assertIn("data_type == 13ULL || data_type == 14ULL", radio)
+        self.assertIn("SEDS_DT_FLIGHT_STATE", radio)
+        self.assertIn("SEDS_DT_AV_BAY_UNDERGLOW", radio)
+        self.assertIn("seds_dtype_get_info", radio)
+        self.assertIn("info.priority > RADIO_UART_PRIORITY_USER_MAX", radio)
+
+    def test_radio_uses_sedsnet_adaptive_discovery_cadence(self):
+        telemetry_thread = (
+            ROOT / "Core" / "Src" / "telemetry_thread.c"
+        ).read_text(encoding="utf-8")
+        self.assertIn("telemetry_poll_discovery();", telemetry_thread)
+        self.assertNotIn("telemetry_announce_discovery_if_due", telemetry_thread)
+        self.assertNotIn("TELEMETRY_DISCOVERY_ANNOUNCE_INTERVAL_MS", telemetry_thread)
+
+    def test_radio_dequeues_highest_priority_packet_first(self):
+        radio = (ROOT / "Core" / "Src" / "radio.c").read_text(encoding="utf-8")
+        dequeue = radio.split("static uint8_t radio_uart_dequeue_frame_with_budget", 1)[1]
+        dequeue = dequeue.split("static uint32_t radio_uart_tx_timeout_ms", 1)[0]
+        self.assertIn("g_tx_queue[idx].priority > selected_priority", dequeue)
+
+    def test_radio_does_not_hold_discovery_behind_a_startup_delay(self):
+        radio = (ROOT / "Core" / "Src" / "radio.c").read_text(encoding="utf-8")
+        main = (ROOT / "Core" / "Src" / "main.c").read_text(encoding="utf-8")
+        delay = int(
+            re.search(r"#define RADIO_UART_TX_STARTUP_DELAY_MS\s+(\d+)U", radio).group(1)
+        )
+        self.assertLessEqual(delay, 10)
+        self.assertNotIn("huart1.Init.BaudRate = 115200", main)
+        self.assertIn("huart1.Init.BaudRate = RADIO_BAUD_RATE", main)
 
     def test_memory_led_requires_a_confirmed_allocator_failure(self):
         hooks = (ROOT / "Core" / "Src" / "telemetry_hooks.c").read_text(

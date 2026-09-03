@@ -11,7 +11,7 @@ class QualificationContractTests(unittest.TestCase):
         source = (root / "Core" / "Src" / "telemetry_thread.c").read_text(
             encoding="utf-8"
         )
-        self.assertIn("TELEMETRY_THREAD_STACK_SIZE (16U * 1024U)", source)
+        self.assertIn("TELEMETRY_THREAD_STACK_SIZE (12U * 1024U)", source)
 
     def test_can_transport_starts_before_router(self):
         root = Path(build.__file__).resolve().parent
@@ -76,9 +76,9 @@ class QualificationContractTests(unittest.TestCase):
     def test_source_queues_can_timesync_before_radio_without_blocking_startup(self):
         root = Path(build.__file__).resolve().parent
         telemetry = (root / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
-        self.assertIn('seds_router_add_side_packed(r, "can", 3U, tx_send, NULL, false)', telemetry)
+        self.assertIn('r, "can", 3U, tx_send, NULL, false,', telemetry)
         prime = telemetry.index("seds_router_poll_timesync(r, &did_queue)")
-        radio = telemetry.index('seds_router_add_side_packed(r, "radio"')
+        radio = telemetry.index('r, "radio", 5U, radio_tx_send')
         self.assertLess(prime, radio)
         self.assertNotIn("seds_router_process_tx_queue(r)", telemetry[prime:radio])
 
@@ -89,14 +89,24 @@ class QualificationContractTests(unittest.TestCase):
         self.assertIn("seds_router_get_network_variable_packed_len", source)
         self.assertNotIn("seds_router_request_managed_variable", source)
 
-    def test_radio_side_accepts_complete_v4_topology_packets(self):
+    def test_radio_side_chunks_complete_v4_topology_packets(self):
         root = Path(__file__).resolve().parents[1]
         telemetry = (root / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
         radio = (root / "Core" / "Src" / "radio.c").read_text(encoding="utf-8")
         self.assertIn(
-            'seds_router_add_side_packed(r, "radio", 5U, radio_tx_send, NULL, false)',
+            "seds_router_add_side_packed_profile(",
             telemetry,
         )
+        self.assertIn("RF_RADIO_MAX_FRAME_BYTES 1024U", telemetry)
+        self.assertIn("RF_CAN_MAX_FRAME_BYTES 128U", telemetry)
+        self.assertIn("RF_SIDE_TRANSPORT_TEMPLATES 4U", telemetry)
+        self.assertNotIn(
+            "seds_router_set_route(r, g_can_side_id, g_radio_side_id, true)",
+            telemetry,
+        )
+        self.assertEqual(telemetry.count("Seds_RSM_Fanout"), 1)
+        self.assertIn("seds_router_clear_source_route_mode(router, -1)", telemetry)
+        self.assertIn("g_bootstrap_fanout_active = 0U", telemetry)
         self.assertIn("#define RADIO_UART_MAX_PAYLOAD_SIZE    1024U", radio)
 
 
