@@ -118,7 +118,6 @@ static uint64_t g_radio_last_gps_tx_ms = 0ULL;
 static uint8_t g_radio_gps_tx_seen = 0U;
 static volatile uint32_t g_radio_gps_throttle_drops = 0U;
 static uint64_t g_router_retry_after_ms = 0ULL;
-static uint8_t g_bootstrap_fanout_active = 0U;
 static uint8_t g_radio_link_seen = 0U;
 
 extern void telemetry_memory_profile_mark(uint32_t stage);
@@ -714,12 +713,6 @@ static void telemetry_update_network_health(SedsRouter *router) {
   if (g_telemetry_discovery_seen != 0U && g_radio_link_seen != 0U &&
       g_telemetry_timesync_valid != 0U) {
     g_telemetry_network_ready = 1U;
-    if (g_bootstrap_fanout_active != 0U &&
-        seds_router_clear_source_route_mode(router, -1) == SEDS_OK) {
-      /* Discovery now owns normal path selection. Bootstrap fanout is only
-       * needed until both physical networks have exchanged control state. */
-      g_bootstrap_fanout_active = 0U;
-    }
   }
 }
 
@@ -904,13 +897,8 @@ SedsResult init_telemetry_router(void) {
     printf("Error: failed to add radio side: %ld\r\n", (long)g_radio_side_id);
     g_radio_side_id = -1;
   }
-  if (g_can_side_id < 0 || g_radio_side_id < 0 ||
-      seds_router_set_source_route_mode(r, -1, Seds_RSM_Fanout) != SEDS_OK ||
-      seds_router_set_typed_route(r, g_can_side_id, SEDS_DT_HEARTBEAT,
-                                  g_radio_side_id, true) != SEDS_OK ||
-      seds_router_set_typed_route(r, g_radio_side_id, SEDS_DT_HEARTBEAT,
-                                  g_can_side_id, true) != SEDS_OK) {
-    printf("Error: failed to configure CAN/radio relay policy\r\n");
+  if (g_can_side_id < 0 || g_radio_side_id < 0) {
+    printf("Error: failed to configure CAN/radio relay sides\r\n");
     seds_router_free(r);
     g_router.r = NULL;
     g_router.created = 0U;
@@ -919,7 +907,6 @@ SedsResult init_telemetry_router(void) {
     g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
     return SEDS_ERR;
   }
-  g_bootstrap_fanout_active = 1U;
   telemetry_memory_profile_mark(3U);
   g_router_retry_after_ms = 0ULL;
   return SEDS_OK;

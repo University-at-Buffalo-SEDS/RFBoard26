@@ -104,9 +104,9 @@ class QualificationContractTests(unittest.TestCase):
             "seds_router_set_route(r, g_can_side_id, g_radio_side_id, true)",
             telemetry,
         )
-        self.assertEqual(telemetry.count("Seds_RSM_Fanout"), 1)
-        self.assertIn("seds_router_clear_source_route_mode(router, -1)", telemetry)
-        self.assertIn("g_bootstrap_fanout_active = 0U", telemetry)
+        self.assertNotIn("Seds_RSM_Fanout", telemetry)
+        self.assertNotIn("g_bootstrap_fanout_active", telemetry)
+        self.assertNotIn("seds_router_set_typed_route", telemetry)
         self.assertIn("#define RADIO_UART_MAX_PAYLOAD_SIZE    1024U", radio)
 
 
