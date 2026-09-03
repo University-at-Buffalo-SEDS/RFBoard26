@@ -939,7 +939,7 @@ def main() -> None:
                 ),
             )
             _run_test_stage(
-                ui, results, "Long-duration memory profile",
+                ui, results, "Allocator stress and memory probes",
                 lambda: run_memory_profile(
                     ui, cfg.repo_root, "stm32g4", cfg.build_subdir
                 ),

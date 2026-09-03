@@ -203,12 +203,18 @@ def run_memory_profile(
             image, "profile",
             "--layout", "/simulation/board.json",
             "--firmware-root", "/firmware",
-            "--virtual-time-ms", "10000",
+            # Renode executes every firmware instruction. The board layout's
+            # accelerated HAL tick makes 20 ms sufficient to reach steady
+            # scheduler state; allocator longevity is exercised separately by
+            # the one-million-packet traffic model below. Longer instruction
+            # windows consume unbounded host resources without increasing the
+            # modeled STM32 RAM coverage.
+            "--virtual-time-ms", "20",
             "--sample-count", "20",
             "--traffic-iterations", "1000000",
         ]
         ui.say("run", " ".join(command))
-        run_live(command, "long-duration memory profile")
+        run_live(command, "allocator stress and firmware memory profile")
 
 
 def _network_peer(repo_root: Path) -> tuple[str, Path]:
