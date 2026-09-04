@@ -35,6 +35,7 @@
     "dma_routes": []
   },
   "execution": {
+    "factory_boot_success_symbol": "_tx_thread_schedule",
     "virtual_time_ms": 250,
     "sample_count": 5,
     "memory_probe_warmup_samples": 2,

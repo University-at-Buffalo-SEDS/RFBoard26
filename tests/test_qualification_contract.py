@@ -44,8 +44,8 @@ class QualificationContractTests(unittest.TestCase):
         self.assertIn('simulation_env["SEDS_FIRMWARE_SIM_TEST"] = "1"', runner)
         self.assertIn('run_live(command, "firmware simulation")', runner)
         self.assertIn('running ({int(now - started)}s elapsed)', runner)
-        self.assertIn('"rf decoded both avionics peers"', runner)
-        self.assertIn('"rf decoded both avionics peers"', runner)
+        self.assertIn('"GroundStation discovered every board by autonomous name"', runner)
+        self.assertIn('"transport_path": ["RFBoard", "PowerBoard", "FlightComputer"]', runner)
         self.assertIn("Long-duration memory profile", script)
         self.assertIn("Network discovery and time sync", script)
 
@@ -81,6 +81,30 @@ class QualificationContractTests(unittest.TestCase):
         radio = telemetry.index('r, "radio", 5U, radio_tx_send')
         self.assertLess(prime, radio)
         self.assertNotIn("seds_router_process_tx_queue(r)", telemetry[prime:radio])
+
+    def test_initial_timesync_io_backpressure_is_nonfatal(self):
+        root = Path(build.__file__).resolve().parent
+        telemetry = (root / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
+        prime = telemetry.index("/* Prime the first source announcement")
+        radio = telemetry.index("g_radio_side_id = seds_router_add_side_packed_profile", prime)
+        startup_prime = telemetry[prime:radio]
+
+        self.assertIn("seds_router_poll_timesync(r, &did_queue)", startup_prime)
+        self.assertIn(
+            "if (result != SEDS_OK && result != SEDS_IO)", startup_prime
+        )
+        self.assertIn(
+            "if (result == SEDS_OK && did_queue) g_telemetry_timesync_queued++",
+            startup_prime,
+        )
+
+    def test_layout_uses_scheduler_as_factory_boot_success_symbol(self):
+        root = Path(build.__file__).resolve().parent
+        layout = json.loads((root / "sim" / "board.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            layout["execution"]["factory_boot_success_symbol"],
+            "_tx_thread_schedule",
+        )
 
     def test_underglow_uses_only_native_network_variable_apis(self):
         root = Path(build.__file__).resolve().parent

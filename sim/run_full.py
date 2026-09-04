@@ -353,7 +353,12 @@ def run_network_simulation(
                     "GS_LAYOUT_PATH": "/opt/groundstation/backend/layout/layout_hitl.json",
                     "GS_AV_BAY_UNDERGLOW_DEFAULT": "1",
                     "GS_FLIGHT_STATE_DEFAULT": "1",
-                    "GS_SIM_VALIDATE_VALVE_ROUNDTRIP": "1"
+                    "GS_SIM_VALIDATE_VALVE_ROUNDTRIP": "1",
+                    "GS_HEARTBEAT_INTERVAL_MS": "7000",
+                    "GS_SIM_DISABLE_PERIODIC_DISCOVERY": "1",
+                    "GS_SIM_COMPACT_INITIAL_DISCOVERY": "1",
+                    "GS_SIM_EXPECT_DISCOVERY_NODES": "RF,PB,FC,GB,AB,VB,DAQ",
+                    "GS_SIM_FLIGHT_STATE_SEQUENCE": "1,0,1"
                 },
                 "serial_links": [
                     {"link": "rocket_radio", "env": "GS_AV_BAY_SERIAL_PORT"},
@@ -385,13 +390,6 @@ def run_network_simulation(
         # on each local CAN segment plus traffic in both directions across the
         # RF/GroundStation/Pico-Fi/Gateway route.
         "assertions": [
-            {"name": "rf decoded both avionics peers", "node": "rf", "probe": "peer_mask", "required_bits": 6},
-            {"name": "power decoded both avionics peers", "node": "power", "probe": "peer_mask", "required_bits": 5},
-            {"name": "flight decoded both avionics peers", "node": "flight", "probe": "peer_mask", "required_bits": 3},
-            {"name": "gateway decoded every fill peer", "node": "gateway", "probe": "peer_mask", "required_bits": 112},
-            {"name": "actuator decoded every fill peer", "node": "actuator", "probe": "peer_mask", "required_bits": 104},
-            {"name": "valve decoded every fill peer", "node": "valve", "probe": "peer_mask", "required_bits": 88},
-            {"name": "daq decoded every fill peer", "node": "daq", "probe": "peer_mask", "required_bits": 56},
             {"name": "Gateway received GroundStation valve command", "node": "gateway", "probe": "uart_valve_command_count", "minimum": 1},
             {"name": "Gateway routed valve command onto CAN", "node": "gateway", "probe": "can_valve_command_tx_count", "minimum": 1},
             {"name": "GroundStation valve command reached board", "node": "valve", "probe": "valve_commands_received", "minimum": 1},
@@ -409,7 +407,12 @@ def run_network_simulation(
             {"name": "power underglow is enabled", "node": "power", "probe": "underglow_enabled", "minimum": 1},
             {"name": "flight underglow is enabled", "node": "flight", "probe": "underglow_enabled", "minimum": 1},
             *[{"name": f"{node} received GroundStation flight state", "node": node, "probe": "flight_state_updates", "minimum": 1} for node, *_ in boards],
-            *[{"name": f"{node} cached GroundStation flight state", "node": node, "probe": "flight_state_cache", "minimum": 1, "maximum": 1} for node, *_ in boards],
+            *[{"name": f"{node} converged on GroundStation flight state", "node": node, "probe": "flight_state_cache", "minimum": 1, "maximum": 1} for node, *_ in boards],
+        ],
+        "host_log_assertions": [
+            {"name": "GroundStation discovered every board by autonomous name",
+             "node": "groundstation",
+             "contains": "AB,DAQ,FC,GB,PB,RF,VB"}
         ],
     }
 

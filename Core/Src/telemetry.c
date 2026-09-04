@@ -647,7 +647,7 @@ SedsResult init_telemetry_router(void) {
   {
     bool did_queue = false;
     result = seds_router_poll_timesync(r, &did_queue);
-    if (result != SEDS_OK) {
+    if (result != SEDS_OK && result != SEDS_IO) {
       seds_router_free(r);
       g_router.r = NULL;
       g_router.created = 0U;
@@ -656,7 +656,7 @@ SedsResult init_telemetry_router(void) {
       g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
       return result;
     }
-    if (did_queue) g_telemetry_timesync_queued++;
+    if (result == SEDS_OK && did_queue) g_telemetry_timesync_queued++;
   }
 
   /* Add the ground-radio route only after the first CAN time-source
