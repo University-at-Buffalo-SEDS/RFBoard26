@@ -170,8 +170,9 @@ void telemetry_thread_entry(ULONG initial_input)
         /* RF is a relay between avionics CAN and the ground radio. Draining
          * only TX leaves every packet received from either side stranded in
          * the router RX queue, eventually exhausting the fixed allocator and
-         * preventing any cross-link forwarding. Interleave RX fanout and TX
-         * dispatch within the same bounded service window. */
+         * preventing SEDSNet from forwarding across discovered paths.
+         * Interleave RX routing and TX dispatch within the same bounded
+         * service window. */
         (void)process_all_queues_timeout(TELEMETRY_QUEUE_BUDGET_MS);
         (void)telemetry_poll_timesync();
         ota_stream_poll();
