@@ -54,18 +54,12 @@ static void print_data_no_telem(void *data, size_t len) {
 #define COMMAND_TRACE_PRINTS 0
 #endif
 
-#ifndef TELEMETRY_RADIO_GPS_INTERVAL_MS
-#define TELEMETRY_RADIO_GPS_INTERVAL_MS 1000ULL
-#endif
-
 #ifndef TX_TIMER_TICKS_PER_SECOND
 #error "TX_TIMER_TICKS_PER_SECOND must be defined by ThreadX."
 #endif
 
 #define TELEMETRY_TIMESYNC_ROLE_CONSUMER 0U
 #define TELEMETRY_TIMESYNC_ROLE_SOURCE 1U
-#define TELEMETRY_SEDS_FLAG_COMPRESSED_SENDER 0x02U
-#define TELEMETRY_SEDS_CRC_BYTES 4U
 #define TELEMETRY_FLIGHT_CAN_ID 0x101U
 #define TELEMETRY_FLIGHT_HEARTBEAT_CAN_ID 0x001U
 
@@ -76,9 +70,6 @@ static uint32_t telemetry_flight_can_id(const uint8_t *bytes, size_t len) {
 }
 #define TELEMETRY_PENDING_CAN_DEPTH 3U
 #define TELEMETRY_PENDING_CAN_MAX_LEN 128U
-#define TELEMETRY_GPS_WIRE_MAX_LEN 96U
-#define TELEMETRY_DEVICE_IDENTIFIER "RF"
-#define TELEMETRY_DEVICE_IDENTIFIER_LEN 2U
 #define TELEMETRY_ROUTER_RETRY_MS 5000ULL
 
 #ifndef RF_SEDSNET_MEMORY_POOL_SIZE
@@ -102,21 +93,12 @@ _Static_assert(RF_SEDSNET_QUEUE_BUDGET >=
                        (2U * RF_SEDSNET_STARTING_ALLOCATION),
                "SEDSNet pool must leave space after recent IDs and initial RX/TX queues");
 
-_Static_assert(TELEMETRY_DEVICE_IDENTIFIER_LEN == (sizeof(TELEMETRY_DEVICE_IDENTIFIER) - 1U),
-               "Telemetry sender length must match device identifier");
-
 static uint8_t g_can_rx_subscribed = 0U;
 static uint8_t g_radio_rx_subscribed = 0U;
 static int32_t g_can_side_id = -1;
 static int32_t g_radio_side_id = -1;
-static uint32_t g_pending_radio_flight_commands = 0U;
-static size_t g_pending_radio_flight_command_len = 0U;
-static uint32_t g_pending_radio_flight_command_crc = 0U;
 static uint8_t g_local_unix_valid = 0U;
 static uint64_t g_local_unix_ms = 0ULL;
-static uint64_t g_radio_last_gps_tx_ms = 0ULL;
-static uint8_t g_radio_gps_tx_seen = 0U;
-static volatile uint32_t g_radio_gps_throttle_drops = 0U;
 static uint64_t g_router_retry_after_ms = 0ULL;
 static uint8_t g_radio_link_seen = 0U;
 
@@ -173,79 +155,6 @@ static uint32_t telemetry_timesync_role(void) {
                                         : TELEMETRY_TIMESYNC_ROLE_CONSUMER;
 }
 
-static bool telemetry_packet_has_endpoint(const SedsPacketView *view, uint32_t endpoint) {
-  if (!view || view->endpoints == NULL) {
-    return false;
-  }
-
-  for (size_t i = 0U; i < view->num_endpoints; i++) {
-    if (view->endpoints[i] == endpoint) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-static bool telemetry_is_priority_radio_to_can_packet(const uint8_t *bytes, size_t len) {
-  SedsOwnedHeader *header = NULL;
-  SedsPacketView view;
-  bool matched = false;
-
-  if (!bytes || len == 0U) {
-    return false;
-  }
-
-  header = seds_pkt_unpack_header_owned(bytes, len);
-  if (!header) {
-    return false;
-  }
-
-  memset(&view, 0, sizeof(view));
-  if (seds_owned_header_view(header, &view) == SEDS_OK) {
-    matched =
-        (view.ty == (uint32_t)SEDS_DT_FLIGHT_COMMAND &&
-         telemetry_packet_has_endpoint(&view, (uint32_t)SEDS_EP_FLIGHT_CONTROLLER)) ||
-        (view.ty == (uint32_t)SEDS_DT_FLIGHT_STATE &&
-         telemetry_packet_has_endpoint(&view, (uint32_t)SEDS_EP_FLIGHT_STATE));
-  }
-
-  seds_owned_header_free(header);
-  return matched;
-}
-
-static uint32_t telemetry_packet_wire_crc(const uint8_t *bytes, size_t len) {
-  if (!bytes || len < TELEMETRY_SEDS_CRC_BYTES) {
-    return 0U;
-  }
-
-  const size_t offset = len - TELEMETRY_SEDS_CRC_BYTES;
-  return (uint32_t)bytes[offset] |
-         ((uint32_t)bytes[offset + 1U] << 8U) |
-         ((uint32_t)bytes[offset + 2U] << 16U) |
-         ((uint32_t)bytes[offset + 3U] << 24U);
-}
-
-static void telemetry_note_flight_command_sent(const uint8_t *bytes, size_t len) {
-  if (g_pending_radio_flight_commands == 0U ||
-      len != g_pending_radio_flight_command_len ||
-      telemetry_packet_wire_crc(bytes, len) != g_pending_radio_flight_command_crc) {
-    return;
-  }
-
-  g_pending_radio_flight_commands--;
-}
-
-static bool telemetry_radio_gps_throttle_active(uint64_t now_ms) {
-  if (g_radio_gps_tx_seen &&
-      (now_ms - g_radio_last_gps_tx_ms) < TELEMETRY_RADIO_GPS_INTERVAL_MS) {
-    g_radio_gps_throttle_drops++;
-    return true;
-  }
-
-  return false;
-}
-
 static bool telemetry_enqueue_pending_can_command(const uint8_t *bytes, size_t len) {
   if (!bytes || len == 0U || len > TELEMETRY_PENDING_CAN_MAX_LEN) {
     return false;
@@ -264,96 +173,10 @@ static bool telemetry_enqueue_pending_can_command(const uint8_t *bytes, size_t l
   return true;
 }
 
-static SedsResult telemetry_serialize_gps_packet(const void *data, size_t element_count,
-                                                 size_t element_size, uint8_t *out,
-                                                 size_t out_len, size_t *written) {
-  const uint32_t endpoints[] = {
-      (uint32_t)SEDS_EP_SD_CARD,
-      (uint32_t)SEDS_EP_GROUND_STATION,
-      (uint32_t)SEDS_EP_FLIGHT_CONTROLLER,
-  };
-  SedsPacketView view;
-  int32_t serialized_len;
-  const size_t payload_len = element_count * element_size;
-
-  if (!data || !out || !written || element_count != 3U || element_size != sizeof(float)) {
-    return SEDS_BAD_ARG;
-  }
-
-  memset(&view, 0, sizeof(view));
-  view.ty = (uint32_t)SEDS_DT_GPS_DATA;
-  view.data_size = payload_len;
-  view.sender = TELEMETRY_DEVICE_IDENTIFIER;
-  view.sender_len = TELEMETRY_DEVICE_IDENTIFIER_LEN;
-  view.endpoints = endpoints;
-  view.num_endpoints = sizeof(endpoints) / sizeof(endpoints[0]);
-  view.timestamp = telemetry_unix_ms();
-  view.payload = (const uint8_t *)data;
-  view.payload_len = payload_len;
-
-  serialized_len = seds_pkt_pack(&view, out, out_len);
-  if (serialized_len < 0) {
-    return (SedsResult)serialized_len;
-  }
-  if ((size_t)serialized_len > out_len) {
-    return SEDS_PACKET_TOO_LARGE;
-  }
-
-  *written = (size_t)serialized_len;
-  return SEDS_OK;
-}
-
-static SedsResult telemetry_log_gps_direct(const void *data, size_t element_count,
-                                           size_t element_size) {
-  uint8_t bytes[TELEMETRY_GPS_WIRE_MAX_LEN];
-  size_t len = 0U;
-  SedsResult result;
-  HAL_StatusTypeDef radio_status;
-  const uint64_t now_ms = tx_raw_now_ms_locked();
-
-  result = telemetry_serialize_gps_packet(data, element_count, element_size, bytes,
-                                          sizeof(bytes), &len);
-  if (result != SEDS_OK) {
-    return result;
-  }
-
-  result = telemetry_send_or_queue_can_packet(bytes, len);
-
-  if (!telemetry_radio_gps_throttle_active(now_ms)) {
-    radio_status = radio_uart_send_bytes(bytes, len);
-    if (radio_status == HAL_OK) {
-      g_radio_last_gps_tx_ms = now_ms;
-      g_radio_gps_tx_seen = 1U;
-    } else if (radio_status != HAL_BUSY || radio_uart_tx_ready()) {
-      /* CAN is the primary path here; radio backpressure must not fail GPS logging. */
-      g_radio_gps_throttle_drops++;
-    }
-  }
-
-  return result;
-}
-
-static HAL_StatusTypeDef telemetry_send_or_queue_can_command(const uint8_t *bytes, size_t len) {
-  HAL_StatusTypeDef status;
-
-  if (!bytes || len == 0U) {
-    return HAL_ERROR;
-  }
-
-  status = can_bus_send_large(bytes, len, telemetry_flight_can_id(bytes, len));
-  if (status == HAL_OK) {
-    telemetry_note_flight_command_sent(bytes, len);
-    return HAL_OK;
-  }
-
-  return telemetry_enqueue_pending_can_command(bytes, len) ? HAL_BUSY : status;
-}
-
 static SedsResult telemetry_send_or_queue_can_packet(const uint8_t *bytes, size_t len) {
   const HAL_StatusTypeDef status =
       can_bus_send_large(bytes, len, telemetry_flight_can_id(bytes, len));
   if (status == HAL_OK) {
-    telemetry_note_flight_command_sent(bytes, len);
     return SEDS_OK;
   }
 
@@ -370,7 +193,6 @@ void telemetry_retry_pending_can_commands(void) {
       return;
     }
 
-    telemetry_note_flight_command_sent(cmd->data, cmd->len);
     g_pending_can_head = (uint8_t)((g_pending_can_head + 1U) % TELEMETRY_PENDING_CAN_DEPTH);
     g_pending_can_count--;
   }
@@ -521,30 +343,13 @@ static uint64_t node_now_since_ms(void *user) {
 
 SedsResult tx_send(const uint8_t *bytes, size_t len, void *user) {
   (void)user;
-  SedsResult result;
-  bool is_radio_flight_command = false;
 
   if (!bytes || len == 0U) {
     return SEDS_BAD_ARG;
   }
   sim_probe_observe_can_tx(bytes, len);
 
-  is_radio_flight_command =
-      (g_pending_radio_flight_commands > 0U) &&
-      (len == g_pending_radio_flight_command_len) &&
-      (telemetry_packet_wire_crc(bytes, len) == g_pending_radio_flight_command_crc);
-
-  result = telemetry_send_or_queue_can_packet(bytes, len);
-#if COMMAND_TRACE_PRINTS
-  if (result == SEDS_OK && is_radio_flight_command) {
-    printf("Flight computer CAN command TX: id=0x%03lx len=%u\r\n",
-           (unsigned long)TELEMETRY_FLIGHT_CAN_ID,
-           (unsigned)len);
-  }
-#else
-  (void)is_radio_flight_command;
-#endif
-  return result;
+  return telemetry_send_or_queue_can_packet(bytes, len);
 }
 
 static SedsResult radio_tx_send(const uint8_t *bytes, size_t len, void *user) {
@@ -602,17 +407,10 @@ static void telemetry_radio_rx(const uint8_t *data, size_t len, void *user) {
     return;
   }
 
-  if (radio_uart_current_rx_is_command_frame() &&
-      telemetry_radio_scheduler_handle_command(data, len)) {
-    return;
-  }
-
-  const bool is_priority_can_packet = telemetry_is_priority_radio_to_can_packet(data, len);
 #if COMMAND_TRACE_PRINTS
-  printf("Radio uplink RX: kind=%s len=%u priority_can=%u preview=",
+  printf("Radio uplink RX: kind=%s len=%u preview=",
          radio_uart_current_rx_is_command_frame() ? "command" : "data",
-         (unsigned)len,
-         is_priority_can_packet ? 1U : 0U);
+         (unsigned)len);
   for (size_t i = 0U; i < len && i < 12U; i++) {
     printf("%02X%s", data[i], (i + 1U < len && i + 1U < 12U) ? " " : "");
   }
@@ -621,29 +419,6 @@ static void telemetry_radio_rx(const uint8_t *data, size_t len, void *user) {
   }
   printf("\r\n");
 #endif
-
-  if (is_priority_can_packet) {
-#if COMMAND_TRACE_PRINTS
-    HAL_StatusTypeDef can_status;
-    printf("Ground station priority CAN packet RX: len=%u\r\n", (unsigned)len);
-    can_status = telemetry_send_or_queue_can_command(data, len);
-    if (can_status == HAL_OK) {
-      printf("Flight computer CAN command TX: id=0x%03lx len=%u\r\n",
-             (unsigned long)TELEMETRY_FLIGHT_CAN_ID,
-             (unsigned)len);
-    } else {
-      printf("Flight computer CAN command TX queued/failed: id=0x%03lx len=%u status=%ld pending=%u drops=%lu\r\n",
-             (unsigned long)TELEMETRY_FLIGHT_CAN_ID,
-             (unsigned)len,
-             (long)can_status,
-             (unsigned)g_pending_can_count,
-             (unsigned long)g_pending_can_drops);
-    }
-#else
-    (void)telemetry_send_or_queue_can_command(data, len);
-#endif
-    return;
-  }
 
   if (g_radio_side_id >= 0) {
     (void)seds_router_receive_packed_from_side(
@@ -945,10 +720,6 @@ SedsResult log_telemetry_asynchronous(SedsDataType data_type, const void *data,
 #ifdef TELEMETRY_ENABLED
   if (!data || element_count == 0U || element_size == 0U) {
     return SEDS_BAD_ARG;
-  }
-
-  if (data_type == SEDS_DT_GPS_DATA) {
-    return telemetry_log_gps_direct(data, element_count, element_size);
   }
 
   if (!g_router.r && init_telemetry_router() != SEDS_OK) {

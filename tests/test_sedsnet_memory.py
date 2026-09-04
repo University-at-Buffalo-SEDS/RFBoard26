@@ -52,20 +52,32 @@ class SedsnetMemoryTests(unittest.TestCase):
         self.assertIn("g_thread_stack_error_count", app)
         self.assertIn("tx_thread_stack_error_notify(thread_stack_error_handler)", app)
 
-    def test_half_duplex_radio_scheduler_is_enabled_and_stack_health_is_early(self):
-        cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+    def test_legacy_radio_scheduler_is_removed_and_stack_health_is_early(self):
         thread = (ROOT / "Core" / "Src" / "telemetry_thread.c").read_text(
             encoding="utf-8"
         )
-        self.assertIn(
-            "set(ENABLE_RADIO_SCHEDULER ON CACHE BOOL",
-            cmake,
-        )
+        self.assertNotIn("RADIO_SCHED", thread)
         entry = thread.split("void telemetry_thread_entry", 1)[1]
         self.assertLess(
             entry.index("telemetry_update_stack_profile();"),
             entry.index("init_telemetry_router();"),
         )
+
+    def test_radio_ingress_is_only_handed_to_sedsnet(self):
+        source = (ROOT / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
+        receive = source.split("static void telemetry_radio_rx", 1)[1]
+        receive = receive.split("void rx_asynchronous", 1)[0]
+        self.assertIn("seds_router_receive_packed_from_side", receive)
+        self.assertNotIn("can_bus_send_large", receive)
+        self.assertNotIn("telemetry_send_or_queue_can", receive)
+
+    def test_gps_uses_sedsnet_routing_instead_of_driver_fanout(self):
+        source = (ROOT / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
+        async_body = source.split("SedsResult log_telemetry_asynchronous", 1)[1]
+        async_body = async_body.split("SedsResult log_telemetry_string_asynchronous", 1)[0]
+        self.assertIn("seds_router_log_typed", async_body)
+        self.assertNotIn("radio_uart_send_bytes", async_body)
+        self.assertNotIn("can_bus_send_large", async_body)
 
     def test_normal_telemetry_does_not_use_the_fallback_tx_queue(self):
         source = (ROOT / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")

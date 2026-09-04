@@ -21,99 +21,17 @@ volatile int32_t g_telemetry_init_result __attribute__((used, externally_visible
 #define TELEMETRY_THREAD_SLEEP_TICKS 1U
 #define TELEMETRY_QUEUE_BUDGET_MS 1U
 #define TELEMETRY_ALIVE_PRINT_INTERVAL_MS 5000ULL
-#define RADIO_SCHED_MAGIC_0 0x52U
-#define RADIO_SCHED_MAGIC_1 0x53U
-#define RADIO_SCHED_VERSION 1U
-#define RADIO_SCHED_DOWNLINK 0U
-#define RADIO_SCHED_UPLINK 1U
-#define RADIO_SCHED_FLAG_HAS_MORE 0x01U
-#define RADIO_SCHED_FLAG_YIELD 0x02U
-#define RADIO_SCHED_BURST_MESSAGES 5U
-#define RADIO_SCHED_DOWNLINK_TIMEOUT_MS 300ULL
-#define RADIO_SCHED_MIN_DOWNLINK_BUDGET_MS 1U
-#define RADIO_SCHED_UPLINK_TIMEOUT_MS 4000ULL
-#define RADIO_SCHED_IDLE_UPLINK_POLL_MS 50ULL
-#define RADIO_SCHED_GRANT_RETRY_MS 50ULL
-#define RADIO_SCHED_GRANT_REANNOUNCE_MS 5000ULL
-#define RADIO_SCHED_TURNAROUND_MS 75ULL
-#define RADIO_SCHED_UPLINK_TO_DOWNLINK_TURNAROUND_MS 150ULL
-#define RADIO_SCHED_GS_TX_TURNAROUND_MS 600U
 #define TELEMETRY_THREAD_PRIORITY 3U
-
-#ifndef RADIO_SCHEDULER_ENABLED
-#define RADIO_SCHEDULER_ENABLED 0
-#endif
 
 #ifndef TELEMETRY_ALIVE_PRINTS
 #define TELEMETRY_ALIVE_PRINTS 0
 #endif
-
-static volatile uint32_t g_radio_downlink_windows = 0U;
-static volatile uint32_t g_radio_uplink_windows = 0U;
-static volatile uint32_t g_radio_downlink_tx_calls = 0U;
-static volatile uint32_t g_radio_uplink_rx_only_loops = 0U;
-static volatile uint32_t g_radio_sched_grant_failures = 0U;
-static volatile uint8_t g_radio_sched_gs_seq = 0U;
-static volatile uint8_t g_radio_sched_gs_flags = 0U;
-static volatile uint8_t g_radio_sched_gs_seen = 0U;
 
 static uint64_t radio_window_now_ms(void)
 {
     return ((uint64_t)tx_time_get() * 1000ULL) /
            (uint64_t)TX_TIMER_TICKS_PER_SECOND;
 }
-
-uint8_t telemetry_radio_scheduler_handle_command(const uint8_t *data, size_t len)
-{
-#if RADIO_SCHEDULER_ENABLED
-    if (data == NULL || len < 7U ||
-        data[0] != RADIO_SCHED_MAGIC_0 ||
-        data[1] != RADIO_SCHED_MAGIC_1 ||
-        data[2] != RADIO_SCHED_VERSION) {
-        return 0U;
-    }
-
-    g_radio_sched_gs_seq = data[4];
-    g_radio_sched_gs_flags = data[6];
-    g_radio_sched_gs_seen = 1U;
-#if COMMAND_TRACE_PRINTS
-    printf("Radio scheduler status RX: seq=%u flags=0x%02x\r\n",
-           (unsigned)g_radio_sched_gs_seq,
-           (unsigned)g_radio_sched_gs_flags);
-#endif
-    return 1U;
-#else
-    (void)data;
-    (void)len;
-    return 0U;
-#endif
-}
-
-#if RADIO_SCHEDULER_ENABLED
-static HAL_StatusTypeDef telemetry_emit_radio_grant(uint8_t turn, uint8_t seq)
-{
-    uint8_t payload[9];
-    HAL_StatusTypeDef status;
-    payload[0] = RADIO_SCHED_MAGIC_0;
-    payload[1] = RADIO_SCHED_MAGIC_1;
-    payload[2] = RADIO_SCHED_VERSION;
-    payload[3] = turn;
-    payload[4] = seq;
-    payload[5] = RADIO_SCHED_BURST_MESSAGES;
-    payload[6] = (radio_uart_tx_queue_count() > 0U) ? RADIO_SCHED_FLAG_HAS_MORE : 0U;
-    payload[7] = (uint8_t)(RADIO_SCHED_GS_TX_TURNAROUND_MS & 0xFFU);
-    payload[8] = (uint8_t)((RADIO_SCHED_GS_TX_TURNAROUND_MS >> 8U) & 0xFFU);
-    status = radio_uart_send_command_frame(payload, sizeof(payload));
-#if COMMAND_TRACE_PRINTS
-    printf("Radio scheduler grant %s seq=%u credit=%u status=%ld\r\n",
-           (turn == RADIO_SCHED_UPLINK) ? "uplink" : "downlink",
-           (unsigned)seq,
-           (unsigned)RADIO_SCHED_BURST_MESSAGES,
-           (long)status);
-#endif
-    return status;
-}
-#endif
 
 static void telemetry_print_alive_if_due(uint64_t now_ms, uint64_t *next_print_ms)
 {
@@ -137,7 +55,7 @@ static void telemetry_print_alive_if_due(uint64_t now_ms, uint64_t *next_print_m
            "tx_busy_count=%lu tx_enqueued=%lu tx_queue=%lu tx_budget_misses=%lu "
            "tx_drops=%lu tx_drop_oldest=%lu tx_drop_same_flow=%lu tx_drop_stale=%lu "
            "aux=%lu mode0_pins=%lu aux_busy=%lu tx_dma_started=%lu tx_dma_complete=%lu "
-           "tx_startup_drops=%lu win_down=%lu win_up=%lu down_tx_calls=%lu up_rx_loops=%lu sched_grant_fail=%lu "
+           "tx_startup_drops=%lu "
            "last_rx_len=%lu last_rx_preview=",
            (unsigned long)(uint32_t)now_ms,
            (unsigned long)radio_uart_tx_ready(),
@@ -166,11 +84,6 @@ static void telemetry_print_alive_if_due(uint64_t now_ms, uint64_t *next_print_m
            (unsigned long)radio_stats.tx_dma_started,
            (unsigned long)radio_stats.tx_dma_complete,
            (unsigned long)radio_stats.tx_startup_drops,
-           (unsigned long)g_radio_downlink_windows,
-           (unsigned long)g_radio_uplink_windows,
-           (unsigned long)g_radio_downlink_tx_calls,
-           (unsigned long)g_radio_uplink_rx_only_loops,
-           (unsigned long)g_radio_sched_grant_failures,
            (unsigned long)radio_stats.last_rx_len);
     for (uint8_t i = 0U; i < radio_stats.last_rx_preview_len; i++) {
         printf("%02X%s",
@@ -221,37 +134,9 @@ static void telemetry_update_stack_profile(void)
     }
 }
 
-#if RADIO_SCHEDULER_ENABLED
-static uint32_t telemetry_radio_downlink_budget_ms(uint64_t now_ms,
-                                                   uint64_t turn_started_ms)
-{
-    const uint64_t elapsed_ms = now_ms - turn_started_ms;
-    if (elapsed_ms >= RADIO_SCHED_DOWNLINK_TIMEOUT_MS) {
-        return 0U;
-    }
-
-    const uint64_t remaining_ms = RADIO_SCHED_DOWNLINK_TIMEOUT_MS - elapsed_ms;
-    if (remaining_ms > 0xFFFFFFFFULL) {
-        return 0xFFFFFFFFUL;
-    }
-
-    return (uint32_t)remaining_ms;
-}
-#endif
-
 void telemetry_thread_entry(ULONG initial_input)
 {
     (void)initial_input;
-#if RADIO_SCHEDULER_ENABLED
-    uint8_t radio_turn = RADIO_SCHED_DOWNLINK;
-    uint8_t radio_turn_seq = 0U;
-    uint8_t radio_turn_sent = 0U;
-    uint8_t radio_turn_grant_sent = 0U;
-    uint64_t radio_turn_started_ms = 0U;
-    uint64_t next_control_retry_ms = 0U;
-    uint64_t next_grant_reannounce_ms = 0U;
-    uint64_t next_idle_uplink_poll_ms = 0U;
-#endif
     uint64_t next_alive_print_ms = 0U;
 
     // Publish a nonzero stack margin before router/flash/link initialization.
@@ -291,92 +176,7 @@ void telemetry_thread_entry(ULONG initial_input)
         (void)telemetry_poll_timesync();
         ota_stream_poll();
 
-#if RADIO_SCHEDULER_ENABLED
-        if (radio_turn_started_ms == 0U) {
-            radio_turn_started_ms = now_ms;
-            radio_turn_seq++;
-            g_radio_downlink_windows++;
-            if (telemetry_emit_radio_grant(RADIO_SCHED_DOWNLINK, radio_turn_seq) == HAL_OK) {
-                radio_turn_grant_sent = 1U;
-                next_grant_reannounce_ms = now_ms + RADIO_SCHED_GRANT_REANNOUNCE_MS;
-            } else {
-                radio_turn_grant_sent = 0U;
-                g_radio_sched_grant_failures++;
-                next_control_retry_ms = now_ms + RADIO_SCHED_GRANT_RETRY_MS;
-            }
-        }
-
-        if (radio_turn == RADIO_SCHED_DOWNLINK) {
-            const uint8_t downlink_timeout =
-                (now_ms - radio_turn_started_ms) >= RADIO_SCHED_DOWNLINK_TIMEOUT_MS;
-            if (((radio_turn_sent >= RADIO_SCHED_BURST_MESSAGES) ||
-                 downlink_timeout ||
-                 (radio_uart_tx_queue_count() == 0U && now_ms >= next_idle_uplink_poll_ms)) &&
-                !radio_uart_tx_busy()) {
-                radio_turn = RADIO_SCHED_UPLINK;
-                radio_turn_sent = 0U;
-                radio_turn_seq++;
-                radio_turn_grant_sent = 0U;
-                radio_turn_started_ms = now_ms;
-                next_control_retry_ms = now_ms + RADIO_SCHED_TURNAROUND_MS;
-                next_grant_reannounce_ms = now_ms + RADIO_SCHED_TURNAROUND_MS + RADIO_SCHED_GRANT_REANNOUNCE_MS;
-                next_idle_uplink_poll_ms = now_ms + RADIO_SCHED_IDLE_UPLINK_POLL_MS;
-                g_radio_uplink_windows++;
-                g_radio_sched_gs_seen = 0U;
-            } else if (radio_turn_grant_sent) {
-                const uint32_t downlink_budget_ms =
-                    telemetry_radio_downlink_budget_ms(now_ms, radio_turn_started_ms);
-                if (downlink_budget_ms >= RADIO_SCHED_MIN_DOWNLINK_BUDGET_MS &&
-                    radio_uart_process_tx_with_budget(downlink_budget_ms) > 0U) {
-                    radio_turn_sent++;
-                    g_radio_downlink_tx_calls++;
-                }
-            }
-        } else {
-            g_radio_uplink_rx_only_loops++;
-            const uint8_t gs_done =
-                g_radio_sched_gs_seen &&
-                g_radio_sched_gs_seq == radio_turn_seq &&
-                (g_radio_sched_gs_flags & RADIO_SCHED_FLAG_YIELD) != 0U;
-            const uint8_t uplink_timeout =
-                (now_ms - radio_turn_started_ms) >= RADIO_SCHED_UPLINK_TIMEOUT_MS;
-            if (gs_done || uplink_timeout) {
-                radio_turn = RADIO_SCHED_DOWNLINK;
-                radio_turn_sent = 0U;
-                radio_turn_seq++;
-                radio_turn_grant_sent = 0U;
-                radio_turn_started_ms = now_ms;
-                next_control_retry_ms = now_ms + RADIO_SCHED_UPLINK_TO_DOWNLINK_TURNAROUND_MS;
-                next_grant_reannounce_ms = now_ms + RADIO_SCHED_UPLINK_TO_DOWNLINK_TURNAROUND_MS + RADIO_SCHED_GRANT_REANNOUNCE_MS;
-                g_radio_downlink_windows++;
-                g_radio_sched_gs_seen = 0U;
-            }
-        }
-
-        if (!radio_turn_grant_sent && now_ms >= next_control_retry_ms) {
-            if (telemetry_emit_radio_grant(radio_turn, radio_turn_seq) == HAL_OK) {
-                radio_turn_grant_sent = 1U;
-                next_grant_reannounce_ms = now_ms + RADIO_SCHED_GRANT_REANNOUNCE_MS;
-            } else {
-                radio_turn_grant_sent = 0U;
-                g_radio_sched_grant_failures++;
-                next_control_retry_ms = now_ms + RADIO_SCHED_GRANT_RETRY_MS;
-            }
-        } else if (radio_turn_grant_sent &&
-                   now_ms >= next_grant_reannounce_ms &&
-                   !radio_uart_tx_busy() &&
-                   (radio_turn == RADIO_SCHED_UPLINK ||
-                    (radio_turn == RADIO_SCHED_DOWNLINK && radio_uart_tx_queue_count() == 0U))) {
-            if (telemetry_emit_radio_grant(radio_turn, radio_turn_seq) == HAL_OK) {
-                next_grant_reannounce_ms = now_ms + RADIO_SCHED_GRANT_REANNOUNCE_MS;
-            } else {
-                g_radio_sched_grant_failures++;
-                next_grant_reannounce_ms = now_ms + RADIO_SCHED_GRANT_RETRY_MS;
-            }
-        }
-#else
         (void)radio_uart_process_tx();
-#endif
 
         tx_thread_sleep(TELEMETRY_THREAD_SLEEP_TICKS);
 

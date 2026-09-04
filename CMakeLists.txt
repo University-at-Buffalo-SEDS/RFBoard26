@@ -136,14 +136,11 @@ set(TELEMETRY_TIMESYNC_ANNOUNCE_INTERVAL_MS "2000" CACHE STRING "Time sync annou
 set(TELEMETRY_TIMESYNC_REQUEST_INTERVAL_MS "2000" CACHE STRING "Time sync request interval in milliseconds." FORCE)
 # Option defaults
 option(ENABLE_TELEMETRY "Enable the telemetry subsystem" ON)
-set(ENABLE_RADIO_SCHEDULER ON CACHE BOOL
-    "Enable the half-duplex radio turn/grant scheduler" FORCE)
 option(ENABLE_COMMAND_TRACE_PRINTS "Print ground-station command RX and flight-computer CAN TX events" OFF)
 set(ENABLE_COMMAND_TRACE_PRINTS OFF CACHE BOOL "Print ground-station command RX and flight-computer CAN TX events" FORCE)
 
 # Print its state for debugging
 message(STATUS "Telemetry enabled: ${ENABLE_TELEMETRY}")
-message(STATUS "Radio scheduler enabled: ${ENABLE_RADIO_SCHEDULER}")
 message(STATUS "Command trace prints enabled: ${ENABLE_COMMAND_TRACE_PRINTS}")
 if(TELEMETRY_TIMESYNC_MASTER_PRIO LESS 0)
     message(STATUS "Telemetry time sync role: CONSUMER (priority ${TELEMETRY_TIMESYNC_MASTER_PRIO})")
@@ -157,7 +154,6 @@ add_compile_definitions(
     TELEMETRY_TIMESYNC_SOURCE_TIMEOUT_MS=${TELEMETRY_TIMESYNC_SOURCE_TIMEOUT_MS}U
     TELEMETRY_TIMESYNC_ANNOUNCE_INTERVAL_MS=${TELEMETRY_TIMESYNC_ANNOUNCE_INTERVAL_MS}U
     TELEMETRY_TIMESYNC_REQUEST_INTERVAL_MS=${TELEMETRY_TIMESYNC_REQUEST_INTERVAL_MS}U
-    RADIO_SCHEDULER_ENABLED=$<BOOL:${ENABLE_RADIO_SCHEDULER}>
     COMMAND_TRACE_PRINTS=$<BOOL:${ENABLE_COMMAND_TRACE_PRINTS}>
 )
 

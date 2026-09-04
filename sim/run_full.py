@@ -334,7 +334,7 @@ def run_network_simulation(
         # The Pico-Fi/radio path deliberately models constrained serial links.
         # Leave enough virtual time for the open command and its status ACK to
         # traverse both directions across the constrained serial links.
-        "virtual_time_ms": 18000,
+        "virtual_time_ms": 8000,
         "sample_count": 4,
         "enforce_end_drop": False,
         "nodes": [
@@ -349,6 +349,7 @@ def run_network_simulation(
                 "env": {
                     "GS_DEBUG_PRINTS": "0",
                     "RUST_LOG": "info",
+                    "GS_SIMULATED_SERIAL_PTY": "1",
                     "GS_LAYOUT_PATH": "/opt/groundstation/backend/layout/layout_hitl.json",
                     "GS_AV_BAY_UNDERGLOW_DEFAULT": "1",
                     "GS_FLIGHT_STATE_DEFAULT": "1",
@@ -356,7 +357,11 @@ def run_network_simulation(
                 },
                 "serial_links": [
                     {"link": "rocket_radio", "env": "GS_AV_BAY_SERIAL_PORT"},
-                    {"link": "fill_pico", "env": "GS_FILL_SERIAL_PORT"}
+                    {
+                        "link": "fill_pico",
+                        "env": "GS_SIMULATED_I2C_SOCKET",
+                        "transport": "pico_fi_i2c_to_uart"
+                    }
                 ]
             }
         ],
