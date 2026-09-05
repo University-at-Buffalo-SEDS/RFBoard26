@@ -381,7 +381,7 @@ def run_network_simulation(
             for probe in layout["execution"]["memory_probes"]:
                 if probe.get("name") in {"valve_aborted", "heartbeat_timeouts"}:
                     probe.pop("maximum", None)
-                    probe["minimum"] = 1
+                    probe.pop("minimum", None)
         layouts[node] = layout
     topology = {
         "name": "complete-seds-avionics-and-fill-network",
@@ -467,6 +467,8 @@ def run_network_simulation(
             {"name": "Gateway received status ACK over CAN", "node": "gateway", "probe": "can_umbilical_status_count", "minimum": 1},
             {"name": "Gateway received pilot-open status", "node": "gateway", "probe": "gateway_pilot_open_status", "minimum": 1},
             {"name": "Gateway forwarded status ACK to GroundStation over UART", "node": "gateway", "probe": "uart_umbilical_status_count", "minimum": 1},
+            {"name": "Valve entered fail-safe after planned AV-bay power loss", "node": "valve", "probe": "valve_aborted", "sample": 4, "minimum": 1},
+            {"name": "Valve detected planned heartbeat loss", "node": "valve", "probe": "heartbeat_timeouts", "sample": 4, "minimum": 1},
             {"name": "rf applied GroundStation underglow variable", "node": "rf", "probe": "underglow_updates", "minimum": 1},
             {"name": "power applied GroundStation underglow variable", "node": "power", "probe": "underglow_updates", "minimum": 1},
             {"name": "flight applied GroundStation underglow variable", "node": "flight", "probe": "underglow_updates", "minimum": 1},
