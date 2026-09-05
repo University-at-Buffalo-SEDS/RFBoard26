@@ -148,6 +148,14 @@ class QualificationContractTests(unittest.TestCase):
         self.assertNotIn("seds_router_set_typed_route", telemetry)
         self.assertIn("#define RADIO_UART_MAX_PAYLOAD_SIZE    1024U", radio)
 
+    def test_radio_hop_retains_sedsnet_reliable_delivery(self):
+        root = Path(__file__).resolve().parents[1]
+        telemetry = (root / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
+        radio_setup = telemetry.split(
+            "g_radio_side_id = seds_router_add_side_packed_profile_with_priority(", 1
+        )[1].split(");", 1)[0]
+        self.assertIn('r, "radio", 5U, radio_tx_send, NULL, true,', radio_setup)
+
 
     def test_periodic_health_check_does_not_serialize_topology(self):
         root = Path(build.__file__).resolve().parent

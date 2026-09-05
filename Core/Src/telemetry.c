@@ -672,7 +672,7 @@ SedsResult init_telemetry_router(void) {
   /* Discovery topology can exceed one E22 frame. Let SEDSNet split/reassemble
    * those packets instead of rejecting them at the radio framing boundary. */
   g_radio_side_id = seds_router_add_side_packed_profile_with_priority(
-      r, "radio", 5U, radio_tx_send, NULL, false,
+      r, "radio", 5U, radio_tx_send, NULL, true,
       SEDS_SIDE_TRANSPORT_PROFILE_IPV6_LIKE, RF_RADIO_MAX_FRAME_BYTES, 0U,
       RF_SIDE_TRANSPORT_TEMPLATES);
   if (g_radio_side_id < 0) {
