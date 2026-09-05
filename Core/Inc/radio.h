@@ -69,6 +69,8 @@ HAL_StatusTypeDef radio_uart_start_rx(void);
 
 /* Queue serialized data bytes for the radio UART. */
 HAL_StatusTypeDef radio_uart_send_bytes(const uint8_t *bytes, size_t len);
+HAL_StatusTypeDef radio_uart_send_bytes_priority(const uint8_t *bytes, size_t len,
+                                                 uint8_t priority);
 HAL_StatusTypeDef radio_uart_send_plaintext(const uint8_t *bytes, size_t len);
 HAL_StatusTypeDef radio_uart_send_command_frame(const uint8_t *bytes, size_t len);
 uint8_t radio_uart_tx_ready(void);

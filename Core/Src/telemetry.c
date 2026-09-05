@@ -352,7 +352,8 @@ SedsResult tx_send(const uint8_t *bytes, size_t len, void *user) {
   return telemetry_send_or_queue_can_packet(bytes, len);
 }
 
-static SedsResult radio_tx_send(const uint8_t *bytes, size_t len, void *user) {
+static SedsResult radio_tx_send(const uint8_t *bytes, size_t len,
+                                uint8_t priority, void *user) {
   (void)user;
   HAL_StatusTypeDef status;
 
@@ -364,7 +365,7 @@ static SedsResult radio_tx_send(const uint8_t *bytes, size_t len, void *user) {
   g_sim_radio_egress_peer_mask |= sim_probe_peer_bit_packed(bytes, len);
 #endif
 
-  status = radio_uart_send_bytes(bytes, len);
+  status = radio_uart_send_bytes_priority(bytes, len, priority);
   return (status == HAL_OK) ? SEDS_OK : SEDS_IO;
 }
 
@@ -664,7 +665,7 @@ SedsResult init_telemetry_router(void) {
    * the startup control item on radio before the avionics CAN peers see it. */
   /* Discovery topology can exceed one E22 frame. Let SEDSNet split/reassemble
    * those packets instead of rejecting them at the radio framing boundary. */
-  g_radio_side_id = seds_router_add_side_packed_profile(
+  g_radio_side_id = seds_router_add_side_packed_profile_with_priority(
       r, "radio", 5U, radio_tx_send, NULL, false,
       SEDS_SIDE_TRANSPORT_PROFILE_IPV6_LIKE, RF_RADIO_MAX_FRAME_BYTES, 0U,
       RF_SIDE_TRANSPORT_TEMPLATES);

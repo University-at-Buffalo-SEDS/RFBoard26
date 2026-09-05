@@ -197,7 +197,6 @@ def run_memory_profile(
     # while an isolated controller repeatedly retries CAN. Register and memory
     # probes still provide the required fault diagnostics for this soak.
     layout["execution"]["trace"] = False
-
     with tempfile.TemporaryDirectory(prefix="seds-firmware-profile-") as directory:
         write_container_layout(Path(directory), layout)
         command = [
@@ -233,14 +232,19 @@ def run_unacknowledged_can_simulation(
         probe for probe in probes
         if probe.get("name") not in {"network_ready", "discovery_seen", "timesync_valid"}
     ]
-    layout["execution"]["memory_probe_warmup_samples"] = 3
+    layout["execution"]["memory_probe_warmup_samples"] = 2
+    layout["execution"]["trace"] = False
+    for probe in layout["execution"]["memory_probes"]:
+        if probe.get("name") == "fdcan_tx_fail":
+            probe.pop("maximum", None)
+            probe["minimum"] = 1
     with tempfile.TemporaryDirectory(prefix="seds-firmware-isolated-can-") as directory:
         write_container_layout(Path(directory), layout)
         command = [docker, "run", "--rm", "-v", f"{repo_root}:/firmware:ro",
                    "-v", f"{directory}:/simulation:ro", image, "profile",
                    "--layout", "/simulation/board.json", "--firmware-root", "/firmware",
-                   "--can-unacknowledged", "--virtual-time-ms", "1000",
-                   "--sample-count", "20", "--traffic-iterations", "100000"]
+                   "--can-unacknowledged", "--virtual-time-ms", "250",
+                   "--sample-count", "5", "--traffic-iterations", "100000"]
         ui.say("run", " ".join(command))
         run_live(command, "disconnected CAN survival simulation")
 

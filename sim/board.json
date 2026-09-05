@@ -82,14 +82,6 @@
       ,{"name": "radio_rx_frames", "symbol": "g_radio_rx_frames_ok"}
       ,{"name": "radio_tx_frames", "symbol": "g_radio_tx_ok"}
       ,{"name": "radio_tx_drops", "symbol": "g_tx_drops"}
-      ,{"name": "radio_tx_drop_stale", "symbol": "g_tx_drop_stale"}
-      ,{"name": "radio_tx_drop_same_flow", "symbol": "g_tx_drop_same_flow"}
-      ,{"name": "radio_tx_drop_oldest", "symbol": "g_tx_drop_oldest"}
-      ,{"name": "radio_tx_drop_control", "symbol": "g_tx_drop_control"}
-      ,{"name": "radio_tx_drop_discovery", "symbol": "g_tx_drop_discovery", "maximum": 0}
-      ,{"name": "radio_tx_drop_network_control", "symbol": "g_tx_drop_network_control", "maximum": 0}
-      ,{"name": "radio_tx_drop_heartbeat", "symbol": "g_tx_drop_heartbeat"}
-      ,{"name": "radio_tx_drop_application", "symbol": "g_tx_drop_application"}
       ,{"name": "hardfault_mmfar", "symbol": "g_hardfault_mmfar"}
       ,{"name": "hardfault_bfar", "symbol": "g_hardfault_bfar"}
       ,{"name": "hardfault_stacked_lr", "symbol": "g_hardfault_stacked_lr"}

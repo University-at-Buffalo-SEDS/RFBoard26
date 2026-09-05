@@ -572,7 +572,8 @@ static void radio_uart_drop_item_stale_or_requeue_front(const radio_tx_item_t *i
   radio_uart_unlock_tx_queue();
 }
 
-static HAL_StatusTypeDef radio_uart_enqueue_frame(const uint8_t *data, uint16_t len) {
+static HAL_StatusTypeDef radio_uart_enqueue_frame(const uint8_t *data, uint16_t len,
+                                                  int16_t priority_override) {
   uint32_t flow_id;
   uint8_t incoming_priority = 0U;
   uint8_t incoming_is_heartbeat = 0U;
@@ -582,6 +583,21 @@ static HAL_StatusTypeDef radio_uart_enqueue_frame(const uint8_t *data, uint16_t 
   flow_id = radio_uart_flow_id_from_frame(data, len, &incoming_priority,
                                            &incoming_is_heartbeat,
                                            &incoming_control_class);
+  if (priority_override >= 0) {
+    incoming_priority = (uint8_t)priority_override;
+    incoming_control_class =
+        (incoming_priority == RADIO_UART_PRIORITY_DISCOVERY)
+            ? RADIO_UART_CLASS_DISCOVERY
+            : ((incoming_priority == RADIO_UART_PRIORITY_NETWORK_CONTROL)
+                   ? RADIO_UART_CLASS_NETWORK_CONTROL
+                   : RADIO_UART_CLASS_APPLICATION);
+    /* Side-transport frames begin with SDT, not a canonical packet envelope.
+     * Keep distinct compact/chunk frames distinct if the legacy flow parser
+     * cannot identify them; coalescing all fallback frames corrupts discovery. */
+    if (flow_id == RADIO_UART_SCHED_FALLBACK_FLOW) {
+      flow_id = radio_hash_finish(radio_hash_update(2166136261UL, data, len));
+    }
+  }
   if (radio_uart_lock_tx_queue() != HAL_OK) return HAL_ERROR;
 
   radio_uart_drop_stale_locked(radio_now_ms());
@@ -921,7 +937,53 @@ HAL_StatusTypeDef radio_uart_send_bytes(const uint8_t *bytes, size_t len) {
   framed[2] = (uint8_t)(len & 0xFFU);
   framed[3] = (uint8_t)((len >> 8U) & 0xFFU);
   memcpy(&framed[RADIO_UART_FRAME_HEADER_SIZE], bytes, len);
-  return radio_uart_enqueue_frame(framed, (uint16_t)(RADIO_UART_FRAME_HEADER_SIZE + len));
+  return radio_uart_enqueue_frame(
+      framed, (uint16_t)(RADIO_UART_FRAME_HEADER_SIZE + len), -1);
+}
+
+HAL_StatusTypeDef radio_uart_send_bytes_priority(const uint8_t *bytes, size_t len,
+                                                 uint8_t priority) {
+  HAL_StatusTypeDef status;
+  (void)priority;
+  if (!g_huart) return HAL_ERROR;
+  if (!bytes || len == 0U || len > RADIO_UART_MAX_PAYLOAD_SIZE) return HAL_ERROR;
+  if (RFBOARD_RADIO_LISTEN_ONLY) return HAL_BUSY;
+  if (!radio_uart_tx_ready()) {
+    g_tx_startup_drops++;
+    return HAL_BUSY;
+  }
+  uint8_t framed[RADIO_UART_FRAME_BUF_SIZE];
+  framed[0] = RADIO_UART_FRAME_SYNC_0;
+  framed[1] = RADIO_UART_FRAME_SYNC_1;
+  framed[2] = (uint8_t)(len & 0xFFU);
+  framed[3] = (uint8_t)((len >> 8U) & 0xFFU);
+  memcpy(&framed[RADIO_UART_FRAME_HEADER_SIZE], bytes, len);
+
+  /* SEDSNet has already scheduled these frames by logical priority and its
+   * compact transport relies on their wire order (a full template must arrive
+   * before compact frames that reference it).  A second asynchronous priority
+   * queue here used to reorder/coalesce SDT frames, which made discovery vanish
+   * at the GroundStation and added seconds of latency.  RFD900x accepts the
+   * UART byte stream directly, so transmit synchronously and preserve exactly
+   * the order selected by SEDSNet. RX DMA remains armed because STM32 UART has
+   * independent transmit and receive state machines. */
+  if (!radio_e22_ready_for_uart() || g_tx_dma_busy) {
+    g_tx_busy++;
+    return HAL_BUSY;
+  }
+  status = HAL_UART_Transmit(
+      g_huart, framed, (uint16_t)(RADIO_UART_FRAME_HEADER_SIZE + len),
+      radio_uart_tx_timeout_ms((uint16_t)(RADIO_UART_FRAME_HEADER_SIZE + len)));
+  if (status == HAL_OK) {
+    g_radio_tx_ok++;
+    HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
+  } else {
+    g_tx_errors++;
+    if (status == HAL_BUSY) {
+      g_tx_busy++;
+    }
+  }
+  return status;
 }
 
 HAL_StatusTypeDef radio_uart_send_plaintext(const uint8_t *bytes, size_t len) {
@@ -934,7 +996,7 @@ HAL_StatusTypeDef radio_uart_send_plaintext(const uint8_t *bytes, size_t len) {
     g_tx_startup_drops++;
     return HAL_BUSY;
   }
-  return radio_uart_enqueue_frame(bytes, (uint16_t)len);
+  return radio_uart_enqueue_frame(bytes, (uint16_t)len, -1);
 }
 
 HAL_StatusTypeDef radio_uart_send_command_frame(const uint8_t *bytes, size_t len) {

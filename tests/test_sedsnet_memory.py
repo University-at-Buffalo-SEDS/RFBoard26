@@ -150,27 +150,21 @@ class SedsnetMemoryTests(unittest.TestCase):
         self.assertIn("g_tx_drop_application++", classifier)
 
         layout = (ROOT / "sim" / "board.json").read_text(encoding="utf-8")
-        self.assertIn('"symbol": "g_tx_drop_heartbeat"', layout)
-        self.assertIn('"symbol": "g_tx_drop_application"', layout)
-        self.assertIn('"symbol": "g_tx_drop_control"', layout)
-        self.assertIn('"symbol": "g_tx_drop_discovery"', layout)
-        self.assertIn('"symbol": "g_tx_drop_network_control"', layout)
+        self.assertIn('"symbol": "g_tx_drops"', layout)
 
-    def test_discovery_cannot_be_starved_by_normal_radio_traffic(self):
+    def test_sedsnet_radio_frames_preserve_scheduler_order(self):
         radio = (ROOT / "Core" / "Src" / "radio.c").read_text(encoding="utf-8")
-        self.assertIn("RADIO_UART_PRIORITY_DISCOVERY       255U", radio)
-        self.assertIn("data_type >= 7ULL && data_type <= 12ULL", radio)
-        self.assertIn("data_type >= 15ULL && data_type <= 17ULL", radio)
-        self.assertIn("if (incoming_priority < lowest_priority)", radio)
-        self.assertIn(
-            "lowest_priority >= RADIO_UART_PRIORITY_NETWORK_CONTROL", radio
-        )
         telemetry = (ROOT / "Core" / "Src" / "telemetry.c").read_text(
             encoding="utf-8"
         )
-        self.assertNotIn(
-            "status == HAL_BUSY && !radio_uart_tx_ready()", telemetry
-        )
+        send = radio.split("HAL_StatusTypeDef radio_uart_send_bytes_priority", 1)[1]
+        send = send.split("HAL_StatusTypeDef radio_uart_send_plaintext", 1)[0]
+        self.assertIn("HAL_UART_Transmit(", send)
+        self.assertNotIn("radio_uart_enqueue_frame", send)
+        self.assertNotIn("radio_uart_air_busy", send)
+        self.assertNotIn("radio_uart_mark_tx_quiet", send)
+        self.assertIn("seds_router_add_side_packed_profile_with_priority", telemetry)
+        self.assertIn("radio_uart_send_bytes_priority(bytes, len, priority)", telemetry)
 
     def test_radio_priority_reserves_network_control_then_uses_schema_order(self):
         radio = (ROOT / "Core" / "Src" / "radio.c").read_text(encoding="utf-8")
