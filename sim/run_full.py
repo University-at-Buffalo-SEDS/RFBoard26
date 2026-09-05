@@ -217,6 +217,30 @@ def run_memory_profile(
         run_live(command, "allocator stress and firmware memory profile")
 
 
+def run_unacknowledged_can_simulation(
+    ui, repo_root: Path, architecture: str, build_subdir: str | None = None
+) -> None:
+    """Prove firmware remains alive when it is the only node on its CAN bus."""
+    docker = require_docker()
+    image = resolve_simulator_image(ui, docker, repo_root, architecture)
+    layout = load_layout_for_build(repo_root, build_subdir)
+    probes = layout.get("execution", {}).get("memory_probes", [])
+    layout["execution"]["memory_probes"] = [
+        probe for probe in probes
+        if probe.get("name") not in {"network_ready", "discovery_seen", "timesync_valid"}
+    ]
+    layout["execution"]["memory_probe_warmup_samples"] = 3
+    with tempfile.TemporaryDirectory(prefix="seds-firmware-isolated-can-") as directory:
+        write_container_layout(Path(directory), layout)
+        command = [docker, "run", "--rm", "-v", f"{repo_root}:/firmware:ro",
+                   "-v", f"{directory}:/simulation:ro", image, "profile",
+                   "--layout", "/simulation/board.json", "--firmware-root", "/firmware",
+                   "--can-unacknowledged", "--virtual-time-ms", "5000",
+                   "--sample-count", "20", "--traffic-iterations", "100000"]
+        ui.say("run", " ".join(command))
+        run_live(command, "disconnected CAN survival simulation")
+
+
 def _network_peer(repo_root: Path) -> tuple[str, Path]:
     current = json.loads(
         (repo_root / "sim" / "board.json").read_text(encoding="utf-8")
