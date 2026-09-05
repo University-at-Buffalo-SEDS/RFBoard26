@@ -193,6 +193,10 @@ def run_memory_profile(
         if probe.get("name") not in {"network_ready", "discovery_seen", "timesync_valid"}
     ]
     layout["execution"]["memory_probe_warmup_samples"] = 3
+    # Instruction tracing retains every executed PC and can consume gigabytes
+    # while an isolated controller repeatedly retries CAN. Register and memory
+    # probes still provide the required fault diagnostics for this soak.
+    layout["execution"]["trace"] = False
 
     with tempfile.TemporaryDirectory(prefix="seds-firmware-profile-") as directory:
         write_container_layout(Path(directory), layout)
