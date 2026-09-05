@@ -374,6 +374,14 @@ def run_network_simulation(
     for node, _repository, _layout_name, _bit, _can in boards:
         layout = load_layout_for_build(roots[node], None)
         layout["execution"]["memory_probe_warmup_samples"] = 0
+        if node == "valve":
+            # This scenario deliberately resets two heartbeat-producing AV-bay
+            # nodes. The valve must enter its fail-safe state; standalone and
+            # normal-boot profiles still reject unexpected aborts/timeouts.
+            for probe in layout["execution"]["memory_probes"]:
+                if probe.get("name") in {"valve_aborted", "heartbeat_timeouts"}:
+                    probe.pop("maximum", None)
+                    probe["minimum"] = 1
         layouts[node] = layout
     topology = {
         "name": "complete-seds-avionics-and-fill-network",
