@@ -98,6 +98,21 @@ class QualificationContractTests(unittest.TestCase):
             startup_prime,
         )
 
+    def test_router_clock_epoch_is_fixed_before_router_and_side_setup(self):
+        root = Path(build.__file__).resolve().parent
+        telemetry = (root / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
+        init = telemetry.index("SedsResult init_telemetry_router(void)")
+        body = telemetry[init:]
+        epoch = body.index("g_router.start_time = init_now_ms;")
+        create = body.index("seds_router_new_with_memory")
+        can_side = body.index('r, "can", 3U, tx_send')
+        radio_side = body.index('r, "radio", 5U, radio_tx_send')
+
+        self.assertLess(epoch, create)
+        self.assertLess(epoch, can_side)
+        self.assertLess(epoch, radio_side)
+        self.assertEqual(body.count("g_router.start_time ="), 1)
+
     def test_layout_uses_scheduler_as_factory_boot_success_symbol(self):
         root = Path(build.__file__).resolve().parent
         layout = json.loads((root / "sim" / "board.json").read_text(encoding="utf-8"))

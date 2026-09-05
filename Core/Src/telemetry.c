@@ -559,6 +559,13 @@ SedsResult init_telemetry_router(void) {
   }
   telemetry_memory_profile_mark(0U);
 
+  /* Establish the router clock epoch before constructing the router or adding
+   * either side. Those operations schedule discovery and time-sync deadlines.
+   * Resetting start_time afterward moves the monotonic clock backwards and can
+   * postpone the first cross-side discovery refresh until the raw boot uptime
+   * is reached a second time. */
+  g_router.start_time = init_now_ms;
+
   if (!g_can_rx_subscribed) {
     if (can_bus_subscribe_rx(telemetry_can_rx, NULL) == HAL_OK) {
       g_can_rx_subscribed = 1U;
@@ -641,7 +648,6 @@ SedsResult init_telemetry_router(void) {
   g_router.r = r;
   (void)flight_state_cache_init(r);
   g_router.created = 1U;
-  g_router.start_time = tx_raw_now_ms_locked();
   /* Prime the first source announcement after the router clock and sides are
    * fully live.  This avoids depending on a later scheduler tick to make a
    * newly booted bay discover a valid network clock. */
