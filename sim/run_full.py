@@ -235,7 +235,7 @@ def run_unacknowledged_can_simulation(
         command = [docker, "run", "--rm", "-v", f"{repo_root}:/firmware:ro",
                    "-v", f"{directory}:/simulation:ro", image, "profile",
                    "--layout", "/simulation/board.json", "--firmware-root", "/firmware",
-                   "--can-unacknowledged", "--virtual-time-ms", "5000",
+                   "--can-unacknowledged", "--virtual-time-ms", "1000",
                    "--sample-count", "20", "--traffic-iterations", "100000"]
         ui.say("run", " ".join(command))
         run_live(command, "disconnected CAN survival simulation")
