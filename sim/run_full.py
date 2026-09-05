@@ -107,6 +107,12 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str
         _build_simulator_image(ui, docker, source, local)
         return local
 
+    # An explicitly selected local development image should be used as-is.
+    # Mutable published tags (the default `latest`) are still pulled below so
+    # normal board tests automatically pick up simulator releases.
+    if "SEDS_FIRMWARE_SIM_IMAGE" in os.environ and _image_exists(docker, requested):
+        return requested
+
     ui.say("run", f"{docker} pull {requested}")
     # Always refresh mutable tags such as latest. Inherit terminal streams so
     # layer downloads and extraction remain visible instead of looking hung.
@@ -197,6 +203,7 @@ def run_memory_profile(
     # while an isolated controller repeatedly retries CAN. Register and memory
     # probes still provide the required fault diagnostics for this soak.
     layout["execution"]["trace"] = False
+
     with tempfile.TemporaryDirectory(prefix="seds-firmware-profile-") as directory:
         write_container_layout(Path(directory), layout)
         command = [
@@ -233,18 +240,28 @@ def run_unacknowledged_can_simulation(
         if probe.get("name") not in {"network_ready", "discovery_seen", "timesync_valid"}
     ]
     layout["execution"]["memory_probe_warmup_samples"] = 2
+    # An isolated node retries quickly. Keep register and memory probes, but do
+    # not retain an unbounded instruction trace in the simulator process.
     layout["execution"]["trace"] = False
     for probe in layout["execution"]["memory_probes"]:
         if probe.get("name") == "fdcan_tx_fail":
             probe.pop("maximum", None)
             probe["minimum"] = 1
+
     with tempfile.TemporaryDirectory(prefix="seds-firmware-isolated-can-") as directory:
         write_container_layout(Path(directory), layout)
-        command = [docker, "run", "--rm", "-v", f"{repo_root}:/firmware:ro",
-                   "-v", f"{directory}:/simulation:ro", image, "profile",
-                   "--layout", "/simulation/board.json", "--firmware-root", "/firmware",
-                   "--can-unacknowledged", "--virtual-time-ms", "250",
-                   "--sample-count", "5", "--traffic-iterations", "100000"]
+        command = [
+            docker, "run", "--rm",
+            "-v", f"{repo_root}:/firmware:ro",
+            "-v", f"{directory}:/simulation:ro",
+            image, "profile",
+            "--layout", "/simulation/board.json",
+            "--firmware-root", "/firmware",
+            "--can-unacknowledged",
+            "--virtual-time-ms", "250",
+            "--sample-count", "5",
+            "--traffic-iterations", "100000",
+        ]
         ui.say("run", " ".join(command))
         run_live(command, "disconnected CAN survival simulation")
 
@@ -366,9 +383,16 @@ def run_network_simulation(
         # The Pico-Fi/radio path deliberately models constrained serial links.
         # Leave enough virtual time for the open command and its status ACK to
         # traverse both directions across the constrained serial links.
-        "virtual_time_ms": 8000,
-        "sample_count": 4,
+        "virtual_time_ms": 10000,
+        "sample_count": 5,
         "enforce_end_drop": False,
+        # Reboot the FC after GroundStation has published and the FC has
+        # persisted underglow=1. Renode retains physical flash across this
+        # reset, matching a real power cycle while all network peers stay up.
+        "reboots": [
+            {"node": "flight", "after_sample": 2},
+            {"node": "power", "after_sample": 2},
+        ],
         "nodes": [
             {"name": node, "layout": f"/simulation/{node}.json", "firmware_root": f"/nodes/{node}"}
             for node, *_ in boards
@@ -380,11 +404,14 @@ def run_network_simulation(
                 "cwd": "/opt/groundstation/backend",
                 "env": {
                     "GS_DEBUG_PRINTS": "0",
+                    "GS_RADIO_DIAGNOSTICS": "1",
                     "RUST_LOG": "info",
                     "GS_SIMULATED_SERIAL_PTY": "1",
                     "GS_LAYOUT_PATH": "/opt/groundstation/backend/layout/layout_hitl.json",
                     "GS_AV_BAY_UNDERGLOW_DEFAULT": "1",
                     "GS_FLIGHT_STATE_DEFAULT": "1",
+                    "GS_SIM_UNDERGLOW_SEQUENCE": "1,0,1",
+                    "GS_SIM_FLIGHT_BUZZER_SEQUENCE": "1,0,1",
                     "GS_SIM_VALIDATE_VALVE_ROUNDTRIP": "1",
                     "GS_HEARTBEAT_INTERVAL_MS": "7000",
                     "GS_SIM_DISABLE_PERIODIC_DISCOVERY": "1",
@@ -435,11 +462,35 @@ def run_network_simulation(
             {"name": "rf applied GroundStation underglow variable", "node": "rf", "probe": "underglow_updates", "minimum": 1},
             {"name": "power applied GroundStation underglow variable", "node": "power", "probe": "underglow_updates", "minimum": 1},
             {"name": "flight applied GroundStation underglow variable", "node": "flight", "probe": "underglow_updates", "minimum": 1},
+            {"name": "rf persisted the 1-0-1 underglow sequence", "node": "rf", "probe": "underglow_persist_writes", "minimum": 3},
+            {"name": "power persisted the 1-0-1 underglow sequence", "node": "power", "probe": "underglow_persist_writes", "minimum": 3},
+            {"name": "flight persisted the 1-0-1 underglow sequence", "node": "flight", "probe": "underglow_persist_writes", "minimum": 3},
+            {"name": "rf persistence remained healthy", "node": "rf", "probe": "underglow_persist_errors", "maximum": 0},
+            {"name": "power persistence remained healthy", "node": "power", "probe": "underglow_persist_errors", "maximum": 0},
+            {"name": "flight persistence remained healthy", "node": "flight", "probe": "underglow_persist_errors", "maximum": 0},
+            {"name": "flight applied GroundStation buzzer variable", "node": "flight", "probe": "flight_buzzer_updates", "minimum": 3},
+            {"name": "flight persisted the 1-0-1 buzzer sequence", "node": "flight", "probe": "flight_buzzer_persist_writes", "minimum": 3},
+            {"name": "flight buzzer persistence remained healthy", "node": "flight", "probe": "flight_buzzer_persist_errors", "maximum": 0},
+            {"name": "flight buzzer finished enabled", "node": "flight", "probe": "flight_buzzer_enabled", "minimum": 1},
             {"name": "rf underglow is enabled", "node": "rf", "probe": "underglow_enabled", "minimum": 1},
             {"name": "power underglow is enabled", "node": "power", "probe": "underglow_enabled", "minimum": 1},
             {"name": "flight underglow is enabled", "node": "flight", "probe": "underglow_enabled", "minimum": 1},
-            *[{"name": f"{node} received GroundStation flight state", "node": node, "probe": "flight_state_updates", "minimum": 1} for node, *_ in boards],
-            *[{"name": f"{node} converged on GroundStation flight state", "node": node, "probe": "flight_state_cache", "minimum": 1, "maximum": 1} for node, *_ in boards],
+            {"name": "flight restored underglow from retained flash after reboot", "node": "flight", "probe": "underglow_boot_restore_valid", "minimum": 1},
+            {"name": "flight restored enabled underglow before network resync", "node": "flight", "probe": "underglow_boot_restored_value", "minimum": 1, "maximum": 1},
+            {"name": "power restored underglow from retained flash after reboot", "node": "power", "probe": "underglow_boot_restore_valid", "minimum": 1},
+            {"name": "power restored enabled underglow before network resync", "node": "power", "probe": "underglow_boot_restored_value", "minimum": 1, "maximum": 1},
+            {"name": "flight rejoined the network after reboot", "node": "flight", "probe": "network_ready", "minimum": 1, "sample": 4},
+            {"name": "power rejoined the network after reboot", "node": "power", "probe": "network_ready", "minimum": 1, "sample": 4},
+            *[
+                {"name": f"{node} received GroundStation flight state", "node": node,
+                 "probe": "flight_state_updates", "minimum": 1}
+                for node, *_ in boards
+            ],
+            *[
+                {"name": f"{node} converged on GroundStation flight state", "node": node,
+                 "probe": "flight_state_cache", "minimum": 1, "maximum": 1}
+                for node, *_ in boards
+            ],
         ],
         "host_log_assertions": [
             {"name": "GroundStation discovered every board by autonomous name",
