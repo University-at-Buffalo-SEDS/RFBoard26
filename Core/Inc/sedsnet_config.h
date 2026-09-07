@@ -16,6 +16,7 @@
 #define SEDS_EP_FLIGHT_STATE ((SedsDataEndpoint)105U)
 #define SEDS_EP_HEART_BEAT ((SedsDataEndpoint)106U)
 #define SEDS_EP_ACTUATOR_BOARD ((SedsDataEndpoint)107U)
+#define SEDS_EP_AV_BAY_UNDERGLOW_OWNER ((SedsDataEndpoint)108U)
 
 #define SEDS_DT_GENERIC_ERROR ((SedsDataType)100U)
 #define SEDS_DT_GPS_DATA ((SedsDataType)101U)

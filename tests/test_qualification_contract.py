@@ -40,7 +40,7 @@ class QualificationContractTests(unittest.TestCase):
         self.assertIn('"fill_pico"', runner)
         self.assertIn('"GS_SIM_VALIDATE_VALVE_ROUNDTRIP": "1"', runner)
         self.assertIn('"probe": "valve_commands_received", "minimum": 1', runner)
-        self.assertIn("forwarded status ACK to GroundStation", runner)
+        self.assertIn("routed status ACK toward GroundStation", runner)
         self.assertIn('simulation_env["SEDS_FIRMWARE_SIM_TEST"] = "1"', runner)
         self.assertIn('run_live(command, "firmware simulation")', runner)
         self.assertIn('running ({int(now - started)}s elapsed)', runner)
