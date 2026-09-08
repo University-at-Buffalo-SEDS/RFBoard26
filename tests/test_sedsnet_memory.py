@@ -46,6 +46,9 @@ class SedsnetMemoryTests(unittest.TestCase):
         gps_thread = (ROOT / "Core" / "Src" / "neom9n_thread.c").read_text(
             encoding="utf-8"
         )
+        self.assertIn("gps_satellite_count_or_zero", gps_thread)
+        self.assertIn("return 0U;", gps_thread)
+        self.assertIn("GPS_SATELLITE_LOG_INTERVAL_MS", gps_thread)
         self.assertIn("NEOM9N_THREAD_STACK_SIZE (5U * 1024U)", gps_thread)
         self.assertRegex(threadx, r"(?m)^#define TX_ENABLE_STACK_CHECKING$")
         app = (ROOT / "Core" / "Src" / "app_threadx.c").read_text(encoding="utf-8")

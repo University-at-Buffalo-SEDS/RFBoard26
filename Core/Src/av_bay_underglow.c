@@ -8,7 +8,8 @@
 #include <stdint.h>
 
 #define UNDERGLOW_PERSIST_KEY 0x55474C57u
-#define NETWORK_VARIABLE_REFRESH_INTERVAL_MS 250U
+#define NETWORK_VARIABLE_UNSYNCED_RETRY_MS 100U
+#define NETWORK_VARIABLE_REFRESH_INTERVAL_MS 2000U
 
 volatile uint32_t g_av_bay_underglow_enabled = 0U;
 volatile uint32_t g_av_bay_underglow_updates = 0U;
@@ -19,6 +20,8 @@ volatile uint32_t g_av_bay_underglow_persist_errors = 0U;
 static bool g_persist_ready = false;
 static bool g_persist_has_value = false;
 static bool g_restore_attempted = false;
+static bool g_network_value_seen = false;
+static uint32_t g_last_refresh_ms = 0U;
 
 static void drive_underglow(bool enabled)
 {
@@ -71,6 +74,7 @@ static SedsResult apply_underglow(const SedsPacketView *packet, void *user)
     const bool needs_persist = !g_persist_has_value ||
                                g_av_bay_underglow_enabled != (uint32_t)enabled;
     drive_underglow(enabled);
+    g_network_value_seen = true;
     g_av_bay_underglow_updates++;
 
     if (needs_persist)
@@ -98,19 +102,26 @@ SedsResult av_bay_underglow_init(SedsRouter *router)
     SedsResult result = seds_router_enable_network_variable(
         router, SEDS_DT_AV_BAY_UNDERGLOW, true, false);
     if (result != SEDS_OK) return result;
-    return seds_router_on_network_variable_update(
+    result = seds_router_on_network_variable_update(
         router, SEDS_DT_AV_BAY_UNDERGLOW, apply_underglow, NULL);
+    if (result != SEDS_OK) return result;
+    /* Never wait for a reply on the router's own service thread.  The cached
+     * flash value remains active until the authoritative network value arrives. */
+    g_last_refresh_ms = HAL_GetTick();
+    result = seds_router_request_managed_variable(
+        router, SEDS_DT_AV_BAY_UNDERGLOW);
+    return result == SEDS_IO ? SEDS_OK : result;
 }
 
 SedsResult av_bay_underglow_poll(SedsRouter *router)
 {
-    static uint32_t last_refresh_ms = 0U;
     if (router == NULL) return SEDS_BAD_ARG;
     const uint32_t now_ms = HAL_GetTick();
-    if ((uint32_t)(now_ms - last_refresh_ms) <
-        NETWORK_VARIABLE_REFRESH_INTERVAL_MS) return SEDS_OK;
-    last_refresh_ms = now_ms;
-    const int32_t result = seds_router_get_network_variable_packed_len(
-        router, SEDS_DT_AV_BAY_UNDERGLOW, 5000U);
-    return result < 0 ? (SedsResult)result : SEDS_OK;
+    const uint32_t interval = g_network_value_seen
+        ? NETWORK_VARIABLE_REFRESH_INTERVAL_MS
+        : NETWORK_VARIABLE_UNSYNCED_RETRY_MS;
+    if ((uint32_t)(now_ms - g_last_refresh_ms) < interval) return SEDS_OK;
+    g_last_refresh_ms = now_ms;
+    return seds_router_request_managed_variable(
+        router, SEDS_DT_AV_BAY_UNDERGLOW);
 }

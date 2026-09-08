@@ -669,7 +669,7 @@ SedsResult init_telemetry_router(void) {
   /* Add the ground-radio route only after the first CAN time-source
    * announcement has been emitted.  Otherwise route selection can consume
    * the startup control item on radio before the avionics CAN peers see it. */
-  /* Discovery topology can exceed one E22 frame. Let SEDSNet split/reassemble
+  /* Discovery topology can exceed one RFD900x UART frame. Let SEDSNet split/reassemble
    * those packets instead of rejecting them at the radio framing boundary. */
   g_radio_side_id = seds_router_add_side_packed_profile_with_priority(
       r, "radio", 5U, radio_tx_send, NULL, true,

@@ -9,7 +9,8 @@
 
 #define FLIGHT_STATE_PERSIST_KEY 0x46535445u
 #define FLIGHT_STATE_MAX_VALUE 15U
-#define FLIGHT_STATE_REFRESH_INTERVAL_MS 250U
+#define FLIGHT_STATE_UNSYNCED_RETRY_MS 100U
+#define FLIGHT_STATE_REFRESH_INTERVAL_MS 2000U
 #define FLIGHT_STATE_PACKED_CAPACITY 128U
 
 volatile uint32_t g_flight_state_cache_value __attribute__((used, externally_visible)) = 0U;
@@ -21,6 +22,7 @@ volatile uint32_t g_flight_state_cache_errors __attribute__((used, externally_vi
 static bool g_restore_attempted;
 static bool g_persist_ready;
 static bool g_has_value;
+static bool g_network_value_seen;
 static uint32_t g_last_refresh_ms;
 
 __attribute__((weak)) SedsResult
@@ -86,6 +88,7 @@ static SedsResult persist_update(const SedsPacketView *packet, void *user)
     const bool changed = !g_has_value ||
                          state != (uint8_t)g_flight_state_cache_value;
     g_has_value = true;
+    g_network_value_seen = true;
     g_flight_state_cache_value = state;
     g_flight_state_cache_updates++;
     if (!changed) return SEDS_OK;
@@ -140,17 +143,19 @@ SedsResult flight_state_cache_init(SedsRouter *router)
     if (result != SEDS_OK) return result;
     result = seed_cached_value(router);
     if (result != SEDS_OK) return result;
-    return flight_state_cache_poll(router);
+    g_last_refresh_ms = HAL_GetTick();
+    result = seds_router_request_managed_variable(router, SEDS_DT_FLIGHT_STATE);
+    return result == SEDS_IO ? SEDS_OK : result;
 }
 
 SedsResult flight_state_cache_poll(SedsRouter *router)
 {
     if (router == NULL) return SEDS_BAD_ARG;
     const uint32_t now_ms = HAL_GetTick();
-    if ((uint32_t)(now_ms - g_last_refresh_ms) <
-        FLIGHT_STATE_REFRESH_INTERVAL_MS) return SEDS_OK;
+    const uint32_t interval = g_network_value_seen
+        ? FLIGHT_STATE_REFRESH_INTERVAL_MS
+        : FLIGHT_STATE_UNSYNCED_RETRY_MS;
+    if ((uint32_t)(now_ms - g_last_refresh_ms) < interval) return SEDS_OK;
     g_last_refresh_ms = now_ms;
-    const int32_t result = seds_router_get_network_variable_packed_len(
-        router, SEDS_DT_FLIGHT_STATE, 1000U);
-    return result < 0 ? (SedsResult)result : SEDS_OK;
+    return seds_router_request_managed_variable(router, SEDS_DT_FLIGHT_STATE);
 }

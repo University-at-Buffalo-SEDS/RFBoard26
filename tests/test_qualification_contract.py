@@ -125,8 +125,12 @@ class QualificationContractTests(unittest.TestCase):
         root = Path(build.__file__).resolve().parent
         source = (root / "Core" / "Src" / "av_bay_underglow.c").read_text(encoding="utf-8")
         self.assertIn("seds_router_enable_network_variable", source)
-        self.assertIn("seds_router_get_network_variable_packed_len", source)
-        self.assertNotIn("seds_router_request_managed_variable", source)
+        self.assertIn("seds_router_request_managed_variable", source)
+        self.assertNotIn("seds_router_get_network_variable_packed_len", source)
+
+        flight_state = (root / "Core" / "Src" / "flight_state_cache.c").read_text(encoding="utf-8")
+        self.assertIn("seds_router_request_managed_variable", flight_state)
+        self.assertNotIn("seds_router_get_network_variable_packed_len", flight_state)
 
     def test_radio_side_chunks_complete_v4_topology_packets(self):
         root = Path(__file__).resolve().parents[1]

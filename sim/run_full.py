@@ -441,9 +441,9 @@ def run_network_simulation(
                     "GS_SIM_ROUTER_TIME_DIVISOR": "8",
                     "GS_SIM_COMPACT_INITIAL_DISCOVERY": "1",
                     "GS_SIM_EXPECT_DISCOVERY_NODES": "RF,PB,FC,GB,AB,VB,DAQ",
-                    # Hold each state for longer than the firmware's 250 ms
-                    # virtual managed-variable poll interval. Seven emulated
-                    # MCUs advance much slower than host wall time.
+                    # Hold each state long enough for delivery and persistence.
+                    # Unsynchronized firmware retries at 100 ms without blocking
+                    # its router loop; seven emulated MCUs advance slowly.
                     "GS_SIM_CONTROL_STEP_MS": "250",
                     "GS_SIM_VALVE_ROUTE_SETTLE_MS": "1000",
                     # Bounds are measured using GroundStation's simulator-
@@ -467,7 +467,7 @@ def run_network_simulation(
             {"name": "avionics_can", "kind": "can", "transport_path": ["RFBoard", "PowerBoard", "FlightComputer"],
              "endpoints": [{"node": node, "peripheral": can, "tx_probe": "fdcan_tx_ok", "rx_probe": "fdcan_rx"} for node, _repo, _name, _bit, can in boards[:3]]},
             {"name": "rocket_radio", "kind": "radio",
-             "transport_path": ["RF E22 radio", "GroundStation26 host binary"],
+             "transport_path": ["RF RFD900x radio", "GroundStation26 host binary"],
              "endpoints": [
                  {"node": "rf", "peripheral": "usart1", "tx_probe": "radio_tx_frames", "rx_probe": "radio_rx_frames"},
                  {"node": "groundstation", "peripheral": "av_bay"}]},

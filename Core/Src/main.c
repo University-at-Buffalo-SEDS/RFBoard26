@@ -295,14 +295,9 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-#ifdef SEDS_FIRMWARE_SIM_TEST
-  /* The routed-serial simulator collapses the E22 air hop, GroundStation
-   * router, and Pico-Fi hop into one byte-preserving link. Normalize the two
-   * edge UART rates here; production retains the E22's RADIO_BAUD_RATE. */
+  /* The RFD900x transparent serial link and GroundStation both use 57600
+   * baud. Keep the simulator on the same production setting. */
   huart1.Init.BaudRate = RADIO_BAUD_RATE;
-#else
-  huart1.Init.BaudRate = RADIO_BAUD_RATE;
-#endif
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;

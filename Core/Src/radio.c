@@ -11,7 +11,7 @@
 #define RADIO_UART_MAX_SUBSCRIBERS     8
 #define RADIO_UART_TX_TIMEOUT_FLOOR_MS 100U
 #define RADIO_UART_TX_TIMEOUT_MARGIN_MS 100U
-/* The E22 mode pins only require RADIO_E22_MODE_SETTLE_MS before AUX becomes
+/* Legacy E22 mode pins only require RADIO_E22_MODE_SETTLE_MS before AUX becomes
  * authoritative. A multi-second hold lets discovery fill the bounded radio
  * queue before its first byte can drain, delaying route convergence and
  * discarding the control packets needed to establish it. */
