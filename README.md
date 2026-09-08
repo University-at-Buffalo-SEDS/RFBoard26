@@ -29,8 +29,9 @@ LaunchCore full-image recovery.
 ## Configuration and validation
 
 The board-owned network schema is `config/sedsnet.json`. `sim/board.json`
-describes the STM32G491 memory map, both network sides, UART, CAN, USB CDC, and
-memory probes used by FirmwareSimulator.
+describes the STM32G491 memory map, GPS peripheral, and memory/network probes
+used by FirmwareSimulator. The linked-system topology assembled by
+`sim/run_full.py` models the avionics CAN-FD and RFD900x UART router sides.
 
 ```sh
 ./build.py test
