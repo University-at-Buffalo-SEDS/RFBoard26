@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXED_LAUNCHCORE = "v1.0.0"
-FIXED_SEDSNET = "v4.0.18"
+FIXED_SEDSNET = "v4.0.19"
 UNSAFE_HANDOFFS = {
     "1ab6cd3dcddb7acaacb9dbfc16159f36f19363a8",
     "709474c68b83d259ba8657038340577ed4e8c6e4",
