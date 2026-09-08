@@ -9,7 +9,7 @@
 
 #define FLIGHT_STATE_PERSIST_KEY 0x46535445u
 #define FLIGHT_STATE_MAX_VALUE 15U
-#define FLIGHT_STATE_UNSYNCED_RETRY_MS 100U
+#define FLIGHT_STATE_UNSYNCED_RETRY_MS 500U
 #define FLIGHT_STATE_PACKED_CAPACITY 128U
 
 volatile uint32_t g_flight_state_cache_value __attribute__((used, externally_visible)) = 0U;

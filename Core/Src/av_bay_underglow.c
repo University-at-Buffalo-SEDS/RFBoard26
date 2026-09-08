@@ -8,7 +8,7 @@
 #include <stdint.h>
 
 #define UNDERGLOW_PERSIST_KEY 0x55474C57u
-#define NETWORK_VARIABLE_UNSYNCED_RETRY_MS 100U
+#define NETWORK_VARIABLE_UNSYNCED_RETRY_MS 500U
 
 volatile uint32_t g_av_bay_underglow_enabled = 0U;
 volatile uint32_t g_av_bay_underglow_updates = 0U;

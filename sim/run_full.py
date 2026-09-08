@@ -442,7 +442,7 @@ def run_network_simulation(
                     "GS_SIM_COMPACT_INITIAL_DISCOVERY": "1",
                     "GS_SIM_EXPECT_DISCOVERY_NODES": "RF,PB,FC,GB,AB,VB,DAQ",
                     # Hold each state long enough for delivery and persistence.
-                    # Unsynchronized firmware retries at 100 ms without blocking
+                    # Unsynchronized firmware retries at 500 ms without blocking
                     # its router loop; seven emulated MCUs advance slowly.
                     "GS_SIM_CONTROL_STEP_MS": "250",
                     "GS_SIM_VALVE_ROUTE_SETTLE_MS": "1000",
