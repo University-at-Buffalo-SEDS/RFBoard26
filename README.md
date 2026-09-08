@@ -42,3 +42,16 @@ The full suite builds firmware and OTA artifacts, checks flash/RAM and allocator
 limits, boots the real ELF in the containerized simulator, injects traffic and
 faults, and validates linked discovery, synchronization, managed variables,
 and bidirectional routing.
+
+
+## Regenerating with STM32CubeMX
+
+Open the checked-in `.ioc` file and generate with the CMake toolchain. Keep user
+code enabled. The `.ioc` is the source of truth for the ThreadX and USBX pool
+sizes; unit tests compare those values with the generated Azure RTOS headers so
+regeneration cannot silently shrink, grow, or repartition the pools.
+
+The top-level CMake project is board-owned and reconnects generated STM32
+sources with SEDSNet, LaunchCore, its generated linker scripts, persistence, and
+the simulator probes. After generation, run
+`python3 build.py test --full --release` before flashing or committing.
