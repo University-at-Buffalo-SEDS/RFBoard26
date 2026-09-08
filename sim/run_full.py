@@ -509,6 +509,8 @@ def run_network_simulation(
             {"name": "flight persisted the final buzzer state", "node": "flight", "probe": "flight_buzzer_persist_writes", "minimum": 1},
             {"name": "flight restored buzzer state from retained flash after reset", "node": "flight", "probe": "flight_buzzer_persist_restores", "minimum": 1},
             {"name": "flight buzzer persistence remained healthy", "node": "flight", "probe": "flight_buzzer_persist_errors", "maximum": 0},
+            {"name": "flight restored buzzer before network resync", "node": "flight", "probe": "flight_buzzer_boot_restore_valid", "minimum": 1, "maximum": 1},
+            {"name": "flight restored enabled buzzer before network resync", "node": "flight", "probe": "flight_buzzer_boot_restored_value", "minimum": 1, "maximum": 1},
             {"name": "flight buzzer finished enabled", "node": "flight", "probe": "flight_buzzer_enabled", "minimum": 1},
             {"name": "rf underglow is enabled", "node": "rf", "probe": "underglow_enabled", "minimum": 1},
             {"name": "power underglow is enabled", "node": "power", "probe": "underglow_enabled", "minimum": 1},
