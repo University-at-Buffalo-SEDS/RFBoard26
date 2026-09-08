@@ -9,7 +9,6 @@
 
 #define UNDERGLOW_PERSIST_KEY 0x55474C57u
 #define NETWORK_VARIABLE_UNSYNCED_RETRY_MS 100U
-#define NETWORK_VARIABLE_REFRESH_INTERVAL_MS 2000U
 
 volatile uint32_t g_av_bay_underglow_enabled = 0U;
 volatile uint32_t g_av_bay_underglow_updates = 0U;
@@ -116,11 +115,10 @@ SedsResult av_bay_underglow_init(SedsRouter *router)
 SedsResult av_bay_underglow_poll(SedsRouter *router)
 {
     if (router == NULL) return SEDS_BAD_ARG;
+    if (g_network_value_seen) return SEDS_OK;
     const uint32_t now_ms = HAL_GetTick();
-    const uint32_t interval = g_network_value_seen
-        ? NETWORK_VARIABLE_REFRESH_INTERVAL_MS
-        : NETWORK_VARIABLE_UNSYNCED_RETRY_MS;
-    if ((uint32_t)(now_ms - g_last_refresh_ms) < interval) return SEDS_OK;
+    if ((uint32_t)(now_ms - g_last_refresh_ms) <
+        NETWORK_VARIABLE_UNSYNCED_RETRY_MS) return SEDS_OK;
     g_last_refresh_ms = now_ms;
     return seds_router_request_managed_variable(
         router, SEDS_DT_AV_BAY_UNDERGLOW);

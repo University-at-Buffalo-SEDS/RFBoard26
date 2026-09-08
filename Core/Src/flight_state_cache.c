@@ -10,7 +10,6 @@
 #define FLIGHT_STATE_PERSIST_KEY 0x46535445u
 #define FLIGHT_STATE_MAX_VALUE 15U
 #define FLIGHT_STATE_UNSYNCED_RETRY_MS 100U
-#define FLIGHT_STATE_REFRESH_INTERVAL_MS 2000U
 #define FLIGHT_STATE_PACKED_CAPACITY 128U
 
 volatile uint32_t g_flight_state_cache_value __attribute__((used, externally_visible)) = 0U;
@@ -151,11 +150,10 @@ SedsResult flight_state_cache_init(SedsRouter *router)
 SedsResult flight_state_cache_poll(SedsRouter *router)
 {
     if (router == NULL) return SEDS_BAD_ARG;
+    if (g_network_value_seen) return SEDS_OK;
     const uint32_t now_ms = HAL_GetTick();
-    const uint32_t interval = g_network_value_seen
-        ? FLIGHT_STATE_REFRESH_INTERVAL_MS
-        : FLIGHT_STATE_UNSYNCED_RETRY_MS;
-    if ((uint32_t)(now_ms - g_last_refresh_ms) < interval) return SEDS_OK;
+    if ((uint32_t)(now_ms - g_last_refresh_ms) <
+        FLIGHT_STATE_UNSYNCED_RETRY_MS) return SEDS_OK;
     g_last_refresh_ms = now_ms;
     return seds_router_request_managed_variable(router, SEDS_DT_FLIGHT_STATE);
 }
