@@ -5,7 +5,7 @@ RFD900x radio link. The two links are separate SEDSNet router sides; SEDSNet
 discovery and learned subscriptions select routes, so the board does not
 manually fan out application packets. The radio UART runs at 57600 baud.
 
-CMake fetches SEDSNet v4.0.19 and SEDS LaunchCore v1.0.0. Neither dependency is
+CMake fetches SEDSNet v4.0.20 and SEDS LaunchCore v1.0.0. Neither dependency is
 a submodule. LaunchCore generates the linker scripts from
 `Bootloader/board_config.h`, packages Slot A firmware, and reserves its approved
 persistent-data and delta-update regions.
