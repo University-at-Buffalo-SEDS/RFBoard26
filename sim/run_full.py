@@ -249,6 +249,8 @@ def run_unacknowledged_can_simulation(
     for probe in layout["execution"]["memory_probes"]:
         if probe.get("name") == "fdcan_tx_fail":
             probe.pop("maximum", None)
+            probe.pop("minimum", None)
+        if probe.get("name") == "fdcan_tx_ok":
             probe["minimum"] = 1
 
     with tempfile.TemporaryDirectory(prefix="seds-firmware-isolated-can-") as directory:
@@ -400,7 +402,11 @@ def run_network_simulation(
         # Reboot only after discovery and the complete 1-0-1 control sequence
         # have crossed the routed network. Renode retains physical flash
         # across this reset, matching a real power cycle while peers stay up.
-        "reboots": [],
+        "reboots": [
+            {"node": "rf", "after_sample": 4},
+            {"node": "power", "after_sample": 4},
+            {"node": "flight", "after_sample": 4},
+        ],
         "nodes": [
             {"name": node, "layout": f"/simulation/{node}.json", "firmware_root": f"/nodes/{node}"}
             for node, *_ in boards
@@ -481,22 +487,30 @@ def run_network_simulation(
             {"name": "Gateway received pilot-open status", "node": "gateway", "probe": "gateway_pilot_open_status", "minimum": 1},
             {"name": "Gateway routed status ACK toward GroundStation", "node": "gateway", "probe": "uart_umbilical_status_tx_count", "minimum": 1},
             {"name": "Gateway transmitted status ACK on Pico-Fi UART", "node": "gateway", "probe": "uart_umbilical_status_count", "minimum": 1},
-            {"name": "rf applied GroundStation underglow variable", "node": "rf", "probe": "underglow_updates", "minimum": 1},
-            {"name": "power applied GroundStation underglow variable", "node": "power", "probe": "underglow_updates", "minimum": 1},
-            {"name": "flight applied GroundStation underglow variable", "node": "flight", "probe": "underglow_updates", "minimum": 1},
-            {"name": "rf persisted the 1-0-1 underglow sequence", "node": "rf", "probe": "underglow_persist_writes", "minimum": 3},
-            {"name": "power persisted the 1-0-1 underglow sequence", "node": "power", "probe": "underglow_persist_writes", "minimum": 3},
-            {"name": "flight persisted the 1-0-1 underglow sequence", "node": "flight", "probe": "underglow_persist_writes", "minimum": 3},
+            {"name": "rf applied the 1-0-1 GroundStation underglow sequence", "node": "rf", "probe": "underglow_updates", "minimum": 3},
+            {"name": "power applied the 1-0-1 GroundStation underglow sequence", "node": "power", "probe": "underglow_updates", "minimum": 3},
+            {"name": "flight applied the 1-0-1 GroundStation underglow sequence", "node": "flight", "probe": "underglow_updates", "minimum": 3},
+            {"name": "rf persisted the final underglow state", "node": "rf", "probe": "underglow_persist_writes", "minimum": 1},
+            {"name": "power persisted the final underglow state", "node": "power", "probe": "underglow_persist_writes", "minimum": 1},
+            {"name": "flight persisted the final underglow state", "node": "flight", "probe": "underglow_persist_writes", "minimum": 1},
+            {"name": "rf restored underglow from retained flash after reset", "node": "rf", "probe": "underglow_persist_restores", "minimum": 1},
+            {"name": "power restored underglow from retained flash after reset", "node": "power", "probe": "underglow_persist_restores", "minimum": 1},
+            {"name": "flight restored underglow from retained flash after reset", "node": "flight", "probe": "underglow_persist_restores", "minimum": 1},
             {"name": "rf persistence remained healthy", "node": "rf", "probe": "underglow_persist_errors", "maximum": 0},
             {"name": "power persistence remained healthy", "node": "power", "probe": "underglow_persist_errors", "maximum": 0},
             {"name": "flight persistence remained healthy", "node": "flight", "probe": "underglow_persist_errors", "maximum": 0},
             {"name": "flight applied GroundStation buzzer variable", "node": "flight", "probe": "flight_buzzer_updates", "minimum": 3},
-            {"name": "flight persisted the 1-0-1 buzzer sequence", "node": "flight", "probe": "flight_buzzer_persist_writes", "minimum": 3},
+            {"name": "flight persisted the final buzzer state", "node": "flight", "probe": "flight_buzzer_persist_writes", "minimum": 1},
+            {"name": "flight restored buzzer state from retained flash after reset", "node": "flight", "probe": "flight_buzzer_persist_restores", "minimum": 1},
             {"name": "flight buzzer persistence remained healthy", "node": "flight", "probe": "flight_buzzer_persist_errors", "maximum": 0},
             {"name": "flight buzzer finished enabled", "node": "flight", "probe": "flight_buzzer_enabled", "minimum": 1},
             {"name": "rf underglow is enabled", "node": "rf", "probe": "underglow_enabled", "minimum": 1},
             {"name": "power underglow is enabled", "node": "power", "probe": "underglow_enabled", "minimum": 1},
             {"name": "flight underglow is enabled", "node": "flight", "probe": "underglow_enabled", "minimum": 1},
+            {"name": "power restored underglow before network resync", "node": "power", "probe": "underglow_boot_restore_valid", "minimum": 1},
+            {"name": "power restored the enabled value before network resync", "node": "power", "probe": "underglow_boot_restored_value", "minimum": 1, "maximum": 1},
+            {"name": "flight restored underglow before network resync", "node": "flight", "probe": "underglow_boot_restore_valid", "minimum": 1},
+            {"name": "flight restored the enabled value before network resync", "node": "flight", "probe": "underglow_boot_restored_value", "minimum": 1, "maximum": 1},
             {"name": "RF advertised time sync", "node": "rf", "probe": "timesync_queued", "minimum": 1},
             {"name": "Power synchronized network time", "node": "power", "probe": "timesync_valid", "minimum": 1},
             {"name": "Flight synchronized network time", "node": "flight", "probe": "timesync_valid", "minimum": 1},
@@ -509,6 +523,11 @@ def run_network_simulation(
                 {"name": f"{node} converged on GroundStation flight state", "node": node,
                  "probe": "flight_state_cache", "minimum": 1, "maximum": 1}
                 for node, *_ in boards
+            ],
+            *[
+                {"name": f"{node} restored flight state from retained flash after reset", "node": node,
+                 "probe": "flight_state_restores", "minimum": 1}
+                for node in ("rf", "power", "flight")
             ],
         ],
         "host_log_assertions": [
