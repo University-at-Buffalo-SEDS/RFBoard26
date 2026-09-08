@@ -15,6 +15,9 @@ SIMULATOR_REPOSITORY = (
 SIMULATOR_INTERFACE_VERSION = "0.4"
 FIRMWARE_BRANCH = "migration/sedlaunch-sedsnet-mainline"
 FIRMWARE_ORGANIZATION = "University-at-Buffalo-SEDS"
+SIMULATOR_DOCKER_PLATFORM = os.environ.get(
+    "SEDS_FIRMWARE_SIM_PLATFORM", "linux/amd64"
+)
 
 
 def run_live(command: list[str], label: str) -> None:
@@ -84,6 +87,7 @@ def _image_exists(docker: str, image: str) -> bool:
 def _build_simulator_image(ui, docker: str, source: Path, image: str) -> None:
     build = [
         docker, "build",
+        "--platform", SIMULATOR_DOCKER_PLATFORM,
         "--progress=plain",
         "-t", image, str(source),
     ]
@@ -113,10 +117,12 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str
     if "SEDS_FIRMWARE_SIM_IMAGE" in os.environ and _image_exists(docker, requested):
         return requested
 
-    ui.say("run", f"{docker} pull {requested}")
+    ui.say("run", f"{docker} pull --platform {SIMULATOR_DOCKER_PLATFORM} {requested}")
     # Always refresh mutable tags such as latest. Inherit terminal streams so
     # layer downloads and extraction remain visible instead of looking hung.
-    pull = subprocess.run([docker, "pull", requested])
+    pull = subprocess.run(
+        [docker, "pull", "--platform", SIMULATOR_DOCKER_PLATFORM, requested]
+    )
     if pull.returncode == 0:
         return requested
     if _image_exists(docker, requested):
@@ -175,7 +181,7 @@ def run_full_simulation(
     with tempfile.TemporaryDirectory(prefix="seds-firmware-layout-") as directory:
         write_container_layout(Path(directory), layout)
         command = [
-            docker, "run", "--rm",
+            docker, "run", "--platform", SIMULATOR_DOCKER_PLATFORM, "--rm",
             "-v", f"{repo_root}:/firmware:ro",
             "-v", f"{directory}:/simulation:ro",
             image, "run",
@@ -207,7 +213,7 @@ def run_memory_profile(
     with tempfile.TemporaryDirectory(prefix="seds-firmware-profile-") as directory:
         write_container_layout(Path(directory), layout)
         command = [
-            docker, "run", "--rm",
+            docker, "run", "--platform", SIMULATOR_DOCKER_PLATFORM, "--rm",
             "-v", f"{repo_root}:/firmware:ro",
             "-v", f"{directory}:/simulation:ro",
             image, "profile",
@@ -256,7 +262,7 @@ def run_unacknowledged_can_simulation(
     with tempfile.TemporaryDirectory(prefix="seds-firmware-isolated-can-") as directory:
         write_container_layout(Path(directory), layout)
         command = [
-            docker, "run", "--rm",
+            docker, "run", "--platform", SIMULATOR_DOCKER_PLATFORM, "--rm",
             "-v", f"{repo_root}:/firmware:ro",
             "-v", f"{directory}:/simulation:ro",
             image, "profile",
@@ -560,7 +566,9 @@ def run_network_simulation(
             json.dumps(topology, indent=2), encoding="utf-8"
         )
         (root / "topology.json").chmod(0o644)
-        command = [docker, "run", "--rm"]
+        command = [
+            docker, "run", "--platform", SIMULATOR_DOCKER_PLATFORM, "--rm"
+        ]
         for node, path in roots.items():
             command += ["-v", f"{path}:/nodes/{node}:ro"]
         command += ["-v", f"{directory}:/simulation:ro", image, "bay", "--topology", "/simulation/topology.json"]

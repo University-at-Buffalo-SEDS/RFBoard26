@@ -102,6 +102,8 @@ class OtaBuildScriptTests(unittest.TestCase):
             [
                 "/usr/bin/docker",
                 "pull",
+                "--platform",
+                "linux/amd64",
                 "ghcr.io/university-at-buffalo-seds/firmwaresimulator:latest",
             ],
             commands,
@@ -123,9 +125,7 @@ class OtaBuildScriptTests(unittest.TestCase):
         self.assertFalse(
             any("SIM_ARCH" in argument for command in commands for argument in command)
         )
-        self.assertFalse(
-            any("--platform" in command for command in commands)
-        )
+        self.assertTrue(any("--platform" in command for command in commands))
 
     def test_generated_layout_is_readable_by_the_container_user(self):
         from sim.run_full import write_container_layout
