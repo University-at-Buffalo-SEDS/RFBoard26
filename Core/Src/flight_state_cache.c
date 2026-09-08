@@ -7,6 +7,8 @@
 #include <stddef.h>
 #include <string.h>
 
+extern volatile uint32_t g_telemetry_discovery_seen;
+
 #define FLIGHT_STATE_PERSIST_KEY 0x46535445u
 #define FLIGHT_STATE_MAX_VALUE 15U
 #define FLIGHT_STATE_UNSYNCED_RETRY_MS 500U
@@ -143,14 +145,14 @@ SedsResult flight_state_cache_init(SedsRouter *router)
     result = seed_cached_value(router);
     if (result != SEDS_OK) return result;
     g_last_refresh_ms = HAL_GetTick();
-    result = seds_router_request_managed_variable(router, SEDS_DT_FLIGHT_STATE);
-    return result == SEDS_IO ? SEDS_OK : result;
+    return SEDS_OK;
 }
 
 SedsResult flight_state_cache_poll(SedsRouter *router)
 {
     if (router == NULL) return SEDS_BAD_ARG;
     if (g_network_value_seen) return SEDS_OK;
+    if (g_telemetry_discovery_seen == 0U) return SEDS_OK;
     const uint32_t now_ms = HAL_GetTick();
     if ((uint32_t)(now_ms - g_last_refresh_ms) <
         FLIGHT_STATE_UNSYNCED_RETRY_MS) return SEDS_OK;
