@@ -6,6 +6,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class FlightStatePersistenceContract(unittest.TestCase):
+    def test_flight_state_uses_network_control_priority(self):
+        schema = json.loads((ROOT / "config/sedsnet.json").read_text())
+        flight_state = next(
+            item for item in schema["types"] if item["name"] == "FLIGHT_STATE"
+        )
+        self.assertTrue(flight_state["reliable"])
+        self.assertEqual(flight_state["reliable_mode"], "Ordered")
+        self.assertEqual(flight_state["priority"], 16)
+
     def test_flight_state_cache_is_wired_before_network_start(self):
         source = (ROOT / "Core/Src/flight_state_cache.c").read_text()
         main = (ROOT / "Core/Src/main.c").read_text()
@@ -17,7 +26,7 @@ class FlightStatePersistenceContract(unittest.TestCase):
         self.assertIn("persistent_store_set", source)
         self.assertIn("seds_router_enable_network_variable", source)
         self.assertIn("seds_router_on_network_variable_update", source)
-        self.assertIn("seds_router_seed_managed_variable_packed", source)
+        self.assertNotIn("seds_router_seed_managed_variable_packed", source)
         self.assertLess(
             main.index("flight_state_cache_restore();"),
             main.index("MX_ThreadX_Init();"),

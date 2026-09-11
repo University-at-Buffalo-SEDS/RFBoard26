@@ -64,8 +64,10 @@ static TX_BYTE_POOL tx_app_byte_pool;
 #if defined ( __ICCARM__ )
 #pragma data_alignment=4
 #endif
+#if RF_USB_DEBUG_ENABLED
 __ALIGN_BEGIN static UCHAR ux_device_byte_pool_buffer[UX_DEVICE_APP_MEM_POOL_SIZE] __ALIGN_END;
 static TX_BYTE_POOL ux_device_app_byte_pool;
+#endif
 
 #endif
 
@@ -127,6 +129,7 @@ VOID tx_application_define(VOID *first_unused_memory)
 
   }
 
+#if RF_USB_DEBUG_ENABLED
   if (tx_byte_pool_create(&ux_device_app_byte_pool, "Ux App memory pool", ux_device_byte_pool_buffer, UX_DEVICE_APP_MEM_POOL_SIZE) != TX_SUCCESS)
   {
     /* USER CODE BEGIN UX_Device_Byte_Pool_Error */
@@ -162,6 +165,7 @@ VOID tx_application_define(VOID *first_unused_memory)
         
     /* USER CODE END MX_USBX_Device_Init_Success */
   }
+#endif
 
 #else
   /*

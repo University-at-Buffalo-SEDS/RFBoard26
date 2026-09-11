@@ -35,6 +35,9 @@ volatile uint32_t g_hardfault_stacked_lr __attribute__((used, externally_visible
 volatile uint32_t g_hardfault_stacked_pc __attribute__((used, externally_visible)) = 0U;
 volatile uint32_t g_hardfault_stacked_xpsr __attribute__((used, externally_visible)) = 0U;
 volatile uint32_t g_hardfault_psp __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_hardfault_msp __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_hardfault_fault_stack __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_hardfault_core_frame __attribute__((used, externally_visible)) = 0U;
 volatile uint32_t g_hardfault_exc_return __attribute__((used, externally_visible)) = 0U;
 
 /* Private typedef -----------------------------------------------------------*/
@@ -114,6 +117,37 @@ static void __attribute__((unused)) fault_blink_pattern(uint32_t code)
   }
 }
 
+static void __attribute__((__used__, __noinline__, __noreturn__))
+hardfault_capture_and_halt(const uint32_t *fault_stack, uint32_t exc_return)
+{
+  const uint32_t *core_frame = fault_stack;
+
+  if ((exc_return & (1UL << 4)) == 0U)
+  {
+    core_frame += 18U;
+  }
+
+  g_hardfault_count++;
+  g_hardfault_cfsr = SCB->CFSR;
+  g_hardfault_hfsr = SCB->HFSR;
+  g_hardfault_mmfar = SCB->MMFAR;
+  g_hardfault_bfar = SCB->BFAR;
+  g_hardfault_psp = __get_PSP();
+  g_hardfault_msp = __get_MSP();
+  g_hardfault_fault_stack = (uint32_t)fault_stack;
+  g_hardfault_core_frame = (uint32_t)core_frame;
+  g_hardfault_exc_return = exc_return;
+  g_hardfault_stacked_lr = core_frame[5];
+  g_hardfault_stacked_pc = core_frame[6];
+  g_hardfault_stacked_xpsr = core_frame[7];
+
+  __disable_irq();
+  for (;;)
+  {
+    __WFI();
+  }
+}
+
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
@@ -149,28 +183,18 @@ void NMI_Handler(void)
 /**
   * @brief This function handles Hard fault interrupt.
   */
-void HardFault_Handler(void)
+__attribute__((naked)) void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
-  g_hardfault_count++;
-  g_hardfault_cfsr = SCB->CFSR;
-  g_hardfault_hfsr = SCB->HFSR;
-  g_hardfault_mmfar = SCB->MMFAR;
-  g_hardfault_bfar = SCB->BFAR;
-  uint32_t exc_return;
-  __asm volatile ("mov %0, lr" : "=r" (exc_return));
-  const uint32_t *fault_stack = (const uint32_t *)__get_PSP();
-  g_hardfault_psp = (uint32_t)fault_stack;
-  g_hardfault_exc_return = exc_return;
-  g_hardfault_stacked_lr = fault_stack[5];
-  g_hardfault_stacked_pc = fault_stack[6];
-  g_hardfault_stacked_xpsr = fault_stack[7];
+  __asm volatile (
+      "mov r1, lr                    \n"
+      "tst r1, #4                    \n"
+      "ite eq                        \n"
+      "mrseq r0, msp                 \n"
+      "mrsne r0, psp                 \n"
+      "b hardfault_capture_and_halt  \n"
+  );
   /* USER CODE END HardFault_IRQn 0 */
-  while (1)
-  {
-    /* USER CODE BEGIN W1_HardFault_IRQn 0 */
-    /* USER CODE END W1_HardFault_IRQn 0 */
-  }
 }
 
 /**
@@ -272,11 +296,11 @@ void DMA1_Channel2_IRQHandler(void)
 void USB_LP_IRQHandler(void)
 {
   /* USER CODE BEGIN USB_LP_IRQn 0 */
-
+#if RF_USB_DEBUG_ENABLED
   /* USER CODE END USB_LP_IRQn 0 */
   HAL_PCD_IRQHandler(&hpcd_USB_FS);
   /* USER CODE BEGIN USB_LP_IRQn 1 */
-
+#endif
   /* USER CODE END USB_LP_IRQn 1 */
 }
 

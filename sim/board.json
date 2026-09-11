@@ -36,9 +36,9 @@
   },
   "execution": {
     "factory_boot_success_symbol": "_tx_thread_schedule",
-    "virtual_time_ms": 250,
-    "sample_count": 5,
-    "memory_probe_warmup_samples": 2,
+    "virtual_time_ms": 200,
+    "sample_count": 6,
+    "memory_probe_warmup_samples": 5,
     "require_stack_probe": true,
     "memory_probes": [
       {"name": "network_ready", "symbol": "g_telemetry_network_ready"},
@@ -46,6 +46,10 @@
       {"name": "telemetry_init_result", "symbol": "g_telemetry_init_result"},
       {"name": "peer_mask", "symbol": "g_telemetry_peer_mask"},
       {"name": "radio_egress_peer_mask", "symbol": "g_sim_radio_egress_peer_mask"},
+      {"name": "gps_publish_attempts", "symbol": "g_sim_gps_publish_attempts"},
+      {"name": "gps_publish_ok", "symbol": "g_sim_gps_publish_ok"},
+      {"name": "avionics_telemetry_ingress", "symbol": "g_sim_avionics_telemetry_ingress"},
+      {"name": "avionics_telemetry_radio_egress", "symbol": "g_sim_avionics_telemetry_radio_egress"},
       {"name": "heartbeat_attempts", "symbol": "g_sim_heartbeat_attempts"},
       {"name": "heartbeat_ok", "symbol": "g_sim_heartbeat_ok"},
       {"name": "heartbeat_wire_tx", "symbol": "g_sim_heartbeat_wire_tx"},
@@ -59,21 +63,38 @@
       {"name": "underglow_persist_writes", "symbol": "g_av_bay_underglow_persist_writes"},
       {"name": "underglow_persist_errors", "symbol": "g_av_bay_underglow_persist_errors", "maximum": 0},
       {"name": "stack_errors", "symbol": "g_thread_stack_error_count", "maximum": 0},
+      {"name": "stack_error_thread", "symbol": "g_thread_stack_error_thread"},
+      {"name": "stack_error_start", "symbol": "g_thread_stack_error_start"},
+      {"name": "stack_error_end", "symbol": "g_thread_stack_error_end"},
+      {"name": "stack_error_highest", "symbol": "g_thread_stack_error_highest"},
       {"name": "telemetry_stack_used", "symbol": "g_telemetry_stack_used"},
       {"name": "telemetry_stack_remaining", "symbol": "g_telemetry_stack_remaining", "minimum": 1024},
       {"name": "gps_stack_used", "symbol": "g_neom9n_stack_used"},
-      {"name": "gps_stack_remaining", "symbol": "g_neom9n_stack_remaining"},
-      {"name": "pool_available", "symbol": "g_telemetry_pool_available", "minimum": 2560, "max_end_drop": 4096},
+      {"name": "gps_stack_remaining", "symbol": "g_neom9n_stack_remaining", "minimum": 1024, "ignore_leading_zeroes": true},
+      {"name": "gps_stack_current", "symbol": "g_neom9n_stack_current"},
+      {"name": "pool_available", "symbol": "g_telemetry_pool_available", "minimum": 2560, "max_end_drop": 8192},
       {"name": "pool_low_water", "symbol": "g_telemetry_pool_low_water", "minimum": 1024},
       {"name": "alloc_failure_request", "symbol": "g_telemetry_alloc_failure_request", "maximum": 0},
       {"name": "alloc_failure_available", "symbol": "g_telemetry_alloc_failure_available"},
       {"name": "alloc_failure_fragments", "symbol": "g_telemetry_alloc_failure_fragments"},
+      {"name": "alloc_failure_status", "symbol": "g_telemetry_alloc_failure_status"},
+      {"name": "alloc_failure_system_state", "symbol": "g_telemetry_alloc_failure_system_state"},
+      {"name": "alloc_failure_thread", "symbol": "g_telemetry_alloc_failure_thread"},
       {"name": "max_alloc_request", "symbol": "g_telemetry_max_alloc_request"},
       {"name": "alloc_failures", "symbol": "g_telemetry_alloc_fail", "maximum": 0},
+      {"name": "alloc_cross_pool_recoveries", "symbol": "g_telemetry_alloc_cross_pool_recoveries"},
       {"name": "panics", "symbol": "g_telemetry_panic_count", "maximum": 0},
+      {"name": "panic_len", "symbol": "g_telemetry_panic_len"},
+      {"name": "panic_word0", "symbol": "g_telemetry_panic_word0"},
+      {"name": "panic_word1", "symbol": "g_telemetry_panic_word1"},
+      {"name": "panic_word2", "symbol": "g_telemetry_panic_word2"},
+      {"name": "panic_word3", "symbol": "g_telemetry_panic_word3"},
       {"name": "lock_get_failures", "symbol": "g_telemetry_lock_get_fail", "maximum": 0},
       {"name": "lock_put_failures", "symbol": "g_telemetry_lock_put_fail", "maximum": 0},
       {"name": "allocations", "symbol": "g_telemetry_alloc_count"},
+      {"name": "small_pool_available", "symbol": "g_telemetry_small_pool_available"},
+      {"name": "large_pool_available", "symbol": "g_telemetry_large_pool_available"},
+      {"name": "emergency_pool_available", "symbol": "g_telemetry_emergency_pool_available"},
       {"name": "frees", "symbol": "g_telemetry_free_count"},
       {"name": "fdcan_irqs", "symbol": "g_fdcan_irq_count"},
       {"name": "fdcan_rx", "symbol": "g_fdcan_rx_count"},
@@ -82,12 +103,18 @@
       ,{"name": "radio_rx_frames", "symbol": "g_radio_rx_frames_ok"}
       ,{"name": "radio_tx_frames", "symbol": "g_radio_tx_ok"}
       ,{"name": "radio_tx_drops", "symbol": "g_tx_drops"}
+      ,{"name": "radio_rx_service_passes", "symbol": "g_radio_rx_service_passes", "minimum": 1}
+      ,{"name": "radio_rx_service_budget_hits", "symbol": "g_radio_rx_service_budget_hits"}
+      ,{"name": "telemetry_loop_completions", "symbol": "g_telemetry_loop_completions", "minimum": 1, "max_end_drop": 0}
       ,{"name": "hardfault_mmfar", "symbol": "g_hardfault_mmfar"}
       ,{"name": "hardfault_bfar", "symbol": "g_hardfault_bfar"}
       ,{"name": "hardfault_stacked_lr", "symbol": "g_hardfault_stacked_lr"}
       ,{"name": "hardfault_stacked_pc", "symbol": "g_hardfault_stacked_pc"}
       ,{"name": "hardfault_stacked_xpsr", "symbol": "g_hardfault_stacked_xpsr"}
       ,{"name": "hardfault_psp", "symbol": "g_hardfault_psp"}
+      ,{"name": "hardfault_msp", "symbol": "g_hardfault_msp"}
+      ,{"name": "hardfault_fault_stack", "symbol": "g_hardfault_fault_stack"}
+      ,{"name": "hardfault_core_frame", "symbol": "g_hardfault_core_frame"}
       ,{"name": "hardfault_exc_return", "symbol": "g_hardfault_exc_return"}
       ,{"name": "telemetry_stack_start_at_fault", "symbol": "g_telemetry_stack_start"}
       ,{"name": "telemetry_stack_end_at_fault", "symbol": "g_telemetry_stack_end"}

@@ -47,6 +47,17 @@
 #define RADIO_UART_TX_QUEUE_SLOTS   12U
 #endif
 
+/* A continuously active RFD900x can refill the ISR ring while the telemetry
+ * thread is draining it. Bound each pass so CAN routing, SEDSNet timers, and
+ * outbound UART service cannot be starved by ingress forever. */
+#ifndef RADIO_UART_RX_SERVICE_BUDGET
+#define RADIO_UART_RX_SERVICE_BUDGET 8U
+#endif
+
+#ifndef RADIO_UART_SIM_RX_BYTE_BUDGET
+#define RADIO_UART_SIM_RX_BYTE_BUDGET 128U
+#endif
+
 #define RADIO_UART_TX_QUEUE_BYTE_CAPACITY \
   (RADIO_UART_TX_QUEUE_DEPTH * RADIO_UART_FRAME_BUF_SIZE)
 
@@ -146,6 +157,8 @@ static volatile uint32_t g_rx_bad_len = 0;
 static volatile uint32_t g_rx_irq_events = 0;
 static volatile uint32_t g_rx_errors = 0;
 static volatile uint32_t g_rx_restart_errors = 0;
+volatile uint32_t g_radio_rx_service_passes __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_radio_rx_service_budget_hits __attribute__((used, externally_visible)) = 0U;
 static volatile uint16_t g_last_rx_len = 0U;
 static volatile uint8_t g_last_rx_preview_len = 0U;
 static volatile uint8_t g_last_rx_preview[16];
@@ -186,8 +199,11 @@ static volatile uint32_t g_tx_startup_drops = 0U;
 static uint32_t g_tx_last_flow_id = RADIO_UART_SCHED_FALLBACK_FLOW;
 static radio_tx_item_t g_tx_dma_item;
 static volatile uint8_t g_tx_dma_busy = 0U;
+static volatile uint8_t g_tx_dma_preserves_rx = 0U;
 static volatile uint32_t g_tx_dma_started = 0U;
 static volatile uint32_t g_tx_dma_complete = 0U;
+volatile uint32_t g_tx_dma_recoveries = 0U;
+static volatile uint32_t g_tx_dma_started_at_ms = 0U;
 static volatile uint32_t g_tx_quiet_until_ms = 0U;
 static volatile uint32_t g_aux_busy_count = 0U;
 static volatile uint32_t g_e22_mode0_set_at_ms = 0U;
@@ -530,48 +546,6 @@ static void radio_uart_drop_stale_locked(uint32_t now_ms) {
   }
 }
 
-static void radio_uart_drop_item_stale_or_requeue_front(const radio_tx_item_t *item) {
-  const uint32_t now_ms = radio_now_ms();
-
-  if (item == NULL) {
-    return;
-  }
-
-  if (radio_uart_lock_tx_queue() != HAL_OK) {
-    return;
-  }
-
-  if (item->priority < RADIO_UART_PRIORITY_NETWORK_CONTROL &&
-      (uint32_t)(now_ms - item->enqueued_ms) >= RADIO_UART_TX_MAX_AGE_MS) {
-    g_tx_drops++;
-    g_tx_drop_stale++;
-    radio_uart_unlock_tx_queue();
-    return;
-  }
-
-  if (g_tx_count < RADIO_UART_TX_QUEUE_SLOTS &&
-      g_tx_queue_bytes_used + item->len <= RADIO_UART_TX_QUEUE_BYTE_CAPACITY) {
-    radio_tx_queue_item_t *queued = &g_tx_queue[g_tx_count];
-    queued->len = item->len;
-    queued->offset = (uint16_t)g_tx_queue_bytes_used;
-    queued->flow_id = item->flow_id;
-    queued->enqueued_ms = item->enqueued_ms;
-    queued->priority = item->priority;
-    queued->is_heartbeat = item->is_heartbeat;
-    queued->control_class = item->control_class;
-    memcpy(&g_tx_queue_bytes[g_tx_queue_bytes_used], item->data, item->len);
-    g_tx_queue_bytes_used += item->len;
-    g_tx_count++;
-  } else {
-    g_tx_drops++;
-    g_tx_drop_oldest++;
-    radio_uart_classify_packet_drop(item->priority, item->is_heartbeat,
-                                    item->control_class);
-  }
-
-  radio_uart_unlock_tx_queue();
-}
-
 static HAL_StatusTypeDef radio_uart_enqueue_frame(const uint8_t *data, uint16_t len,
                                                   int16_t priority_override) {
   uint32_t flow_id;
@@ -668,36 +642,48 @@ static HAL_StatusTypeDef radio_uart_enqueue_frame(const uint8_t *data, uint16_t 
   return HAL_OK;
 }
 
+/* SEDSNet owns packet priority and ordering. Its callback may return success
+ * once the transport has taken an owned copy, so keep that copy in a strict
+ * FIFO and let the UART DMA drain it later. Do not coalesce, evict, or reorder
+ * compact frames: later frames can depend on an earlier template/discovery
+ * frame even when their logical data type appears replaceable. */
+static HAL_StatusTypeDef radio_uart_enqueue_sedsnet_frame(
+    const uint8_t *data, uint16_t len, uint8_t priority) {
+  if (!data || len == 0U || len > RADIO_UART_FRAME_BUF_SIZE) return HAL_ERROR;
+  if (radio_uart_lock_tx_queue() != HAL_OK) return HAL_ERROR;
+  if (g_tx_count >= RADIO_UART_TX_QUEUE_SLOTS ||
+      g_tx_queue_bytes_used + len > RADIO_UART_TX_QUEUE_BYTE_CAPACITY) {
+    radio_uart_unlock_tx_queue();
+    g_tx_busy++;
+    return HAL_BUSY;
+  }
+
+  radio_tx_queue_item_t *queued = &g_tx_queue[g_tx_count];
+  queued->len = len;
+  queued->offset = (uint16_t)g_tx_queue_bytes_used;
+  queued->flow_id = RADIO_UART_SCHED_FALLBACK_FLOW;
+  queued->enqueued_ms = radio_now_ms();
+  queued->priority = priority;
+  queued->is_heartbeat = 0U;
+  queued->control_class = priority >= RADIO_UART_PRIORITY_NETWORK_CONTROL
+                              ? RADIO_UART_CLASS_NETWORK_CONTROL
+                              : RADIO_UART_CLASS_APPLICATION;
+  memcpy(&g_tx_queue_bytes[g_tx_queue_bytes_used], data, len);
+  g_tx_queue_bytes_used += len;
+  g_tx_count++;
+  g_tx_enqueued++;
+  radio_uart_unlock_tx_queue();
+  return HAL_OK;
+}
+
 static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32_t budget_ms) {
   uint8_t have = 0U;
   if (!out) return 0U;
   if (radio_uart_lock_tx_queue() != HAL_OK) return 0U;
 
-  radio_uart_drop_stale_locked(radio_now_ms());
-
   if (g_tx_count > 0U) {
-    uint8_t selected_valid = 0U;
-    uint32_t selected = 0U;
-    uint8_t selected_priority = 0U;
-
-    for (uint32_t i = 0U; i < g_tx_count; i++) {
-      uint32_t idx = radio_uart_queue_index_at_offset(i);
-      const uint8_t candidate_avoids_last_flow =
-          (g_tx_queue[idx].flow_id != g_tx_last_flow_id) ? 1U : 0U;
-      const uint8_t selected_avoids_last_flow =
-          (g_tx_queue[selected].flow_id != g_tx_last_flow_id) ? 1U : 0U;
-      if (radio_uart_air_ms(g_tx_queue[idx].len) <= budget_ms &&
-          (!selected_valid ||
-           g_tx_queue[idx].priority > selected_priority ||
-           (g_tx_queue[idx].priority == selected_priority &&
-            candidate_avoids_last_flow > selected_avoids_last_flow))) {
-        selected = idx;
-        selected_valid = 1U;
-        selected_priority = g_tx_queue[idx].priority;
-      }
-    }
-
-    if (selected_valid) {
+    const uint32_t selected = 0U;
+    if (radio_uart_air_ms(g_tx_queue[selected].len) <= budget_ms) {
       out->len = g_tx_queue[selected].len;
       out->flow_id = g_tx_queue[selected].flow_id;
       out->enqueued_ms = g_tx_queue[selected].enqueued_ms;
@@ -714,6 +700,44 @@ static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32
   }
   radio_uart_unlock_tx_queue();
   return have;
+}
+
+/* Put an item removed for transmission back at the head of the owned FIFO.
+ * Compact SEDSNet frames are stateful: losing one frame because the HAL was
+ * transiently busy can make every following compact frame undecodable. */
+static HAL_StatusTypeDef __attribute__((unused))
+radio_uart_requeue_frame_front(const radio_tx_item_t *item) {
+  if (!item || item->len == 0U || item->len > RADIO_UART_FRAME_BUF_SIZE) {
+    return HAL_ERROR;
+  }
+  if (radio_uart_lock_tx_queue() != HAL_OK) return HAL_ERROR;
+  if (g_tx_count >= RADIO_UART_TX_QUEUE_SLOTS ||
+      g_tx_queue_bytes_used + item->len > RADIO_UART_TX_QUEUE_BYTE_CAPACITY) {
+    radio_uart_unlock_tx_queue();
+    return HAL_BUSY;
+  }
+
+  memmove(&g_tx_queue_bytes[item->len], g_tx_queue_bytes,
+          g_tx_queue_bytes_used);
+  for (uint32_t i = 0U; i < g_tx_count; i++) {
+    g_tx_queue[i].offset = (uint16_t)(g_tx_queue[i].offset + item->len);
+  }
+  if (g_tx_count > 0U) {
+    memmove(&g_tx_queue[1], &g_tx_queue[0],
+            g_tx_count * sizeof(g_tx_queue[0]));
+  }
+  g_tx_queue[0].len = item->len;
+  g_tx_queue[0].offset = 0U;
+  g_tx_queue[0].flow_id = item->flow_id;
+  g_tx_queue[0].enqueued_ms = item->enqueued_ms;
+  g_tx_queue[0].priority = item->priority;
+  g_tx_queue[0].is_heartbeat = item->is_heartbeat;
+  g_tx_queue[0].control_class = item->control_class;
+  memcpy(g_tx_queue_bytes, item->data, item->len);
+  g_tx_queue_bytes_used += item->len;
+  g_tx_count++;
+  radio_uart_unlock_tx_queue();
+  return HAL_OK;
 }
 
 static uint32_t radio_uart_tx_timeout_ms(uint16_t len)
@@ -763,33 +787,6 @@ static void radio_uart_mark_tx_quiet(uint16_t len)
 {
   const uint32_t quiet_ms = radio_uart_air_ms(len) + RADIO_TX_COOLDOWN_MS;
   g_tx_quiet_until_ms = radio_now_ms() + quiet_ms;
-}
-
-static uint8_t radio_uart_reserve_airtime(uint16_t len, uint32_t budget_ms)
-{
-  const uint32_t now_ms = radio_now_ms();
-  const uint32_t wait_ms = (g_tx_quiet_until_ms > now_ms) ? (g_tx_quiet_until_ms - now_ms) : 0U;
-  const uint32_t air_ms = radio_uart_air_ms(len) + RADIO_TX_COOLDOWN_MS;
-
-  if (budget_ms != 0xFFFFFFFFUL &&
-      (wait_ms >= budget_ms || air_ms > (uint32_t)(budget_ms - wait_ms))) {
-    return 0U;
-  }
-
-  g_tx_quiet_until_ms = now_ms + wait_ms + air_ms;
-  return 1U;
-}
-
-static uint32_t radio_uart_available_air_budget(uint32_t budget_ms)
-{
-  const uint32_t now_ms = radio_now_ms();
-  const uint32_t wait_ms = (g_tx_quiet_until_ms > now_ms) ? (g_tx_quiet_until_ms - now_ms) : 0U;
-
-  if (budget_ms == 0xFFFFFFFFUL) {
-    return budget_ms;
-  }
-
-  return (wait_ms < budget_ms) ? (uint32_t)(budget_ms - wait_ms) : 0U;
 }
 
 uint8_t radio_uart_air_busy(void)
@@ -847,6 +844,7 @@ radio_uart_stats_t radio_uart_stats_snapshot(void)
   stats.aux_busy_count = g_aux_busy_count;
   stats.tx_dma_started = g_tx_dma_started;
   stats.tx_dma_complete = g_tx_dma_complete;
+  stats.tx_dma_recoveries = g_tx_dma_recoveries;
   stats.tx_startup_drops = g_tx_startup_drops;
   if (g_huart != NULL) {
     stats.usart_isr = g_huart->Instance->ISR;
@@ -943,8 +941,6 @@ HAL_StatusTypeDef radio_uart_send_bytes(const uint8_t *bytes, size_t len) {
 
 HAL_StatusTypeDef radio_uart_send_bytes_priority(const uint8_t *bytes, size_t len,
                                                  uint8_t priority) {
-  HAL_StatusTypeDef status;
-  (void)priority;
   if (!g_huart) return HAL_ERROR;
   if (!bytes || len == 0U || len > RADIO_UART_MAX_PAYLOAD_SIZE) return HAL_ERROR;
   if (RFBOARD_RADIO_LISTEN_ONLY) return HAL_BUSY;
@@ -952,38 +948,19 @@ HAL_StatusTypeDef radio_uart_send_bytes_priority(const uint8_t *bytes, size_t le
     g_tx_startup_drops++;
     return HAL_BUSY;
   }
+  if (!radio_e22_ready_for_uart()) {
+    g_tx_busy++;
+    return HAL_BUSY;
+  }
+
   uint8_t framed[RADIO_UART_FRAME_BUF_SIZE];
   framed[0] = RADIO_UART_FRAME_SYNC_0;
   framed[1] = RADIO_UART_FRAME_SYNC_1;
   framed[2] = (uint8_t)(len & 0xFFU);
   framed[3] = (uint8_t)((len >> 8U) & 0xFFU);
   memcpy(&framed[RADIO_UART_FRAME_HEADER_SIZE], bytes, len);
-
-  /* SEDSNet has already scheduled these frames by logical priority and its
-   * compact transport relies on their wire order (a full template must arrive
-   * before compact frames that reference it).  A second asynchronous priority
-   * queue here used to reorder/coalesce SDT frames, which made discovery vanish
-   * at the GroundStation and added seconds of latency.  RFD900x accepts the
-   * UART byte stream directly, so transmit synchronously and preserve exactly
-   * the order selected by SEDSNet. RX DMA remains armed because STM32 UART has
-   * independent transmit and receive state machines. */
-  if (!radio_e22_ready_for_uart() || g_tx_dma_busy) {
-    g_tx_busy++;
-    return HAL_BUSY;
-  }
-  status = HAL_UART_Transmit(
-      g_huart, framed, (uint16_t)(RADIO_UART_FRAME_HEADER_SIZE + len),
-      radio_uart_tx_timeout_ms((uint16_t)(RADIO_UART_FRAME_HEADER_SIZE + len)));
-  if (status == HAL_OK) {
-    g_radio_tx_ok++;
-    HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
-  } else {
-    g_tx_errors++;
-    if (status == HAL_BUSY) {
-      g_tx_busy++;
-    }
-  }
-  return status;
+  return radio_uart_enqueue_sedsnet_frame(
+      framed, (uint16_t)(RADIO_UART_FRAME_HEADER_SIZE + len), priority);
 }
 
 HAL_StatusTypeDef radio_uart_send_plaintext(const uint8_t *bytes, size_t len) {
@@ -1070,24 +1047,42 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
     return 0U;
   }
 
+  /* A lost UART/DMA completion must not disable the return path forever.
+   * Recover in thread context, where it is safe to use the queue mutex, and
+   * retry the complete owned frame from its sync header. */
+#ifndef SEDS_FIRMWARE_SIM_TEST
+  if (g_tx_dma_busy) {
+    const uint32_t elapsed = radio_now_ms() - g_tx_dma_started_at_ms;
+    const uint32_t deadline =
+        radio_uart_tx_timeout_ms(g_tx_dma_item.len) + 50U;
+    if (elapsed >= deadline) {
+      (void)HAL_UART_AbortTransmit(g_huart);
+      g_tx_dma_busy = 0U;
+      g_tx_dma_preserves_rx = 0U;
+      g_tx_dma_recoveries++;
+      if (radio_uart_requeue_frame_front(&g_tx_dma_item) != HAL_OK) {
+        g_tx_drops++;
+        radio_uart_classify_packet_drop(g_tx_dma_item.priority,
+                                        g_tx_dma_item.is_heartbeat,
+                                        g_tx_dma_item.control_class);
+      }
+    }
+  }
+#endif
+
   if (!radio_uart_tx_ready() || g_tx_dma_busy || !radio_e22_ready_for_uart()) {
     g_tx_startup_delays++;
     return 0U;
   }
 
-  const uint32_t available_air_budget = radio_uart_available_air_budget(budget_ms);
-  if (available_air_budget == 0U) {
-    g_tx_budget_misses++;
-    return 0U;
-  }
-
+  /*
+   * The RFD900x UART is flow-controlled by the HAL/DMA completion itself.
+   * Do not apply the former LoRa airtime scheduler here: reserving estimated
+   * on-air time after every DMA completion needlessly starves RX-to-TX relay
+   * traffic and causes the software FIFO to grow under normal network load.
+   */
   while (sent < RADIO_UART_TX_FRAMES_PER_SERVICE &&
-         radio_uart_dequeue_frame_with_budget(&item, available_air_budget)) {
-    if (!radio_uart_reserve_airtime(item.len, budget_ms)) {
-      radio_uart_drop_item_stale_or_requeue_front(&item);
-      return sent;
-    }
-
+         radio_uart_dequeue_frame_with_budget(&item, budget_ms)) {
     g_tx_dma_item = item;
 #ifdef SEDS_FIRMWARE_SIM_TEST
     status = HAL_UART_Transmit(g_huart, g_tx_dma_item.data, g_tx_dma_item.len,
@@ -1104,18 +1099,23 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
     }
 #else
     g_tx_dma_busy = 1U;
-    (void)HAL_UART_AbortReceive(g_huart);
+    g_tx_dma_preserves_rx = 1U;
+    g_tx_dma_started_at_ms = radio_now_ms();
     status = HAL_UART_Transmit_DMA(g_huart, g_tx_dma_item.data, g_tx_dma_item.len);
     if (status != HAL_OK) {
       g_tx_dma_busy = 0U;
+      g_tx_dma_preserves_rx = 0U;
       g_tx_errors++;
       if (status == HAL_BUSY) {
         g_tx_busy++;
       }
       (void)HAL_UART_AbortTransmit(g_huart);
       g_tx_quiet_until_ms = radio_now_ms();
-      if (radio_uart_start_rx() != HAL_OK) {
-        g_rx_restart_errors++;
+      if (radio_uart_requeue_frame_front(&g_tx_dma_item) != HAL_OK) {
+        g_tx_drops++;
+        radio_uart_classify_packet_drop(g_tx_dma_item.priority,
+                                        g_tx_dma_item.is_heartbeat,
+                                        g_tx_dma_item.control_class);
       }
       break;
     }
@@ -1330,19 +1330,33 @@ static inline uint8_t radio_rx_ring_pop_thread(radio_rx_item_t *out)
  */
 void radio_uart_process_rx(void)
 {
+  uint32_t processed = 0U;
   radio_uart_sample_rx_pin();
 
 #ifdef SEDS_FIRMWARE_SIM_TEST
-  while (__HAL_UART_GET_FLAG(g_huart, UART_FLAG_RXNE) != RESET) {
+  uint32_t simulated_bytes = 0U;
+  while (simulated_bytes < RADIO_UART_SIM_RX_BYTE_BUDGET &&
+         __HAL_UART_GET_FLAG(g_huart, UART_FLAG_RXNE) != RESET) {
     const uint8_t byte = (uint8_t)g_huart->Instance->RDR;
     radio_process_framed_bytes(&byte, 1U);
+    simulated_bytes++;
+  }
+  if (simulated_bytes == RADIO_UART_SIM_RX_BYTE_BUDGET &&
+      __HAL_UART_GET_FLAG(g_huart, UART_FLAG_RXNE) != RESET) {
+    g_radio_rx_service_budget_hits++;
   }
 #endif
 
   radio_rx_item_t item;
-  while (radio_rx_ring_pop_thread(&item)) {
+  while (processed < RADIO_UART_RX_SERVICE_BUDGET &&
+         radio_rx_ring_pop_thread(&item)) {
     radio_process_framed_bytes(item.data, (size_t)item.len);
+    processed++;
   }
+  if (processed == RADIO_UART_RX_SERVICE_BUDGET && g_rx_count > 0U) {
+    g_radio_rx_service_budget_hits++;
+  }
+  g_radio_rx_service_passes++;
 }
 
 /*
@@ -1383,10 +1397,12 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
   if (!g_huart) return;
   if (huart->Instance != g_huart->Instance) return;
 
+  const uint8_t preserves_rx = g_tx_dma_preserves_rx;
   g_tx_dma_busy = 0U;
+  g_tx_dma_preserves_rx = 0U;
   g_radio_tx_ok++;
   g_tx_dma_complete++;
-  if (radio_uart_start_rx() != HAL_OK) {
+  if (!preserves_rx && radio_uart_start_rx() != HAL_OK) {
     g_rx_restart_errors++;
   }
 }
@@ -1397,9 +1413,10 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
   if (huart->Instance != g_huart->Instance) return;
 
   g_rx_errors++;
-  g_tx_dma_busy = 0U;
+  /* RX noise/overrun is independent of full-duplex TX. Aborting an active TX
+   * here used to discard a compact transport frame and poison the return
+   * stream. The service-loop watchdog owns TX recovery if completion stalls. */
   (void)HAL_UART_AbortReceive(huart);
-  (void)HAL_UART_AbortTransmit(huart);
   if (radio_uart_start_rx() != HAL_OK) {
     g_rx_restart_errors++;
   }

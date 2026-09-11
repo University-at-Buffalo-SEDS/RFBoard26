@@ -23,9 +23,11 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "stm32g4xx_hal_spi.h"
+#if RF_USB_DEBUG_ENABLED
 #include "ux_api.h"
 #include "ux_system.h"
 #include "ux_device_class_cdc_acm.h"
+#endif
 #include <stdint.h>
 #include <stdio.h>
 #include "telemetry.h"
@@ -34,7 +36,9 @@
 #include "av_bay_underglow.h"
 #include "flight_state_cache.h"
 
+#if RF_USB_DEBUG_ENABLED
 extern UX_SLAVE_CLASS_CDC_ACM *cdc_acm;
+#endif
 
 #ifndef MIN
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
@@ -80,7 +84,9 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_FDCAN2_Init(void);
 static void MX_USART1_UART_Init(void);
+#if RF_USB_DEBUG_ENABLED
 static void MX_USB_PCD_Init(void);
+#endif
 static void MX_SPI1_Init(void);
 /* USER CODE BEGIN PFP */
 
@@ -122,7 +128,9 @@ int main(void)
   MX_DMA_Init();
   MX_FDCAN2_Init();
   MX_USART1_UART_Init();
+#if RF_USB_DEBUG_ENABLED
   MX_USB_PCD_Init();
+#endif
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
   /* Start the radio RX transport; the telemetry thread owns CAN startup. */
@@ -215,6 +223,8 @@ static void MX_FDCAN2_Init(void)
   hfdcan2.Init.ClockDivider = FDCAN_CLOCK_DIV1;
   hfdcan2.Init.FrameFormat = FDCAN_FRAME_FD_NO_BRS;
   hfdcan2.Init.Mode = FDCAN_MODE_NORMAL;
+  /* FDCAN retries physical arbitration/ACK failures; SEDSNet supplies
+   * end-to-end reliability without blocking this non-blocking TX path. */
   hfdcan2.Init.AutoRetransmission = ENABLE;
   hfdcan2.Init.TransmitPause = DISABLE;
   hfdcan2.Init.ProtocolException = DISABLE;
@@ -334,6 +344,7 @@ static void MX_USART1_UART_Init(void)
   * @param None
   * @retval None
   */
+#if RF_USB_DEBUG_ENABLED
 static void MX_USB_PCD_Init(void)
 {
 
@@ -361,6 +372,7 @@ static void MX_USB_PCD_Init(void)
   /* USER CODE END USB_Init 2 */
 
 }
+#endif /* RF_USB_DEBUG_ENABLED */
 
 /**
   * Enable DMA controller clock
@@ -423,6 +435,8 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+#if RF_USB_DEBUG_ENABLED
 
 static inline int cdc_in_isr(void)
 {
@@ -606,6 +620,23 @@ int fputc(int ch, FILE *f)
   return ch;
 }
 #endif
+
+#else
+
+void cdc_printf_init(void)
+{
+}
+
+#ifdef __GNUC__
+int _write(int file, char *ptr, int len)
+{
+  (void)file;
+  (void)ptr;
+  return len;
+}
+#endif
+
+#endif /* RF_USB_DEBUG_ENABLED */
 
 /* USER CODE END 4 */
 

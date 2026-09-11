@@ -25,6 +25,7 @@
 #include "neom9n_config.h"
 #include "gps_time.h"
 #include "telemetry.h"
+#include "telemetry_rate.h"
 #include "tx_api.h"
 #include "tx_thread.h"
 #include <stdio.h>
@@ -91,17 +92,38 @@ static uint64_t wrap_day_ms(uint64_t ms) {
 TX_THREAD neom9n_thread;
 volatile uint32_t g_neom9n_stack_used = 0U;
 volatile uint32_t g_neom9n_stack_remaining = 0U;
+volatile uint32_t g_neom9n_stack_current = 0U;
 volatile uint8_t g_neom9n_has_fix = 0U;
-#define NEOM9N_THREAD_STACK_SIZE (5U * 1024U)
+/* Parsing plus SEDSNet logging exceeded the former 2 KiB allocation under a
+ * fully connected bay. Keep guard checking enabled for future regressions. */
+#define NEOM9N_THREAD_STACK_SIZE (12U * 1024U)
+/* The RF main byte pool size is part of the board's fixed BSP memory budget.
+ * Keep the GPS stack statically owned so adding the measured overflow margin
+ * does not steal capacity from SEDSNet or depend on byte-pool fragmentation. */
+static ULONG neom9n_thread_stack[NEOM9N_THREAD_STACK_SIZE / sizeof(ULONG)];
 #define GPS_LINK_WARNING_INTERVAL_MS (5ULL * 60ULL * 1000ULL)
-#define GPS_DATA_LOG_INTERVAL_MS 750ULL
-#define GPS_SATELLITE_LOG_INTERVAL_MS 1000ULL
 #define GPS_SATELLITE_STALE_MS 5000UL
 #define GPS_ERROR_LOG_INTERVAL_MS (5ULL * 60ULL * 1000ULL)
 #define GPS_CONSECUTIVE_ERROR_THRESHOLD 20U
 #define GPS_SPI_RECOVERY_ERROR_THRESHOLD 3U
 #define GPS_SPI_RECOVERY_INTERVAL_MS 5000ULL
 #define GPS_NO_FIX_ERROR_THRESHOLD 100U
+
+static void neom9n_update_stack_profile(void)
+{
+    g_neom9n_stack_current = __get_PSP();
+    _tx_thread_stack_analyze(&neom9n_thread);
+    const uintptr_t start = (uintptr_t)neom9n_thread.tx_thread_stack_start;
+    const uintptr_t end = (uintptr_t)neom9n_thread.tx_thread_stack_end;
+    const uintptr_t highest =
+        (uintptr_t)neom9n_thread.tx_thread_stack_highest_ptr;
+
+    if (highest >= start && highest <= end) {
+        g_neom9n_stack_used =
+            (uint32_t)(end - highest + sizeof(ULONG));
+        g_neom9n_stack_remaining = (uint32_t)(highest - start);
+    }
+}
 
 static uint8_t gps_satellite_count_or_zero(const NEOM9N_t *packet) {
     if (packet == NULL || packet->last_satellite_update_tick == 0U) {
@@ -138,7 +160,7 @@ static void gps_emit_satellite_count_if_due(const NEOM9N_t *packet,
                                         1U,
                                         sizeof(satellite_count));
     if (result == SEDS_OK) {
-        *next_emit_ms = now_ms + GPS_SATELLITE_LOG_INTERVAL_MS;
+        *next_emit_ms = now_ms + rf_telemetry_period_ms();
         if (sent != NULL) {
             *sent = true;
         }
@@ -281,6 +303,10 @@ void neom9n_thread_entry(ULONG initial_input)
 
     for michael
     {
+        /* Sample before entering the receive/publish path. If the previous
+         * pass approached its guard, expose the margin before another deep
+         * SEDSNet call can consume it. */
+        neom9n_update_stack_profile();
 #if TELEMETRY_TEST_MODE
             // Synthetic epoch time that advances with local ticks
             const uint64_t now_local_ms = tx_now_ms();
@@ -299,7 +325,7 @@ void neom9n_thread_entry(ULONG initial_input)
             if (now_local_ms >= next_gps_data_log_ms) {
                 float fake[3] = {TELEMETRY_TEST_LAT, TELEMETRY_TEST_LON, TELEMETRY_TEST_ALT_M};
                 if (log_telemetry_asynchronous(SEDS_DT_GPS_DATA, fake, 3, sizeof(float)) == SEDS_OK) {
-                    next_gps_data_log_ms = now_local_ms + GPS_DATA_LOG_INTERVAL_MS;
+                    next_gps_data_log_ms = now_local_ms + rf_telemetry_period_ms();
                 }
                 printf("GPS TEST MODE: emitted fake GPS data\r\n");
             }
@@ -366,7 +392,7 @@ void neom9n_thread_entry(ULONG initial_input)
                                                    gps_data_buffer,
                                                    3,
                                                    sizeof(float)) == SEDS_OK) {
-                        next_gps_data_log_ms = local_ms + GPS_DATA_LOG_INTERVAL_MS;
+                        next_gps_data_log_ms = local_ms + rf_telemetry_period_ms();
                     }
                 }
 #endif
@@ -490,34 +516,27 @@ void neom9n_thread_entry(ULONG initial_input)
                 }
             }
         }
-        _tx_thread_stack_analyze(&neom9n_thread);
-        g_neom9n_stack_used = (uint32_t)(
-            (uintptr_t)neom9n_thread.tx_thread_stack_end -
-            (uintptr_t)neom9n_thread.tx_thread_stack_highest_ptr + sizeof(ULONG));
-        g_neom9n_stack_remaining = (uint32_t)(
-            (uintptr_t)neom9n_thread.tx_thread_stack_highest_ptr -
-            (uintptr_t)neom9n_thread.tx_thread_stack_start);
+        neom9n_update_stack_profile();
         tx_thread_sleep(50);
     }
 }
 
 UINT create_neom9n_thread(TX_BYTE_POOL *byte_pool)
 {
-    CHAR *pointer;
+    (void)byte_pool;
 
-    /* Allocate the stack for test */
-    if (tx_byte_allocate(byte_pool, (VOID **)&pointer,
-                         NEOM9N_THREAD_STACK_SIZE, TX_NO_WAIT) != TX_SUCCESS)
-    {
-        return TX_POOL_ERROR;
-    }
+    /* Publish the statically allocated margin immediately. ThreadX may leave
+     * tx_thread_stack_highest_ptr unset until its first successful stack scan,
+     * which otherwise makes a healthy, running GPS thread look uninitialized
+     * to the simulator and on-target diagnostics. */
+    g_neom9n_stack_remaining = NEOM9N_THREAD_STACK_SIZE;
 
     UINT status = tx_thread_create(
         &neom9n_thread,
         "NEOM9N Thread",
         neom9n_thread_entry,
         0,
-        pointer,
+        neom9n_thread_stack,
         NEOM9N_THREAD_STACK_SIZE,
         4,
         4,

@@ -6,12 +6,19 @@ import build
 
 
 class QualificationContractTests(unittest.TestCase):
+    def test_gps_status_and_position_use_managed_runtime_rate(self):
+        root = Path(build.__file__).resolve().parent
+        source = (root / "Core/Src/neom9n_thread.c").read_text(encoding="utf-8")
+        self.assertIn("rf_telemetry_period_ms()", source)
+        self.assertIn('#include "telemetry_rate.h"', source)
+        self.assertIn("gps_satellite_count_or_zero", source)
+
     def test_telemetry_stack_covers_profiled_sedsnet_call_depth(self):
         root = Path(build.__file__).resolve().parent
         source = (root / "Core" / "Src" / "telemetry_thread.c").read_text(
             encoding="utf-8"
         )
-        self.assertIn("TELEMETRY_THREAD_STACK_SIZE (12U * 1024U)", source)
+        self.assertIn("TELEMETRY_THREAD_STACK_SIZE (14U * 1024U)", source)
 
     def test_can_transport_starts_before_router(self):
         root = Path(build.__file__).resolve().parent
@@ -30,6 +37,7 @@ class QualificationContractTests(unittest.TestCase):
 
         self.assertIn('"profile"', runner)
         self.assertIn('"--sample-count", "20"', runner)
+        self.assertEqual(runner.count('str(max(1000, layout["execution"]["virtual_time_ms"]))'), 2)
         self.assertIn('"--traffic-iterations", "1000000"', runner)
         self.assertIn('"bay"', runner)
         self.assertIn('"tx_probe": "fdcan_tx_ok"', runner)
@@ -39,6 +47,9 @@ class QualificationContractTests(unittest.TestCase):
         self.assertIn('"rocket_radio"', runner)
         self.assertIn('"fill_pico"', runner)
         self.assertIn('"GS_SIM_VALIDATE_VALVE_ROUNDTRIP": "1"', runner)
+        self.assertIn('"GS_SIM_VALIDATE_SOAK_COMMANDS": "1" if ultra_soak else "0"', runner)
+        self.assertIn("Valve command path remained alive during soak interval", runner)
+        self.assertIn("Every ten-minute soak command returned an acknowledgement", runner)
         self.assertIn('"probe": "valve_commands_received", "minimum": 1', runner)
         self.assertIn("routed status ACK toward GroundStation", runner)
         self.assertIn('simulation_env["SEDS_FIRMWARE_SIM_TEST"] = "1"', runner)
@@ -46,6 +57,9 @@ class QualificationContractTests(unittest.TestCase):
         self.assertIn('running ({int(now - started)}s elapsed)', runner)
         self.assertIn('"GroundStation discovered every board by autonomous name"', runner)
         self.assertIn('"transport_path": ["RFBoard", "PowerBoard", "FlightComputer"]', runner)
+        self.assertIn("rf-flight-groundstation-power-absent", runner)
+        self.assertIn("RF telemetry loop remained live after FC traffic joined", runner)
+        self.assertIn("RF continued transmitting radio late in the run", runner)
         self.assertIn("Long-duration memory profile", script)
         self.assertIn("Network discovery and time sync", script)
 
@@ -63,6 +77,11 @@ class QualificationContractTests(unittest.TestCase):
         self.assertEqual(probes["fdcan_rx"], "g_fdcan_rx_count")
 
         telemetry = (root / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
+        self.assertIn("#define RF_HEALTH_PROBE __attribute__((used, externally_visible))", telemetry)
+        cmake = (root / "CMakeLists.txt").read_text(encoding="utf-8")
+        self.assertIn("-Wl,--undefined=g_telemetry_peer_mask", cmake)
+        self.assertIn("-Wl,--undefined=g_sim_heartbeat_attempts", cmake)
+        self.assertIn("-Wl,--undefined=g_tx_drops", cmake)
         for symbol in (
             "g_telemetry_network_ready",
             "g_telemetry_discovery_seen",
@@ -73,21 +92,21 @@ class QualificationContractTests(unittest.TestCase):
         can_bus = (root / "Core" / "Src" / "can_bus.c").read_text(encoding="utf-8")
         self.assertIn("g_fdcan_rx_count++", can_bus)
 
-    def test_source_queues_can_timesync_before_radio_without_blocking_startup(self):
+    def test_both_relay_sides_exist_before_timesync_startup(self):
         root = Path(build.__file__).resolve().parent
         telemetry = (root / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
         self.assertIn('r, "can", 3U, tx_send, NULL, false,', telemetry)
         prime = telemetry.index("seds_router_poll_timesync(r, &did_queue)")
         radio = telemetry.index('r, "radio", 5U, radio_tx_send')
-        self.assertLess(prime, radio)
-        self.assertNotIn("seds_router_process_tx_queue(r)", telemetry[prime:radio])
+        self.assertLess(radio, prime)
+        self.assertNotIn("seds_router_process_tx_queue(r)", telemetry[radio:prime])
 
     def test_initial_timesync_io_backpressure_is_nonfatal(self):
         root = Path(build.__file__).resolve().parent
         telemetry = (root / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
         prime = telemetry.index("/* Prime the first source announcement")
-        radio = telemetry.index("g_radio_side_id = seds_router_add_side_packed_profile", prime)
-        startup_prime = telemetry[prime:radio]
+        end = telemetry.index("g_router_retry_after_ms = 0ULL", prime)
+        startup_prime = telemetry[prime:end]
 
         self.assertIn("seds_router_poll_timesync(r, &did_queue)", startup_prime)
         self.assertIn(
@@ -146,7 +165,16 @@ class QualificationContractTests(unittest.TestCase):
         )
         self.assertIn("RF_RADIO_MAX_FRAME_BYTES 1024U", telemetry)
         self.assertIn("RF_CAN_MAX_FRAME_BYTES 128U", telemetry)
+        self.assertIn("SEDS_SIDE_TRANSPORT_PROFILE_IPV6_LIKE", telemetry)
         self.assertIn("RF_SIDE_TRANSPORT_TEMPLATES 4U", telemetry)
+        can_bus = (root / "Core" / "Src" / "can_bus.c").read_text(encoding="utf-8")
+        self.assertIn("CAN_BUS_TX_ENQUEUE_TIMEOUT_MS 5U", can_bus)
+        self.assertIn("HAL_FDCAN_AbortTxRequest", can_bus)
+        self.assertNotIn("< (uint32_t)frag_cnt", can_bus)
+        enqueue = can_bus.split("static HAL_StatusTypeDef can_bus_enqueue_tx_frame", 1)[1]
+        enqueue = enqueue.split("static inline void can_bus_notify_rx", 1)[0]
+        self.assertNotIn("for (;;)", enqueue)
+        self.assertIn("HAL_GetTick()", enqueue)
         self.assertNotIn(
             "seds_router_set_route(r, g_can_side_id, g_radio_side_id, true)",
             telemetry,
@@ -156,13 +184,13 @@ class QualificationContractTests(unittest.TestCase):
         self.assertNotIn("seds_router_set_typed_route", telemetry)
         self.assertIn("#define RADIO_UART_MAX_PAYLOAD_SIZE    1024U", radio)
 
-    def test_radio_hop_retains_sedsnet_reliable_delivery(self):
+    def test_radio_hop_uses_rfd900x_link_reliability_without_nested_acks(self):
         root = Path(__file__).resolve().parents[1]
         telemetry = (root / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
         radio_setup = telemetry.split(
             "g_radio_side_id = seds_router_add_side_packed_profile_with_priority(", 1
         )[1].split(");", 1)[0]
-        self.assertIn('r, "radio", 5U, radio_tx_send, NULL, true,', radio_setup)
+        self.assertIn('r, "radio", 5U, radio_tx_send, NULL, false,', radio_setup)
 
 
     def test_periodic_health_check_does_not_serialize_topology(self):

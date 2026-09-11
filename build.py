@@ -837,6 +837,8 @@ def make_parser() -> argparse.ArgumentParser:
     add_mode_and_common(t)
     t.add_argument("--all", "--full", dest="all_tests", action="store_true",
                    help="Build the selected configuration and run all unit and Docker firmware simulation tests (--full is an alias).")
+    t.add_argument("--ultra-soak", action="store_true",
+                   help="After --all, run an additional 10-minute linked-network fault/rejoin soak.")
 
     # st-util options
     f.add_argument("--host", default="127.0.0.1", help="GDB server host (default: 127.0.0.1)")
@@ -903,6 +905,8 @@ def main() -> None:
     cfg = build_cfg_from_args(ui, args)
 
     if args.cmd == "test":
+        if args.ultra_soak and not args.all_tests:
+            raise FriendlyError("--ultra-soak requires --all (or --full).")
         results: list[tuple[str, str]] = []
         _run_test_stage(
             ui, results, "Host and Python unit tests",
@@ -960,6 +964,14 @@ def main() -> None:
                     ui, cfg.repo_root, "stm32g4", cfg.build_subdir
                 ),
             )
+            if args.ultra_soak:
+                _run_test_stage(
+                    ui, results, "10-minute network fault/rejoin soak",
+                    lambda: run_network_simulation(
+                        ui, cfg.repo_root, "stm32g4", cfg.build_subdir,
+                        ultra_soak=True,
+                    ),
+                )
         _print_test_summary(ui, results)
         return
 

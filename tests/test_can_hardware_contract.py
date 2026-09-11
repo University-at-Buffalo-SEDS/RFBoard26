@@ -17,6 +17,10 @@ class CanHardwareContract(unittest.TestCase):
         self.assertIn("hfdcan2.Init.NominalTimeSeg2 = 3", source)
         self.assertIn("FDCAN2.CalculateBaudRateNominal=999999", ioc)
         self.assertIn("FDCAN2.AutoRetransmission=ENABLE", ioc)
+        can = (ROOT / "Core/Src/can_bus.c").read_text()
+        self.assertIn("CAN_BUS_TX_ENQUEUE_TIMEOUT_MS 5U", can)
+        self.assertIn("HAL_FDCAN_AbortTxRequest", can)
+        self.assertNotIn("< (uint32_t)frag_cnt", can)
 
 
 if __name__ == "__main__":

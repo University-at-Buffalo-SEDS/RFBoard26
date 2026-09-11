@@ -12,7 +12,6 @@ extern volatile uint32_t g_telemetry_discovery_seen;
 #define FLIGHT_STATE_PERSIST_KEY 0x46535445u
 #define FLIGHT_STATE_MAX_VALUE 15U
 #define FLIGHT_STATE_UNSYNCED_RETRY_MS 500U
-#define FLIGHT_STATE_PACKED_CAPACITY 128U
 
 volatile uint32_t g_flight_state_cache_value __attribute__((used, externally_visible)) = 0U;
 volatile uint32_t g_flight_state_cache_restores __attribute__((used, externally_visible)) = 0U;
@@ -105,33 +104,6 @@ static SedsResult persist_update(const SedsPacketView *packet, void *user)
     return SEDS_OK;
 }
 
-static SedsResult seed_cached_value(SedsRouter *router)
-{
-    if (!g_has_value) return SEDS_OK;
-    const uint32_t endpoint = (uint32_t)SEDS_EP_FLIGHT_STATE;
-    const uint8_t state = (uint8_t)g_flight_state_cache_value;
-    const SedsPacketView view = {
-        .ty = (uint32_t)SEDS_DT_FLIGHT_STATE,
-        .data_size = sizeof(state),
-        .sender = "LOCAL_CACHE",
-        .sender_len = sizeof("LOCAL_CACHE") - 1U,
-        .endpoints = &endpoint,
-        .num_endpoints = 1U,
-        .timestamp = 0U,
-        .payload = &state,
-        .payload_len = sizeof(state),
-    };
-    uint8_t packed[FLIGHT_STATE_PACKED_CAPACITY];
-    const int32_t packed_len = seds_pkt_pack_len(&view);
-    if (packed_len <= 0 || (size_t)packed_len > sizeof(packed) ||
-        seds_pkt_pack(&view, packed, sizeof(packed)) != packed_len)
-    {
-        return SEDS_HANDLER_ERROR;
-    }
-    return seds_router_seed_managed_variable_packed(
-        router, packed, (size_t)packed_len);
-}
-
 SedsResult flight_state_cache_init(SedsRouter *router)
 {
     if (router == NULL) return SEDS_BAD_ARG;
@@ -141,8 +113,6 @@ SedsResult flight_state_cache_init(SedsRouter *router)
     if (result != SEDS_OK) return result;
     result = seds_router_on_network_variable_update(
         router, SEDS_DT_FLIGHT_STATE, persist_update, NULL);
-    if (result != SEDS_OK) return result;
-    result = seed_cached_value(router);
     if (result != SEDS_OK) return result;
     g_last_refresh_ms = HAL_GetTick();
     return SEDS_OK;

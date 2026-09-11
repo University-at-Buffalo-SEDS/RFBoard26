@@ -51,6 +51,19 @@ option(SEDS_FIRMWARE_SIM_TEST
 if(SEDS_FIRMWARE_SIM_TEST)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
         SEDS_FIRMWARE_SIM_TEST=1)
+    # These probes are read directly from the ELF by the simulator. Keep the
+    # zero-initialized counters even when LTO sees no firmware-side reads.
+    target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
+        -Wl,--undefined=g_telemetry_peer_mask
+        -Wl,--undefined=g_sim_heartbeat_attempts
+        -Wl,--undefined=g_sim_heartbeat_ok
+        -Wl,--undefined=g_sim_heartbeat_fail
+        -Wl,--undefined=g_sim_heartbeat_wire_tx
+        -Wl,--undefined=g_sim_gps_publish_attempts
+        -Wl,--undefined=g_sim_gps_publish_ok
+        -Wl,--undefined=g_sim_avionics_telemetry_ingress
+        -Wl,--undefined=g_sim_avionics_telemetry_radio_egress
+        -Wl,--undefined=g_tx_drops)
 endif()
 target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
     -T "${CMAKE_SOURCE_DIR}/STM32G491XX_FLASH.ld")
@@ -61,6 +74,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_hooks.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_thread.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_rate.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/av_bay_underglow.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/flight_state_cache.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/persistent_store.c
@@ -97,6 +111,8 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined symbols
     CAN_BUS_RX_RING_DEPTH=32
     CAN_BUS_REASM_SLOTS=2
+    CAN_BUS_REASM_MAX_BYTES=256
+    RF_USB_DEBUG_ENABLED=$<IF:$<CONFIG:Debug>,1,0>
 )
 
 # Remove wrong libob.a library dependency when using cpp files
@@ -112,9 +128,13 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 # SEDSNet v4
 set(SEDSNET_DEVICE_IDENTIFIER "RF" CACHE STRING "" FORCE)
 set(SEDSNET_MAX_STACK_PAYLOAD "128" CACHE STRING "" FORCE)
-set(RF_SEDSNET_MEMORY_POOL_SIZE "48096" CACHE STRING
-    "Isolated SEDSNet allocator pool, including router state, allocator metadata, and reserve" FORCE)
-set(RF_SEDSNET_QUEUE_BUDGET "8192" CACHE STRING
+set(RF_SEDSNET_MEMORY_POOL_SIZE "67072" CACHE STRING
+    "Total isolated SEDSNet allocator storage across primary and emergency arenas" FORCE)
+set(RF_SEDSNET_LARGE_POOL_SIZE "25088" CACHE STRING
+    "SEDSNet storage reserved for allocations of 1 KiB or larger" FORCE)
+set(RF_SEDSNET_EMERGENCY_POOL_SIZE "19456" CACHE STRING
+    "Reclaimed static RAM used only after both normal SEDSNet arenas are pressured" FORCE)
+set(RF_SEDSNET_QUEUE_BUDGET "6144" CACHE STRING
     "Bound fallback, reliable, and discovery storage on the two-sided RF router" FORCE)
 set(RF_SEDSNET_STARTING_ALLOCATION "512" CACHE STRING
     "Fixed fallback queue storage; normal telemetry dispatches immediately" FORCE)
@@ -127,6 +147,8 @@ set(SEDSNET_TARGET "thumbv7em-none-eabihf" CACHE STRING "" FORCE)
 include(cmake/sedsnet_fetch.cmake)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     RF_SEDSNET_MEMORY_POOL_SIZE=${RF_SEDSNET_MEMORY_POOL_SIZE}
+    RF_SEDSNET_LARGE_POOL_SIZE=${RF_SEDSNET_LARGE_POOL_SIZE}
+    RF_SEDSNET_EMERGENCY_POOL_SIZE=${RF_SEDSNET_EMERGENCY_POOL_SIZE}
     RF_SEDSNET_QUEUE_BUDGET=${RF_SEDSNET_QUEUE_BUDGET}
     RF_SEDSNET_MAX_RECENT_RX_IDS=${SEDSNET_MAX_RECENT_RX_IDS}
     RF_SEDSNET_STARTING_ALLOCATION=${RF_SEDSNET_STARTING_ALLOCATION})

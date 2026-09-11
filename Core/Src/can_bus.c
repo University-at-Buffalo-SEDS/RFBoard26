@@ -46,7 +46,7 @@
 #endif
 
 #ifndef CAN_BUS_TX_ENQUEUE_TIMEOUT_MS
-#define CAN_BUS_TX_ENQUEUE_TIMEOUT_MS 50U
+#define CAN_BUS_TX_ENQUEUE_TIMEOUT_MS 5U
 #endif
 
 /* A continuously busy CAN bus must not monopolize the telemetry thread.  A
@@ -54,6 +54,10 @@
  * SEDSNet timers, and process commands. */
 #ifndef CAN_BUS_RX_SERVICE_BUDGET
 #define CAN_BUS_RX_SERVICE_BUDGET 32U
+#endif
+
+#ifndef CAN_BUS_TX_EVENT_SERVICE_BUDGET
+#define CAN_BUS_TX_EVENT_SERVICE_BUDGET 32U
 #endif
 
 #define UNUSED_FUNCTION __attribute__((unused))
@@ -261,39 +265,31 @@ static HAL_StatusTypeDef can_bus_enqueue_tx_frame(const FDCAN_TxHeaderTypeDef *h
   if (!g_hfdcan || !hdr || !data)
     return HAL_ERROR;
 
-  const uint32_t t0 = HAL_GetTick();
-  for (;;)
+  const uint32_t started_ms = HAL_GetTick();
+  while (HAL_FDCAN_GetTxFifoFreeLevel(g_hfdcan) == 0U)
   {
     if (can_bus_recover_if_bus_off() != HAL_OK)
       return HAL_ERROR;
-
-    if (HAL_FDCAN_GetTxFifoFreeLevel(g_hfdcan) > 0U)
+    if ((uint32_t)(HAL_GetTick() - started_ms) >=
+        (uint32_t)CAN_BUS_TX_ENQUEUE_TIMEOUT_MS)
     {
-      HAL_StatusTypeDef st = HAL_FDCAN_AddMessageToTxFifoQ(g_hfdcan, hdr, data);
-      if (st == HAL_OK)
-      {
-        g_fdcan_tx_ok_count++;
-        return HAL_OK;
-      }
-
-      /*
-       * Retry only when queue is temporarily full; for all other errors,
-       * return immediately.
-       */
-      const uint32_t err = HAL_FDCAN_GetError(g_hfdcan);
-      if ((err & HAL_FDCAN_ERROR_FIFO_FULL) == 0U)
-      {
-        g_fdcan_tx_fail_count++;
-        return st;
-      }
-    }
-
-    if ((uint32_t)(HAL_GetTick() - t0) >= (uint32_t)CAN_BUS_TX_ENQUEUE_TIMEOUT_MS)
-    {
+      (void)HAL_FDCAN_AbortTxRequest(
+          g_hfdcan, FDCAN_TX_BUFFER0 | FDCAN_TX_BUFFER1 | FDCAN_TX_BUFFER2);
       g_fdcan_tx_fail_count++;
       return HAL_TIMEOUT;
     }
   }
+
+  /* Stream logical packets through the bounded M_CAN FIFO. The wait is short
+   * enough that a disconnected bus cannot wedge the telemetry worker. */
+  HAL_StatusTypeDef st = HAL_FDCAN_AddMessageToTxFifoQ(g_hfdcan, hdr, data);
+  if (st == HAL_OK)
+  {
+    g_fdcan_tx_ok_count++;
+    return HAL_OK;
+  }
+  g_fdcan_tx_fail_count++;
+  return st;
 }
 
 static inline void can_bus_notify_rx(const uint8_t *data, size_t len)
@@ -1048,8 +1044,11 @@ void can_bus_process_rx(void)
 
   // Drain any TX event notifications queued by ISR (debug only)
   can_bus_tx_event_t txe;
-  while (tx_rb_pop(&txe))
+  uint32_t tx_events_processed = 0U;
+  while (tx_events_processed < CAN_BUS_TX_EVENT_SERVICE_BUDGET &&
+         tx_rb_pop(&txe))
   {
+    tx_events_processed++;
     CAN_BUS_DBG("CAN TX DONE: id=0x%03lx evt=0x%08lx ts=%lu len=%u\r\n",
                 (unsigned long)txe.id, (unsigned long)txe.event_type,
                 (unsigned long)txe.timestamp, (unsigned)txe.data_len);

@@ -97,7 +97,7 @@
    though the compiler's equivalent of the -D option.  */
 
 /* Define USBX Generic Thread Stack Size.  */
-#define UX_THREAD_STACK_SIZE                                24576
+#define UX_THREAD_STACK_SIZE                                2048
 
 /* Define USBX Host Enum Thread Stack Size. The default is to use UX_THREAD_STACK_SIZE */
 /* #define UX_HOST_ENUM_THREAD_STACK_SIZE                   UX_THREAD_STACK_SIZE  */

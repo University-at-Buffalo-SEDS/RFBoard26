@@ -1,5 +1,6 @@
 // telemetry.c
 #include "telemetry.h"
+#include "telemetry_rate.h"
 #include "av_bay_underglow.h"
 #include "flight_state_cache.h"
 #include "sim_network_probe.h"
@@ -119,16 +120,21 @@ RouterState g_router = {.r = NULL, .created = 0U, .start_time = 0ULL};
 
 /* Exported simulator/HIL health signals. A linked-bay test requires both a
  * remote discovery topology change and a valid SEDSNet network clock. */
-volatile uint32_t g_telemetry_discovery_seen = 0U;
-volatile uint32_t g_telemetry_timesync_valid = 0U;
-volatile uint32_t g_telemetry_network_ready = 0U;
-volatile uint32_t g_telemetry_peer_mask = 0U;
-volatile uint32_t g_sim_heartbeat_attempts = 0U;
-volatile uint32_t g_sim_heartbeat_ok = 0U;
-volatile uint32_t g_sim_heartbeat_fail = 0U;
-volatile uint32_t g_sim_heartbeat_wire_tx = 0U;
-volatile uint32_t g_sim_radio_egress_peer_mask = 0U;
-volatile uint32_t g_telemetry_timesync_queued = 0U;
+#define RF_HEALTH_PROBE __attribute__((used, externally_visible))
+volatile uint32_t g_telemetry_discovery_seen RF_HEALTH_PROBE = 0U;
+volatile uint32_t g_telemetry_timesync_valid RF_HEALTH_PROBE = 0U;
+volatile uint32_t g_telemetry_network_ready RF_HEALTH_PROBE = 0U;
+volatile uint32_t g_telemetry_peer_mask RF_HEALTH_PROBE = 0U;
+volatile uint32_t g_sim_heartbeat_attempts RF_HEALTH_PROBE = 0U;
+volatile uint32_t g_sim_heartbeat_ok RF_HEALTH_PROBE = 0U;
+volatile uint32_t g_sim_heartbeat_fail RF_HEALTH_PROBE = 0U;
+volatile uint32_t g_sim_heartbeat_wire_tx RF_HEALTH_PROBE = 0U;
+volatile uint32_t g_sim_radio_egress_peer_mask RF_HEALTH_PROBE = 0U;
+volatile uint32_t g_telemetry_timesync_queued RF_HEALTH_PROBE = 0U;
+volatile uint32_t g_sim_gps_publish_attempts RF_HEALTH_PROBE = 0U;
+volatile uint32_t g_sim_gps_publish_ok RF_HEALTH_PROBE = 0U;
+volatile uint32_t g_sim_avionics_telemetry_ingress RF_HEALTH_PROBE = 0U;
+volatile uint32_t g_sim_avionics_telemetry_radio_egress RF_HEALTH_PROBE = 0U;
 
 static SedsResult telemetry_send_or_queue_can_packet(const uint8_t *bytes, size_t len);
 
@@ -363,6 +369,14 @@ static SedsResult radio_tx_send(const uint8_t *bytes, size_t len,
 
 #ifdef SEDS_FIRMWARE_SIM_TEST
   g_sim_radio_egress_peer_mask |= sim_probe_peer_bit_packed(bytes, len);
+  {
+    const uint32_t ty = sim_probe_packed_data_type(bytes, len);
+    if (ty == (uint32_t)SEDS_DT_GPS_SATELLITE_NUMBER ||
+        ty == (uint32_t)SEDS_DT_IMU_DATA ||
+        ty == (uint32_t)SEDS_DT_BATTERY_VOLTAGE) {
+      g_sim_avionics_telemetry_radio_egress++;
+    }
+  }
 #endif
 
   status = radio_uart_send_bytes_priority(bytes, len, priority);
@@ -372,6 +386,15 @@ static SedsResult radio_tx_send(const uint8_t *bytes, size_t len,
 static void telemetry_can_rx(const uint8_t *data, size_t len, void *user) {
   (void)user;
   sim_probe_observe_packed(data, len);
+#ifdef SEDS_FIRMWARE_SIM_TEST
+  {
+    const uint32_t ty = sim_probe_packed_data_type(data, len);
+    if (ty == (uint32_t)SEDS_DT_IMU_DATA ||
+        ty == (uint32_t)SEDS_DT_BATTERY_VOLTAGE) {
+      g_sim_avionics_telemetry_ingress++;
+    }
+  }
+#endif
 
 #ifdef TELEMETRY_ENABLED
   if (!data || len == 0U) {
@@ -535,6 +558,25 @@ SedsResult telemetry_poll_discovery(void) {
   const SedsResult result = seds_router_poll_discovery(g_router.r, &did_queue);
   if (result == SEDS_OK) {
     sim_probe_emit_heartbeat(g_router.r, telemetry_now_ms());
+#ifdef SEDS_FIRMWARE_SIM_TEST
+    /* Renode does not execute the external NEO-M9N's NMEA stream. Emit the
+     * production no-fix value at the real 1 Hz cadence so qualification
+     * exercises RF -> radio -> GroundStation telemetry routing under load. */
+    {
+      static uint64_t next_sim_gps_ms = 0ULL;
+      const uint64_t now_ms = telemetry_now_ms();
+      if (now_ms >= next_sim_gps_ms) {
+        const uint8_t satellites = 0U;
+        g_sim_gps_publish_attempts++;
+        if (seds_router_log_typed(g_router.r, SEDS_DT_GPS_SATELLITE_NUMBER,
+                                  &satellites, 1U, sizeof(satellites),
+                                  SEDS_EK_UNSIGNED) == SEDS_OK) {
+          g_sim_gps_publish_ok++;
+          next_sim_gps_ms = now_ms + rf_telemetry_period_ms();
+        }
+      }
+    }
+#endif
     (void)av_bay_underglow_poll(g_router.r);
   }
   telemetry_update_network_health(g_router.r);
@@ -588,7 +630,7 @@ SedsResult init_telemetry_router(void) {
       .starting_queue_size = RF_SEDSNET_STARTING_ALLOCATION,
       .queue_grow_step = 1.0,
   };
-  r = seds_router_new_with_memory(Seds_RM_Relay, node_now_since_ms, NULL, NULL, 0U,
+  r = seds_router_new_with_memory(node_now_since_ms, NULL, NULL, 0U,
                                   SEDS_ROUTER_E2E_DISABLED, 0U, &memory);
   if (!r) {
     printf("Error: failed to create router\r\n");
@@ -597,6 +639,11 @@ SedsResult init_telemetry_router(void) {
     g_can_side_id = -1;
     g_radio_side_id = -1;
     g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
+    return SEDS_ERR;
+  }
+  if (seds_router_set_preferred_discovery_master(r, "GS", 2U) != SEDS_OK) {
+    printf("Error: failed to prefer GroundStation discovery master\r\n");
+    seds_router_free(r);
     return SEDS_ERR;
   }
   telemetry_memory_profile_mark(1U);
@@ -610,6 +657,32 @@ SedsResult init_telemetry_router(void) {
     g_can_side_id = -1;
   }
   telemetry_memory_profile_mark(2U);
+
+  /* The RFD900x already provides its own acknowledged/retried radio link.
+   * Adding SEDSNet hop ACKs on top of that kept old control packets in the
+   * relay queue and eventually starved CAN-to-ground application traffic.
+   * Register both relay sides before configuring services so discovery can
+   * advertise and incrementally update the complete two-sided topology from
+   * the first poll, matching the working Gateway relay lifecycle. */
+  g_radio_side_id = seds_router_add_side_packed_profile_with_priority(
+      r, "radio", 5U, radio_tx_send, NULL, false,
+      SEDS_SIDE_TRANSPORT_PROFILE_IPV6_LIKE, RF_RADIO_MAX_FRAME_BYTES, 0U,
+      RF_SIDE_TRANSPORT_TEMPLATES);
+  if (g_radio_side_id < 0) {
+    printf("Error: failed to add radio side: %ld\r\n", (long)g_radio_side_id);
+    g_radio_side_id = -1;
+  }
+  if (g_can_side_id < 0 || g_radio_side_id < 0) {
+    printf("Error: failed to configure CAN/radio relay sides\r\n");
+    seds_router_free(r);
+    g_router.r = NULL;
+    g_router.created = 0U;
+    g_can_side_id = -1;
+    g_radio_side_id = -1;
+    g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
+    return SEDS_ERR;
+  }
+  telemetry_memory_profile_mark(3U);
 
   result = telemetry_configure_timesync_locked(r);
   if (result != SEDS_OK) {
@@ -666,30 +739,6 @@ SedsResult init_telemetry_router(void) {
     if (result == SEDS_OK && did_queue) g_telemetry_timesync_queued++;
   }
 
-  /* Add the ground-radio route only after the first CAN time-source
-   * announcement has been emitted.  Otherwise route selection can consume
-   * the startup control item on radio before the avionics CAN peers see it. */
-  /* Discovery topology can exceed one RFD900x UART frame. Let SEDSNet split/reassemble
-   * those packets instead of rejecting them at the radio framing boundary. */
-  g_radio_side_id = seds_router_add_side_packed_profile_with_priority(
-      r, "radio", 5U, radio_tx_send, NULL, true,
-      SEDS_SIDE_TRANSPORT_PROFILE_IPV6_LIKE, RF_RADIO_MAX_FRAME_BYTES, 0U,
-      RF_SIDE_TRANSPORT_TEMPLATES);
-  if (g_radio_side_id < 0) {
-    printf("Error: failed to add radio side: %ld\r\n", (long)g_radio_side_id);
-    g_radio_side_id = -1;
-  }
-  if (g_can_side_id < 0 || g_radio_side_id < 0) {
-    printf("Error: failed to configure CAN/radio relay sides\r\n");
-    seds_router_free(r);
-    g_router.r = NULL;
-    g_router.created = 0U;
-    g_can_side_id = -1;
-    g_radio_side_id = -1;
-    g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
-    return SEDS_ERR;
-  }
-  telemetry_memory_profile_mark(3U);
   g_router_retry_after_ms = 0ULL;
   return SEDS_OK;
 #endif

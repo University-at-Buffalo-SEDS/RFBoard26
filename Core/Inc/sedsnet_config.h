@@ -52,3 +52,8 @@
 #define SEDS_DT_ASCENT_LOCAL ((SedsDataType)131U)
 #define SEDS_DT_DESCENT_LOCAL ((SedsDataType)132U)
 #define SEDS_DT_AV_BAY_UNDERGLOW ((SedsDataType)133U)
+#define SEDS_DT_FLIGHT_BUZZER ((SedsDataType)134U)
+/* Retired runtime-rate IDs remain reserved to preserve wire compatibility. */
+#define SEDS_DT_RESERVED_135 ((SedsDataType)135U)
+#define SEDS_DT_RESERVED_136 ((SedsDataType)136U)
+#define SEDS_DT_DAQ_LOADCELL_CALIBRATION ((SedsDataType)137U)

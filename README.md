@@ -3,9 +3,17 @@
 RFBoard26 targets the STM32G491 and bridges the avionics CAN-FD network to the
 RFD900x radio link. The two links are separate SEDSNet router sides; SEDSNet
 discovery and learned subscriptions select routes, so the board does not
-manually fan out application packets. The radio UART runs at 57600 baud.
+manually fan out application packets. The radio UART runs at 57600 baud. The
+radio side relies on the RFD900x link's acknowledgement/retry mechanism;
+SEDSNet hop acknowledgements remain disabled there to avoid nested retry
+queues, stale managed-variable delivery, and application-traffic starvation.
 
-CMake fetches SEDSNet v4.0.20 and SEDS LaunchCore v1.0.0. Neither dependency is
+Telemetry publication is configured at compile time with `RF_TELEMETRY_RATE_HZ`
+in `Core/Inc/telemetry_rate.h` (default: 1 Hz). Set a whole-number rate from
+1 to 1000 Hz and rebuild/reflash the board. Actual throughput is limited by
+sensor acquisition and link capacity; this is not a network variable.
+
+CMake fetches SEDSNet v4.0.27 and SEDS LaunchCore v1.0.0. Neither dependency is
 a submodule. LaunchCore generates the linker scripts from
 `Bootloader/board_config.h`, packages Slot A firmware, and reserves its approved
 persistent-data and delta-update regions.
@@ -36,7 +44,19 @@ used by FirmwareSimulator. The linked-system topology assembled by
 ```sh
 ./build.py test
 ./build.py test --all --release
+./build.py test --all --release --ultra-soak
 ```
+
+On Docker hosts that cannot create bridge interfaces (including the Jupiter
+validation host), prefix the command with
+`SEDS_FIRMWARE_SIM_DOCKER_NETWORK=host`. The linked test requires GroundStation
+to label all seven graph nodes, attribute real payload traffic to each board,
+and correlate a routed valve command with its returned state ACK.
+
+`--ultra-soak` keeps the normal 16-second full-network test first, then adds a
+separate 600,000 ms firmware-time fault/rejoin, command/ACK, and memory-leak
+qualification. Commands must execute and return an ACK throughout the soak,
+including its final interval.
 
 The full suite builds firmware and OTA artifacts, checks flash/RAM and allocator
 limits, boots the real ELF in the containerized simulator, injects traffic and

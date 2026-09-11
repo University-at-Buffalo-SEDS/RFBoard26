@@ -17,7 +17,14 @@ volatile uint32_t g_telemetry_stack_start __attribute__((used, externally_visibl
 volatile uint32_t g_telemetry_stack_end __attribute__((used, externally_visible)) = 0U;
 volatile uint32_t g_telemetry_init_stage __attribute__((used, externally_visible)) = 0U;
 volatile int32_t g_telemetry_init_result __attribute__((used, externally_visible)) = 0;
-#define TELEMETRY_THREAD_STACK_SIZE (12U * 1024U)
+volatile uint32_t g_telemetry_loop_completions __attribute__((used, externally_visible)) = 0U;
+/* The two-sided router reaches roughly 10.7 KiB under the complete-bay load.
+ * A 12 KiB stack leaves too little room for the deepest command/discovery
+ * path and can corrupt the saved exception frame before ThreadX's periodic
+ * stack analyzer observes the peak. This memory still comes from the
+ * unchanged application byte pool; use otherwise-free headroom for a safe
+ * interrupt/preemption margin. */
+#define TELEMETRY_THREAD_STACK_SIZE (14U * 1024U)
 #define TELEMETRY_THREAD_SLEEP_TICKS 1U
 #define TELEMETRY_QUEUE_BUDGET_MS 1U
 #define TELEMETRY_ALIVE_PRINT_INTERVAL_MS 5000ULL
@@ -55,6 +62,7 @@ static void telemetry_print_alive_if_due(uint64_t now_ms, uint64_t *next_print_m
            "tx_busy_count=%lu tx_enqueued=%lu tx_queue=%lu tx_budget_misses=%lu "
            "tx_drops=%lu tx_drop_oldest=%lu tx_drop_same_flow=%lu tx_drop_stale=%lu "
            "aux=%lu mode0_pins=%lu aux_busy=%lu tx_dma_started=%lu tx_dma_complete=%lu "
+           "tx_dma_recoveries=%lu "
            "tx_startup_drops=%lu "
            "last_rx_len=%lu last_rx_preview=",
            (unsigned long)(uint32_t)now_ms,
@@ -83,6 +91,7 @@ static void telemetry_print_alive_if_due(uint64_t now_ms, uint64_t *next_print_m
            (unsigned long)radio_stats.aux_busy_count,
            (unsigned long)radio_stats.tx_dma_started,
            (unsigned long)radio_stats.tx_dma_complete,
+           (unsigned long)radio_stats.tx_dma_recoveries,
            (unsigned long)radio_stats.tx_startup_drops,
            (unsigned long)radio_stats.last_rx_len);
     for (uint8_t i = 0U; i < radio_stats.last_rx_preview_len; i++) {
@@ -178,6 +187,10 @@ void telemetry_thread_entry(ULONG initial_input)
         ota_stream_poll();
 
         (void)radio_uart_process_tx();
+
+        /* Advances only after ingress, routing, timers, OTA, and egress all
+         * yielded. A flat value detects a live scheduler with a starved loop. */
+        g_telemetry_loop_completions++;
 
         tx_thread_sleep(TELEMETRY_THREAD_SLEEP_TICKS);
 

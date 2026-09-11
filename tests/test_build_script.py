@@ -42,12 +42,15 @@ class OtaBuildScriptTests(unittest.TestCase):
         release = build.make_parser().parse_args(["test", "--all", "--release"])
         debug = build.make_parser().parse_args(["test", "--all"])
         legacy = build.make_parser().parse_args(["test", "--full"])
+        soak = build.make_parser().parse_args(["test", "--all", "--ultra-soak"])
 
         self.assertTrue(release.all_tests)
         self.assertTrue(release.release)
         self.assertTrue(debug.all_tests)
         self.assertFalse(debug.release)
         self.assertTrue(legacy.all_tests)
+        self.assertTrue(soak.all_tests)
+        self.assertTrue(soak.ultra_soak)
 
     def test_simulation_layout_uses_selected_build_directory(self):
         from sim.run_full import load_layout_for_build
@@ -78,6 +81,14 @@ class OtaBuildScriptTests(unittest.TestCase):
             with mock.patch.object(run_full.subprocess, "run", return_value=probe):
                 with self.assertRaisesRegex(RuntimeError, "daemon is not available"):
                     run_full.require_docker()
+
+    def test_docker_run_prefix_supports_restricted_hosts(self):
+        from sim import run_full
+
+        with mock.patch.dict(run_full.os.environ, {}, clear=True):
+            self.assertEqual(run_full.docker_run_prefix("/usr/bin/docker"), ["/usr/bin/docker", "run", "--platform", "linux/amd64", "--rm"])
+        with mock.patch.dict(run_full.os.environ, {"SEDS_FIRMWARE_SIM_DOCKER_NETWORK": "host"}, clear=True):
+            self.assertEqual(run_full.docker_run_prefix("/usr/bin/docker")[-2:], ["--network", "host"])
 
     def test_missing_registry_image_is_built_from_a_fresh_clone(self):
         from sim import run_full

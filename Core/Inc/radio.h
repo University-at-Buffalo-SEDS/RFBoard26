@@ -38,6 +38,7 @@ typedef struct {
   uint32_t aux_busy_count;
   uint32_t tx_dma_started;
   uint32_t tx_dma_complete;
+  uint32_t tx_dma_recoveries;
   uint32_t tx_startup_drops;
   uint32_t usart_isr;
   uint32_t usart_cr1;

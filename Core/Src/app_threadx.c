@@ -31,6 +31,8 @@
 #include "neom9n.h"
 /* Provide telemetry_set_byte_pool so Rust uses its isolated allocator pool. */
 extern void telemetry_set_byte_pool(TX_BYTE_POOL *pool);
+extern void telemetry_set_large_byte_pool(TX_BYTE_POOL *pool);
+extern void telemetry_set_emergency_byte_pool(TX_BYTE_POOL *pool);
 extern void telemetry_init_lock(void);
 /* USER CODE END Includes */
 
@@ -58,12 +60,28 @@ static void busy_delay(volatile uint32_t n)
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
 static TX_BYTE_POOL sedsnet_byte_pool;
+static TX_BYTE_POOL sedsnet_large_byte_pool;
+static TX_BYTE_POOL sedsnet_emergency_byte_pool;
+static UCHAR sedsnet_emergency_pool_memory[RF_SEDSNET_EMERGENCY_POOL_SIZE];
 volatile uint32_t g_thread_stack_error_count = 0U;
+volatile uint32_t g_thread_stack_error_thread __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_thread_stack_error_start __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_thread_stack_error_end __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_thread_stack_error_highest __attribute__((used, externally_visible)) = 0U;
 
 static void thread_stack_error_handler(TX_THREAD *thread_ptr)
 {
-  (void)thread_ptr;
   g_thread_stack_error_count++;
+  g_thread_stack_error_thread = (uint32_t)(uintptr_t)thread_ptr;
+  if (thread_ptr != TX_NULL)
+  {
+    g_thread_stack_error_start =
+        (uint32_t)(uintptr_t)thread_ptr->tx_thread_stack_start;
+    g_thread_stack_error_end =
+        (uint32_t)(uintptr_t)thread_ptr->tx_thread_stack_end;
+    g_thread_stack_error_highest =
+        (uint32_t)(uintptr_t)thread_ptr->tx_thread_stack_highest_ptr;
+  }
   Error_Handler();
 }
 
@@ -89,15 +107,25 @@ UINT App_ThreadX_Init(VOID *memory_ptr)
 
   /* USER CODE BEGIN App_ThreadX_Init */
   VOID *sedsnet_pool_memory = TX_NULL;
+  const ULONG primary_pool_size =
+      RF_SEDSNET_MEMORY_POOL_SIZE - RF_SEDSNET_EMERGENCY_POOL_SIZE;
+  const ULONG small_pool_size = primary_pool_size - RF_SEDSNET_LARGE_POOL_SIZE;
   if (tx_byte_allocate(byte_pool, &sedsnet_pool_memory,
-                       RF_SEDSNET_MEMORY_POOL_SIZE, TX_NO_WAIT) != TX_SUCCESS ||
-      tx_byte_pool_create(&sedsnet_byte_pool, "SEDSNet memory pool",
-                          sedsnet_pool_memory,
-                          RF_SEDSNET_MEMORY_POOL_SIZE) != TX_SUCCESS)
+                       primary_pool_size, TX_NO_WAIT) != TX_SUCCESS ||
+      tx_byte_pool_create(&sedsnet_byte_pool, "SEDSNet small allocations",
+                          sedsnet_pool_memory, small_pool_size) != TX_SUCCESS ||
+      tx_byte_pool_create(&sedsnet_large_byte_pool, "SEDSNet large allocations",
+                          ((UCHAR *)sedsnet_pool_memory) + small_pool_size,
+                          RF_SEDSNET_LARGE_POOL_SIZE) != TX_SUCCESS ||
+      tx_byte_pool_create(&sedsnet_emergency_byte_pool, "SEDSNet emergency",
+                          sedsnet_emergency_pool_memory,
+                          RF_SEDSNET_EMERGENCY_POOL_SIZE) != TX_SUCCESS)
   {
     Error_Handler();
   }
   telemetry_set_byte_pool(&sedsnet_byte_pool);
+  telemetry_set_large_byte_pool(&sedsnet_large_byte_pool);
+  telemetry_set_emergency_byte_pool(&sedsnet_emergency_byte_pool);
   /* Initialize telemetry lock used by Rust (telemetry_lock/telemetry_unlock). */
   telemetry_init_lock();
   (void)tx_thread_stack_error_notify(thread_stack_error_handler);
