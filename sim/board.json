@@ -36,8 +36,8 @@
   },
   "execution": {
     "factory_boot_success_symbol": "_tx_thread_schedule",
-    "virtual_time_ms": 200,
-    "sample_count": 6,
+    "virtual_time_ms": 250,
+    "sample_count": 7,
     "memory_probe_warmup_samples": 5,
     "require_stack_probe": true,
     "memory_probes": [
@@ -105,7 +105,7 @@
       ,{"name": "radio_tx_drops", "symbol": "g_tx_drops"}
       ,{"name": "radio_rx_service_passes", "symbol": "g_radio_rx_service_passes", "minimum": 1}
       ,{"name": "radio_rx_service_budget_hits", "symbol": "g_radio_rx_service_budget_hits"}
-      ,{"name": "telemetry_loop_completions", "symbol": "g_telemetry_loop_completions", "minimum": 1, "max_end_drop": 0}
+      ,{"name": "telemetry_loop_completions", "symbol": "g_telemetry_loop_completions", "minimum": 1, "minimum_interval_gain": 1}
       ,{"name": "hardfault_mmfar", "symbol": "g_hardfault_mmfar"}
       ,{"name": "hardfault_bfar", "symbol": "g_hardfault_bfar"}
       ,{"name": "hardfault_stacked_lr", "symbol": "g_hardfault_stacked_lr"}

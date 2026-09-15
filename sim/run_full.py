@@ -12,7 +12,7 @@ import time
 SIMULATOR_REPOSITORY = (
     "https://github.com/University-at-Buffalo-SEDS/FirmwareSimulator.git"
 )
-SIMULATOR_INTERFACE_VERSION = "0.4"
+SIMULATOR_INTERFACE_VERSION = "0.4.11"
 FIRMWARE_BRANCH = "migration/sedlaunch-sedsnet-mainline"
 FIRMWARE_ORGANIZATION = "University-at-Buffalo-SEDS"
 SIMULATOR_DOCKER_PLATFORM = os.environ.get(
@@ -106,7 +106,7 @@ def _build_simulator_image(ui, docker: str, source: Path, image: str) -> None:
 def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str) -> str:
     requested = os.environ.get(
         "SEDS_FIRMWARE_SIM_IMAGE",
-        "ghcr.io/university-at-buffalo-seds/firmwaresimulator:latest",
+        "ghcr.io/university-at-buffalo-seds/firmwaresimulator:v0.4.11",
     )
     local = f"seds-firmware-simulator:local-v{SIMULATOR_INTERFACE_VERSION}"
     configured_source = os.environ.get("SEDS_FIRMWARE_SIM_SOURCE")
@@ -120,8 +120,7 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str
         return local
 
     # An explicitly selected local development image should be used as-is.
-    # Mutable published tags (the default `latest`) are still pulled below so
-    # normal board tests automatically pick up simulator releases.
+    # The default is release-pinned; explicit development images remain usable.
     if "SEDS_FIRMWARE_SIM_IMAGE" in os.environ and _image_exists(docker, requested):
         return requested
 
@@ -154,7 +153,7 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str
         try:
             subprocess.run(
                 [
-                    git, "clone", "--depth", "1", "--branch", "main",
+                    git, "clone", "--depth", "1", "--branch", "v0.4.11",
                     SIMULATOR_REPOSITORY, str(source),
                 ],
                 check=True,
@@ -282,7 +281,9 @@ def run_unacknowledged_can_simulation(
             "--firmware-root", "/firmware",
             "--can-unacknowledged",
             "--virtual-time-ms", str(max(1000, layout["execution"]["virtual_time_ms"])),
-            "--sample-count", "5",
+            # Progress assertions need two observations after startup warmup.
+            "--sample-count", str(max(5, layout["execution"].get(
+                "memory_probe_warmup_samples", 0) + 2)),
             "--traffic-iterations", "100000",
         ]
         ui.say("run", " ".join(command))
@@ -334,6 +335,13 @@ def _network_peer(repo_root: Path) -> tuple[str, Path]:
             check=True,
         )
     return peer_name, peer_root
+
+
+def network_sample_count(layouts: dict[str, dict], requested: int) -> int:
+    """Keep two observations after every participating board's warm-up."""
+    warmup = max((layout["execution"].get("memory_probe_warmup_samples", 0)
+                  for layout in layouts.values()), default=0)
+    return max(requested, warmup + 2)
 
 
 def run_network_simulation(
@@ -503,7 +511,10 @@ def run_network_simulation(
              "contains": "full-bay RF GPS 1 Hz stream reached GroundStation"},
             {"name": "Flight telemetry crossed the return path",
              "node": "groundstation",
-             "contains": "full-bay Flight sensor 1 Hz stream reached GroundStation"},
+             "contains": "full-bay Flight sensor 5 Hz stream reached GroundStation"},
+            {"name": "Flight barometer completed the 5 Hz return path",
+             "node": "groundstation",
+             "contains": "full-bay Flight barometer 5 Hz stream reached GroundStation"},
         ],
     }
 
@@ -543,6 +554,7 @@ def run_network_simulation(
         if ultra_soak
         else int(os.environ.get("SEDS_FIRMWARE_SIM_NETWORK_SAMPLES", "6"))
     )
+    sample_count = network_sample_count(layouts, sample_count)
     # Leave enough constrained-link time for discovery and the complete
     # managed-variable sequence before exercising retained-flash restart.
     # The ten-minute qualification still observes a full 200 seconds after
@@ -843,9 +855,9 @@ def run_network_simulation(
                  "contains": f"full-bay fill telemetry reached GroundStation from {node}"}
                 for node in ("GB", "AB", "VB", "DAQ")
             ],
-            {"name": "GroundStation received the DAQ calibrated 50 Hz loadcell stream",
+            {"name": "GroundStation received the DAQ raw 50 Hz loadcell stream",
              "node": "groundstation",
-             "contains": "full-bay DAQ calibrated loadcell 50 Hz stream reached GroundStation"},
+             "contains": "full-bay DAQ raw loadcell 50 Hz stream reached GroundStation"},
         ],
     }
 

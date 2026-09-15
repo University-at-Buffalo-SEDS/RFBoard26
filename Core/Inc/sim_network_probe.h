@@ -139,22 +139,27 @@ static inline void sim_probe_observe_packed(const uint8_t *data, size_t len) {
 static inline void sim_probe_emit_heartbeat(SedsRouter *router,
                                             uint64_t now_ms) {
 #ifdef SEDS_FIRMWARE_SIM_TEST
-  static uint32_t next_emit_ms = 2000U;
+  static uint64_t next_emit_ms = 2000U;
   static uint8_t emit_count = 0U;
   static uint32_t service_cycles = 0U;
+  static uint64_t last_observed_ms = 0U;
   static const uint8_t empty_payload = 0U;
   service_cycles++;
-  if (router != NULL && emit_count < 4U &&
+  /* Keep test-origin traffic alive across host restarts; this is not sensor
+   * telemetry and is compiled out of ordinary firmware. */
+  if (now_ms < last_observed_ms) next_emit_ms = now_ms;
+  last_observed_ms = now_ms;
+  if (router != NULL &&
       (now_ms >= next_emit_ms ||
-       service_cycles >= (1U + ((uint32_t)emit_count * 75U)))) {
+       (emit_count < 4U && service_cycles >= (1U + ((uint32_t)emit_count * 75U))))) {
     g_sim_heartbeat_attempts++;
     if (seds_router_log_bytes_ex(router, SEDS_DT_HEARTBEAT, &empty_payload,
                                  0U, NULL, 1) == SEDS_OK) {
-      emit_count++;
-      next_emit_ms = (uint32_t)now_ms + 100U;
+      if (emit_count < 4U) emit_count++;
+      next_emit_ms = now_ms + (emit_count < 4U ? 100U : 1000U);
       g_sim_heartbeat_ok++;
     } else {
-      next_emit_ms = (uint32_t)now_ms + 50U;
+      next_emit_ms = now_ms + 50U;
       g_sim_heartbeat_fail++;
     }
   }
