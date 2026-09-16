@@ -638,7 +638,7 @@ def run_network_simulation(
                     # virtual watchdog deadline.
                     "GS_HEARTBEAT_INTERVAL_MS": "1000",
                     "GS_SIM_ROUTER_TIME_DIVISOR": "8",
-                    "GS_SIM_COMPACT_INITIAL_DISCOVERY": "1",
+                    "GS_SIM_COMPACT_INITIAL_DISCOVERY": "0",
                     "GS_SIM_EXPECT_DISCOVERY_NODES": "RF,PB,FC,GB,AB,VB,DAQ",
                     # Hold each state long enough for delivery and persistence.
                     # Unsynchronized firmware retries at 500 ms without blocking
@@ -816,7 +816,16 @@ def run_network_simulation(
                 [{"name": "Every ten-minute soak command returned an acknowledgement",
                   "node": "groundstation",
                   "contains": "full-bay soak valve command acknowledged",
-                  "minimum_occurrences": len(soak_command_samples)}]
+                  "minimum_occurrences": 2 * len(soak_command_samples)},
+                 *[{"name": f"{board} fresh response in soak round {index + 1}",
+                    "node": "groundstation",
+                    "contains": (
+                        f"full-bay soak valve command acknowledged: board={board}, "
+                        f"state={str(index % 2 != 0).lower()}, "
+                        f"round {index + 1}/{len(soak_command_samples)}, sample {sample},"),
+                    "minimum_occurrences": 1}
+                   for board in ("VB", "AB")
+                   for index, sample in enumerate(soak_command_samples)]]
                 if ultra_soak
                 else []
             ),
