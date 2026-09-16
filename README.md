@@ -13,7 +13,7 @@ in `Core/Inc/telemetry_rate.h` (default: 1 Hz). Set a whole-number rate from
 1 to 1000 Hz and rebuild/reflash the board. Actual throughput is limited by
 sensor acquisition and link capacity; this is not a network variable.
 
-CMake fetches SEDSNet v4.0.31 and SEDS LaunchCore v1.0.0. Neither dependency is
+CMake fetches rolling SEDSNet `main` and SEDS LaunchCore v1.0.0. Neither dependency is
 a submodule. LaunchCore generates the linker scripts from
 `Bootloader/board_config.h`, packages Slot A firmware, and reserves its approved
 persistent-data and delta-update regions.
