@@ -1,9 +1,9 @@
 {
   "endpoints": [
     {
-      "rust": "ActuatorSdCard",
+      "rust": "FillSdCard",
       "name": "SD_CARD",
-      "doc": "On-board storage (e.g. SD card / flash)."
+      "doc": "Fill-system SD-card logging on DAQ; not storage on the Actuator board."
     },
     {
       "rust": "ActuatorGroundStation",
@@ -58,7 +58,7 @@
         "data_type": "String"
       },
       "endpoints": [
-        "ActuatorSdCard",
+        "FillSdCard",
         "ActuatorGroundStation"
       ],
       "reliable_mode": "Ordered",
@@ -77,7 +77,7 @@
       },
       "endpoints": [
         "ActuatorGroundStation",
-        "ActuatorSdCard",
+        "FillSdCard",
         "ActuatorFlightController"
       ],
       "reliable_mode": "None",
@@ -130,7 +130,7 @@
       },
       "endpoints": [
         "ActuatorGroundStation",
-        "ActuatorSdCard"
+        "FillSdCard"
       ],
       "reliable_mode": "None",
       "reliable": false,
@@ -148,7 +148,7 @@
       },
       "endpoints": [
         "ActuatorGroundStation",
-        "ActuatorSdCard"
+        "FillSdCard"
       ],
       "reliable_mode": "None",
       "reliable": false,
@@ -182,7 +182,7 @@
       },
       "endpoints": [
         "ActuatorAbort",
-        "ActuatorSdCard"
+        "FillSdCard"
       ],
       "reliable_mode": "Unordered",
       "reliable": true,
@@ -200,7 +200,7 @@
       },
       "endpoints": [
         "ActuatorGroundStation",
-        "ActuatorSdCard"
+        "FillSdCard"
       ],
       "reliable_mode": "None",
       "reliable": false,
@@ -236,7 +236,7 @@
       },
       "endpoints": [
         "ActuatorGroundStation",
-        "ActuatorSdCard",
+        "FillSdCard",
         "ActuatorFlightController"
       ],
       "reliable_mode": "Ordered",
@@ -255,7 +255,7 @@
       },
       "endpoints": [
         "ActuatorGroundStation",
-        "ActuatorSdCard"
+        "FillSdCard"
       ],
       "reliable_mode": "None",
       "reliable": false,
@@ -273,7 +273,7 @@
       },
       "endpoints": [
         "ActuatorFlightState",
-        "ActuatorSdCard",
+        "FillSdCard",
         "ActuatorGroundStation"
       ],
       "reliable_mode": "Ordered",
@@ -309,7 +309,7 @@
         "data_type": "String"
       },
       "endpoints": [
-        "ActuatorSdCard",
+        "FillSdCard",
         "ActuatorGroundStation"
       ],
       "reliable_mode": "Ordered",
@@ -432,7 +432,7 @@
         "count": 3
       },
       "endpoints": [
-        "ActuatorSdCard",
+        "FillSdCard",
         "ActuatorGroundStation"
       ]
     },
@@ -449,7 +449,7 @@
         "data_type": "String"
       },
       "endpoints": [
-        "ActuatorSdCard",
+        "FillSdCard",
         "ActuatorGroundStation"
       ]
     },
@@ -501,7 +501,7 @@
         "count": 4
       },
       "endpoints": [
-        "ActuatorSdCard",
+        "FillSdCard",
         "ActuatorGroundStation",
         "ActuatorFlightController"
       ]
@@ -520,7 +520,7 @@
         "count": 3
       },
       "endpoints": [
-        "ActuatorSdCard"
+        "FillSdCard"
       ]
     },
     {
@@ -537,7 +537,7 @@
         "count": 3
       },
       "endpoints": [
-        "ActuatorSdCard"
+        "FillSdCard"
       ]
     },
     {
@@ -571,7 +571,7 @@
         "count": 6
       },
       "endpoints": [
-        "ActuatorSdCard"
+        "FillSdCard"
       ]
     },
     {
@@ -588,7 +588,7 @@
         "count": 3
       },
       "endpoints": [
-        "ActuatorSdCard"
+        "FillSdCard"
       ]
     },
     {
@@ -605,7 +605,7 @@
         "count": 6
       },
       "endpoints": [
-        "ActuatorSdCard"
+        "FillSdCard"
       ]
     },
     {
@@ -622,7 +622,7 @@
         "count": 4
       },
       "endpoints": [
-        "ActuatorSdCard"
+        "FillSdCard"
       ]
     },
     {
@@ -672,7 +672,7 @@
     {
       "rust": "DaqLoadcellCalibration", "name": "DAQ_LOADCELL_CALIBRATION", "doc": "DAQ calibration [KG1000 slope, KG1000 intercept, IADC slope, IADC intercept].",
       "reliable": true, "reliable_mode": "Ordered", "priority": 16, "class": "Data",
-      "element": {"kind": "Static", "data_type": "Float32", "count": 4}, "endpoints": ["ActuatorSdCard"]
+      "element": {"kind": "Static", "data_type": "Float32", "count": 4}, "endpoints": ["FillSdCard"]
     }
   ]
 }
