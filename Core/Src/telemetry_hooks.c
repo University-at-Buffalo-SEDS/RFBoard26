@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "main.h"
+#include "telemetry_packet_reserve.h"
 
 #ifndef TELEMETRY_STDIO_DEBUG
 #define TELEMETRY_STDIO_DEBUG 0
@@ -14,7 +15,7 @@ static TX_BYTE_POOL *rust_byte_pool_external = NULL;
 static TX_BYTE_POOL *rust_large_byte_pool_external = NULL;
 static TX_BYTE_POOL *rust_emergency_byte_pool_external = NULL;
 #define TELEMETRY_LARGE_ALLOCATION_THRESHOLD 1024U
-/* Kept as zero-valued compatibility probes for older simulator layouts. */
+/* Successful fixed-packet fallback and reuse counters. */
 volatile uint32_t g_telemetry_alloc_reserve_recoveries = 0U;
 volatile uint32_t g_telemetry_alloc_reserve_rearms = 0U;
 static TX_MUTEX g_telemetry_mutex;
@@ -166,7 +167,8 @@ static void telemetry_memory_profile_sample(void)
             g_telemetry_emergency_pool_available = emergency_available;
         }
         g_telemetry_pool_available = small_available + large_available +
-                                     g_telemetry_emergency_pool_available;
+                                     g_telemetry_emergency_pool_available +
+                                     rf_packet_reserve_available();
         g_telemetry_pool_fragments = small_fragments + large_fragments;
         if (g_telemetry_pool_available < g_telemetry_pool_low_water)
         {
@@ -199,6 +201,10 @@ void telemetry_set_large_byte_pool(TX_BYTE_POOL *pool)
 
 void telemetry_set_emergency_byte_pool(TX_BYTE_POOL *pool)
 {
+    if (rf_packet_reserve_init(pool) != TX_SUCCESS) {
+        Error_Handler();
+        return;
+    }
     rust_emergency_byte_pool_external = pool;
     telemetry_memory_profile_sample();
 }
@@ -309,6 +315,14 @@ void *telemetryMalloc(size_t xSize)
             g_telemetry_alloc_cross_pool_recoveries++;
         }
     }
+    if (allocation_status == TX_NO_MEMORY)
+    {
+        ptr = rf_packet_reserve_allocate(xSize);
+        if (ptr != NULL) {
+            allocation_status = TX_SUCCESS;
+            g_telemetry_alloc_reserve_recoveries++;
+        }
+    }
     if (allocation_status != TX_SUCCESS)
     {
         ULONG available = 0U;
@@ -335,7 +349,12 @@ void telemetryFree(void *pv)
 {
     if (pv != NULL)
     {
-        (void)tx_byte_release(pv);
+        if (rf_packet_reserve_owns(pv)) {
+            (void)tx_block_release(pv);
+            g_telemetry_alloc_reserve_rearms++;
+        } else {
+            (void)tx_byte_release(pv);
+        }
         g_telemetry_free_count++;
         telemetry_memory_profile_sample();
     }
