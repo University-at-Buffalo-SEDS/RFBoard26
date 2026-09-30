@@ -305,7 +305,7 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  /* The RFD900x transparent serial link and GroundStation both use 57600
+  /* The RFD900x transparent serial link and GroundStation both use 115200
    * baud. Keep the simulator on the same production setting. */
   huart1.Init.BaudRate = RADIO_BAUD_RATE;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;

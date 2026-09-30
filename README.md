@@ -3,7 +3,7 @@
 RFBoard26 targets the STM32G491 and bridges the avionics CAN-FD network to the
 RFD900x radio link. The two links are separate SEDSNet router sides; SEDSNet
 discovery and learned subscriptions select routes, so the board does not
-manually fan out application packets. The radio UART runs at 57600 baud. The
+manually fan out application packets. The radio UART runs at 115200 baud. The
 radio side relies on the RFD900x link's acknowledgement/retry mechanism;
 SEDSNet hop acknowledgements remain disabled there to avoid nested retry
 queues, stale managed-variable delivery, and application-traffic starvation.
