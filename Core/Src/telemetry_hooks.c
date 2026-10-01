@@ -350,7 +350,7 @@ void telemetryFree(void *pv)
     if (pv != NULL)
     {
         if (rf_packet_reserve_owns(pv)) {
-            (void)tx_block_release(pv);
+            rf_packet_reserve_release(pv);
             g_telemetry_alloc_reserve_rearms++;
         } else {
             (void)tx_byte_release(pv);
