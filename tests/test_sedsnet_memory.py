@@ -51,14 +51,14 @@ class SedsnetMemoryTests(unittest.TestCase):
         retry = retry.split("static bool telemetry_unix_ms_to_utc", 1)[0]
         self.assertEqual(retry.count("g_pending_can_count--;"), 1)
 
-    def test_threadx_byte_pool_stays_at_known_working_size(self):
+    def test_threadx_byte_pool_increase_matches_cubemx(self):
         config = (ROOT / "AZURE_RTOS" / "App" / "app_azure_rtos_config.h").read_text(
             encoding="utf-8"
         )
         size = int(re.search(r"TX_APP_MEM_POOL_SIZE\s+(\d+)", config).group(1))
-        self.assertEqual(size, 66264)
+        self.assertEqual(size, 66264 + 1024)
         ioc = (ROOT / "RFBoard26.ioc").read_text(encoding="utf-8")
-        self.assertIn("TX_APP_MEM_POOL_SIZE=66264", ioc)
+        self.assertIn("TX_APP_MEM_POOL_SIZE=67288", ioc)
 
     def test_shared_pool_is_not_the_legacy_per_queue_size(self):
         cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
@@ -69,7 +69,7 @@ class SedsnetMemoryTests(unittest.TestCase):
         )
         recent = int(re.search(r'set\(SEDSNET_MAX_RECENT_RX_IDS "(\d+)"', cmake).group(1))
 
-        self.assertEqual(pool, 67072)
+        self.assertEqual(pool, 67072 + 1024)
         self.assertEqual(budget, 6144)
         self.assertGreaterEqual(pool - budget, 16384)
         self.assertEqual(start, 512)

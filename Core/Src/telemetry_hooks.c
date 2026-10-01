@@ -5,15 +5,25 @@
 #include <stdio.h>
 #include <string.h>
 #include "main.h"
+#ifdef TELEMETRY_USE_TLSF
+#include "telemetry_tlsf.h"
+extern volatile uint32_t g_telemetry_tlsf_free_bytes;
+extern volatile uint32_t g_telemetry_tlsf_free_blocks;
+extern volatile uint32_t g_telemetry_tlsf_active;
+#endif
+#ifndef TELEMETRY_USE_TLSF
 #include "telemetry_packet_reserve.h"
+#endif
 
 #ifndef TELEMETRY_STDIO_DEBUG
 #define TELEMETRY_STDIO_DEBUG 0
 #endif
 
+#ifndef TELEMETRY_USE_TLSF
 static TX_BYTE_POOL *rust_byte_pool_external = NULL;
 static TX_BYTE_POOL *rust_large_byte_pool_external = NULL;
 static TX_BYTE_POOL *rust_emergency_byte_pool_external = NULL;
+#endif
 #define TELEMETRY_LARGE_ALLOCATION_THRESHOLD 1024U
 /* Successful fixed-packet fallback and reuse counters. */
 volatile uint32_t g_telemetry_alloc_reserve_recoveries = 0U;
@@ -136,6 +146,15 @@ static int str_contains_ci_n(const char *s, size_t n, const char *needle)
 
 static void telemetry_memory_profile_sample(void)
 {
+#ifdef TELEMETRY_USE_TLSF
+    /* Explicit stage snapshots only; malloc/free use constant-time counters. */
+    if (!g_telemetry_tlsf_active) return;
+    telemetry_tlsf_sample();
+    g_telemetry_pool_available = g_telemetry_tlsf_free_bytes;
+    g_telemetry_pool_fragments = g_telemetry_tlsf_free_blocks;
+    if (g_telemetry_pool_available < g_telemetry_pool_low_water)
+        g_telemetry_pool_low_water = g_telemetry_pool_available;
+#else
     ULONG small_available = 0U;
     ULONG small_fragments = 0U;
     ULONG large_available = 0U;
@@ -175,6 +194,7 @@ static void telemetry_memory_profile_sample(void)
             g_telemetry_pool_low_water = g_telemetry_pool_available;
         }
     }
+#endif
 }
 
 void telemetry_memory_profile_mark(uint32_t stage)
@@ -189,24 +209,36 @@ void telemetry_memory_profile_mark(uint32_t stage)
 
 void telemetry_set_byte_pool(TX_BYTE_POOL *pool)
 {
+#ifdef TELEMETRY_USE_TLSF
+    telemetry_tlsf_register_pool(pool);
+#else
     rust_byte_pool_external = pool;
     telemetry_memory_profile_sample();
+#endif
 }
 
 void telemetry_set_large_byte_pool(TX_BYTE_POOL *pool)
 {
+#ifdef TELEMETRY_USE_TLSF
+    telemetry_tlsf_register_pool(pool);
+#else
     rust_large_byte_pool_external = pool;
     telemetry_memory_profile_sample();
+#endif
 }
 
 void telemetry_set_emergency_byte_pool(TX_BYTE_POOL *pool)
 {
+#ifdef TELEMETRY_USE_TLSF
+    telemetry_tlsf_register_pool(pool);
+#else
     if (rf_packet_reserve_init(pool) != TX_SUCCESS) {
         Error_Handler();
         return;
     }
     rust_emergency_byte_pool_external = pool;
     telemetry_memory_profile_sample();
+#endif
 }
 
 void telemetry_init_lock(void)
@@ -263,6 +295,22 @@ void telemetry_unlock(void)
 
 void *telemetryMalloc(size_t xSize)
 {
+#ifdef TELEMETRY_USE_TLSF
+    if (xSize == 0U) xSize = 1U;
+    g_telemetry_last_alloc_request = xSize;
+    if (xSize > g_telemetry_max_alloc_request) g_telemetry_max_alloc_request = xSize;
+    void *ptr = telemetry_tlsf_malloc(xSize);
+    if (!ptr) {
+        ++g_telemetry_alloc_fail;
+        g_telemetry_alloc_failure_request = xSize;
+        g_telemetry_alloc_failure_available = g_telemetry_tlsf_free_bytes;
+        g_telemetry_alloc_failure_fragments = g_telemetry_tlsf_free_blocks;
+        g_telemetry_alloc_failure_status = TX_NO_MEMORY;
+        g_telemetry_alloc_failure_system_state = TX_THREAD_GET_SYSTEM_STATE();
+        g_telemetry_alloc_failure_thread = (uint32_t)(uintptr_t)tx_thread_identify();
+    } else ++g_telemetry_alloc_count;
+    return ptr;
+#else
     void *ptr = NULL;
 
     /* Defensive: if byte pool isn't registered yet, return NULL */
@@ -343,10 +391,17 @@ void *telemetryMalloc(size_t xSize)
     g_telemetry_alloc_count++;
     telemetry_memory_profile_sample();
     return ptr;
+#endif
 }
 
 void telemetryFree(void *pv)
 {
+#ifdef TELEMETRY_USE_TLSF
+    if (pv) {
+        telemetry_tlsf_free(pv);
+        ++g_telemetry_free_count;
+    }
+#else
     if (pv != NULL)
     {
         if (rf_packet_reserve_owns(pv)) {
@@ -358,6 +413,7 @@ void telemetryFree(void *pv)
         g_telemetry_free_count++;
         telemetry_memory_profile_sample();
     }
+#endif
 }
 
 void seds_error_msg(const char *str, size_t len)

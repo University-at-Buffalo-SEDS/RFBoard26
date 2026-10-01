@@ -44,6 +44,7 @@ enable_language(C ASM)
 
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
+include(cmake/tlsf_allocator.cmake)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     USER_VECT_TAB_ADDRESS VECT_TAB_OFFSET=0x00004200U)
 option(SEDS_FIRMWARE_SIM_TEST
@@ -128,7 +129,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 # SEDSNet v4
 set(SEDSNET_DEVICE_IDENTIFIER "RF" CACHE STRING "" FORCE)
 set(SEDSNET_MAX_STACK_PAYLOAD "128" CACHE STRING "" FORCE)
-set(RF_SEDSNET_MEMORY_POOL_SIZE "67072" CACHE STRING
+set(RF_SEDSNET_MEMORY_POOL_SIZE "68096" CACHE STRING
     "Total isolated SEDSNet allocator storage across primary and emergency arenas" FORCE)
 set(RF_SEDSNET_LARGE_POOL_SIZE "25088" CACHE STRING
     "SEDSNet storage reserved for allocations of 1 KiB or larger" FORCE)
