@@ -367,6 +367,8 @@ class BuildConfig:
     artifact: Optional[str]  # base name without extension (if known/forced)
     use_preset: bool
 
+    allocator: str = "threadx"
+
     @property
     def build_dir(self) -> Path:
         return self.repo_root / "build" / self.build_subdir
@@ -427,6 +429,8 @@ def clean_build(ui: UI, repo_root: Path, build_subdir: str | None = None) -> Non
 def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> tuple[Path, Path]:
     cfg.build_dir.mkdir(parents=True, exist_ok=True)
 
+    allocator_flag = f"-DTELEMETRY_USE_TLSF={'ON' if cfg.allocator == 'tlsf' else 'OFF'}"
+    ui.say("info", f"Telemetry allocator: {cfg.allocator} (ThreadX scheduler)")
     telemetry_flag = f"-DENABLE_TELEMETRY={'ON' if cfg.telemetry else 'OFF'}"
     simulation_flag = (
         "-DSEDS_FIRMWARE_SIM_TEST=ON"
@@ -439,6 +443,7 @@ def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> 
             "cmake",
             "--preset", cfg.build_type,
             "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+            allocator_flag,
             telemetry_flag,
             simulation_flag,
         ], cwd=cfg.repo_root)
@@ -455,6 +460,7 @@ def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> 
             "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
             f"-DCMAKE_TOOLCHAIN_FILE={str(cfg.toolchain_file)}",
             "-DCMAKE_COMMAND=cmake",
+            allocator_flag,
             telemetry_flag,
             simulation_flag,
             "-S", str(cfg.repo_root),
@@ -809,6 +815,8 @@ def make_parser() -> argparse.ArgumentParser:
         mode = sp.add_mutually_exclusive_group()
         mode.add_argument("--debug", action="store_true", help="Debug build (default).")
         mode.add_argument("--release", action="store_true", help="Release build.")
+        sp.add_argument("--allocator", choices=["threadx", "tlsf"], default="threadx",
+                        help="Telemetry allocator (default: threadx); scheduling always uses ThreadX.")
         sp.add_argument("--no-telemetry", action="store_true", help="Configure with -DENABLE_TELEMETRY=OFF")
         sp.add_argument("--image", choices=["firmware", "bootloader", "factory", "ota"],
                         default="factory",
@@ -880,6 +888,7 @@ def build_cfg_from_args(ui: UI, args: argparse.Namespace) -> BuildConfig:
         repo_root=repo_root,
         build_type=build_type,
         telemetry=not args.no_telemetry,
+        allocator=args.allocator,
         generator=args.generator,
         toolchain_file=toolchain,
         build_subdir=build_subdir,
