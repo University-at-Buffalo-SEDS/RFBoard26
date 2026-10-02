@@ -50,6 +50,7 @@ UINT tx_byte_pool_info_get(TX_BYTE_POOL*p,void*n,ULONG*a,ULONG*f,void*x,void*y,v
  if(a)*a=p->bytes-p->used;if(f)*f=1;return TX_SUCCESS;
 }
 extern volatile uint32_t g_telemetry_tlsf_active,g_telemetry_tlsf_init_failed;
+extern volatile uint32_t g_telemetry_tlsf_snapshot_count;
 extern volatile uint32_t g_telemetry_tlsf_live_bytes,g_telemetry_tlsf_peak_bytes;
 extern volatile uint32_t g_telemetry_tlsf_free_bytes,g_telemetry_tlsf_largest_free;
 static uint64_t arenas[3][4096];
@@ -61,6 +62,10 @@ int main(int argc,char**argv){
  assert(!telemetry_tlsf_malloc(SIZE_MAX));
  const uint32_t initial_free=g_telemetry_tlsf_free_bytes, initial_largest=g_telemetry_tlsf_largest_free;
  const unsigned startup_calls=calls;
+ assert(telemetry_tlsf_admit(4096, 2048));
+ assert(!telemetry_tlsf_admit(SIZE_MAX, 1));
+ assert(!telemetry_tlsf_admit(0, SIZE_MAX));
+ assert(mock_irq==0);
  void *items[64]={0};size_t sizes[64]={0};uint32_t rng=42;
  for(unsigned step=0;step<100000;step++){
   rng=rng*1664525U+1013904223U;unsigned i=(rng>>16)%64;
@@ -72,6 +77,17 @@ int main(int argc,char**argv){
    if(items[i]){assert(((uintptr_t)items[i]&7)==0);memset(items[i],i+1,sizes[i]);}
   }
   assert(mock_irq==0);
+  {
+   const uint32_t walks=g_telemetry_tlsf_snapshot_count;
+   const uint32_t live=g_telemetry_tlsf_live_bytes;
+   size_t request=512U+rng%8192U;
+   if (telemetry_tlsf_admit(request,request)) {
+    void *scratch=telemetry_tlsf_malloc(request);
+    assert(scratch);telemetry_tlsf_free(scratch);
+   }
+   assert(g_telemetry_tlsf_snapshot_count==walks);
+   assert(g_telemetry_tlsf_live_bytes==live);
+  }
  }
  for(unsigned i=0;i<64;i++)telemetry_tlsf_free(items[i]);
  assert(g_telemetry_tlsf_live_bytes==0&&g_telemetry_tlsf_peak_bytes>0);
@@ -81,8 +97,10 @@ int main(int argc,char**argv){
  void*full[128];unsigned count=0;
  while(count<128&&(full[count]=telemetry_tlsf_malloc(1024)))count++;
  assert(count>0&&count<128);
+ assert(!telemetry_tlsf_admit(4096, 2048));
  for(unsigned i=0;i<count;i++)telemetry_tlsf_free(full[i]);
- mock_irq=1;first=telemetry_tlsf_malloc(4112);assert(first&&mock_irq==1);telemetry_tlsf_free(first);assert(mock_irq==1);mock_irq=0;
+ assert(telemetry_tlsf_admit(4096, 2048));
+ mock_irq=1;assert(telemetry_tlsf_admit(4096,2048)&&mock_irq==1);first=telemetry_tlsf_malloc(4112);assert(first&&mock_irq==1);telemetry_tlsf_free(first);assert(mock_irq==1);mock_irq=0;
  assert(calls==startup_calls);telemetry_tlsf_free(NULL);
  assert(g_telemetry_tlsf_live_bytes==0);
 }

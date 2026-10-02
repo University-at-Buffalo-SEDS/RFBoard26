@@ -12,6 +12,8 @@ volatile uint32_t g_telemetry_tlsf_init_failed;
 volatile uint32_t g_telemetry_tlsf_region_bytes;
 volatile uint32_t g_telemetry_tlsf_control_bytes;
 volatile uint32_t g_telemetry_tlsf_live_bytes;
+static uint32_t live_allocations;
+volatile uint32_t g_rf_memory_admission_drops;
 volatile uint32_t g_telemetry_tlsf_peak_bytes;
 volatile uint32_t g_telemetry_tlsf_failure_request;
 volatile uint32_t g_telemetry_tlsf_failures;
@@ -20,6 +22,7 @@ volatile uint32_t g_telemetry_tlsf_failures;
 volatile uint32_t g_telemetry_tlsf_free_bytes;
 volatile uint32_t g_telemetry_tlsf_largest_free;
 volatile uint32_t g_telemetry_tlsf_free_blocks;
+volatile uint32_t g_telemetry_tlsf_snapshot_count;
 
 void telemetry_tlsf_register_pool(TX_BYTE_POOL *pool)
 {
@@ -43,6 +46,7 @@ static void snapshot_block(void *ptr, size_t size, int used, void *context)
 }
 static void snapshot(void)
 {
+    ++g_telemetry_tlsf_snapshot_count;
     g_telemetry_tlsf_free_bytes = 0;
     g_telemetry_tlsf_largest_free = 0;
     g_telemetry_tlsf_free_blocks = 0;
@@ -94,6 +98,7 @@ void *telemetry_tlsf_malloc(size_t size)
     if (initialize() && size <= tlsf_block_size_max() - 64U)
         ptr = tlsf_memalign(allocator, 8U, size ? size : 1U);
     if (ptr) {
+        ++live_allocations;
         g_telemetry_tlsf_live_bytes += tlsf_block_size(ptr);
         if (g_telemetry_tlsf_live_bytes > g_telemetry_tlsf_peak_bytes)
             g_telemetry_tlsf_peak_bytes = g_telemetry_tlsf_live_bytes;
@@ -110,6 +115,7 @@ void telemetry_tlsf_free(void *ptr)
     if (!ptr) return;
     const uint32_t saved = __get_PRIMASK();
     __disable_irq();
+    --live_allocations;
     g_telemetry_tlsf_live_bytes -= tlsf_block_size(ptr);
     tlsf_free(allocator, ptr);
     __set_PRIMASK(saved);
@@ -121,4 +127,34 @@ void telemetry_tlsf_sample(void)
     __disable_irq();
     snapshot();
     __set_PRIMASK(saved);
+}
+
+/* Keep admission bounded even with a fragmented heap. The accounting below
+ * conservatively includes metadata for allocated and free blocks. Checking an
+ * actual aligned scratch allocation uses TLSF's bitmap lookup and bounded
+ * split/coalesce operations; walking every heap block here delayed CAN RX.
+ * The probe is released before returning and cannot recurse into this hook. */
+bool telemetry_tlsf_admit(size_t additional, size_t largest)
+{
+    const uint32_t saved = __get_PRIMASK();
+    __disable_irq();
+    bool allowed = initialize() != 0;
+    const size_t reserve = additional <= 512U ? 512U : 4096U;
+    const size_t occupied = (size_t)g_telemetry_tlsf_live_bytes +
+        ((size_t)live_allocations + region_count) * 2U * sizeof(void *);
+    const size_t available = g_telemetry_tlsf_region_bytes > occupied ?
+        g_telemetry_tlsf_region_bytes - occupied : 0U;
+    allowed = allowed && additional <= available && reserve <= available - additional;
+    if (allowed && largest != 0U) {
+        if (largest > tlsf_block_size_max() - 64U) {
+            allowed = false;
+        } else {
+            void *scratch = tlsf_memalign(allocator, 8U, largest);
+            allowed = scratch != NULL;
+            if (scratch) tlsf_free(allocator, scratch);
+        }
+    }
+    if (!allowed) ++g_rf_memory_admission_drops;
+    __set_PRIMASK(saved);
+    return allowed;
 }

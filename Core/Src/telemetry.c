@@ -1,3 +1,6 @@
+#ifdef TELEMETRY_USE_TLSF
+#include "telemetry_tlsf.h"
+#endif
 // telemetry.c
 #include "telemetry.h"
 #include "telemetry_rate.h"
@@ -655,6 +658,9 @@ SedsResult init_telemetry_router(void) {
       .starting_queue_size = RF_SEDSNET_STARTING_ALLOCATION,
       .queue_grow_step = 1.0,
   };
+#ifdef TELEMETRY_USE_TLSF
+  seds_set_memory_admission_probe(telemetry_tlsf_admit);
+#endif
   r = seds_router_new_with_memory(node_now_since_ms, NULL, NULL, 0U,
                                   SEDS_ROUTER_E2E_DISABLED, 0U, &memory);
   if (!r) {
