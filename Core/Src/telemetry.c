@@ -174,9 +174,9 @@ static bool telemetry_enqueue_pending_can_command(const uint8_t *bytes, size_t l
   }
 
   if (g_pending_can_count >= TELEMETRY_PENDING_CAN_DEPTH) {
-    g_pending_can_head = (uint8_t)((g_pending_can_head + 1U) % TELEMETRY_PENDING_CAN_DEPTH);
-    g_pending_can_count--;
-    g_pending_can_drops++;
+    /* Never evict a packet after reporting successful ownership transfer. */
+    g_pending_can_drops++; /* Refused new admissions, not accepted-packet loss. */
+    return false;
   }
 
   g_pending_can[g_pending_can_tail].len = len;
@@ -187,6 +187,10 @@ static bool telemetry_enqueue_pending_can_command(const uint8_t *bytes, size_t l
 }
 
 static SedsResult telemetry_send_or_queue_can_packet(const uint8_t *bytes, size_t len) {
+  /* New traffic must not overtake previously accepted fragments. */
+  if (g_pending_can_count != 0U) {
+    return telemetry_enqueue_pending_can_command(bytes, len) ? SEDS_OK : SEDS_IO;
+  }
   const HAL_StatusTypeDef status =
       can_bus_send_large(bytes, len, telemetry_flight_can_id(bytes, len));
   if (status == HAL_OK) {

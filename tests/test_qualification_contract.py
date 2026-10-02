@@ -169,7 +169,7 @@ class QualificationContractTests(unittest.TestCase):
         self.assertIn("RF_SIDE_TRANSPORT_TEMPLATES 4U", telemetry)
         can_bus = (root / "Core" / "Src" / "can_bus.c").read_text(encoding="utf-8")
         self.assertIn("CAN_BUS_TX_ENQUEUE_TIMEOUT_MS 5U", can_bus)
-        self.assertIn("HAL_FDCAN_AbortTxRequest", can_bus)
+        self.assertNotIn("HAL_FDCAN_AbortTxRequest", can_bus)
         self.assertNotIn("< (uint32_t)frag_cnt", can_bus)
         enqueue = can_bus.split("static HAL_StatusTypeDef can_bus_enqueue_tx_frame", 1)[1]
         enqueue = enqueue.split("static inline void can_bus_notify_rx", 1)[0]

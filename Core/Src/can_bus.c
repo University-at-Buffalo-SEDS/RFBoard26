@@ -273,10 +273,10 @@ static HAL_StatusTypeDef can_bus_enqueue_tx_frame(const FDCAN_TxHeaderTypeDef *h
     if ((uint32_t)(HAL_GetTick() - started_ms) >=
         (uint32_t)CAN_BUS_TX_ENQUEUE_TIMEOUT_MS)
     {
-      (void)HAL_FDCAN_AbortTxRequest(
-          g_hfdcan, FDCAN_TX_BUFFER0 | FDCAN_TX_BUFFER1 | FDCAN_TX_BUFFER2);
+      /* A full FIFO does not invalidate frames already accepted by hardware.
+       * Leave them queued; the caller retains and retries this new frame. */
       g_fdcan_tx_fail_count++;
-      return HAL_TIMEOUT;
+      return HAL_BUSY;
     }
   }
 
