@@ -1203,9 +1203,8 @@ static void radio_frame_buf_append(const uint8_t *data, size_t len)
   g_frame_len += len;
 }
 
-static void radio_process_framed_bytes(const uint8_t *data, size_t len)
+static void radio_process_buffered_frames(void)
 {
-  radio_frame_buf_append(data, len);
 
   while (g_frame_len > 0U) {
     size_t sync_pos = 0U;
@@ -1275,6 +1274,22 @@ static void radio_process_framed_bytes(const uint8_t *data, size_t len)
     g_current_rx_is_command_frame = 0U;
     g_radio_rx_frames_ok++;
     radio_frame_buf_consume(RADIO_UART_FRAME_HEADER_SIZE + payload_len);
+  }
+}
+
+/* Drain complete frames before appending bytes from the following frame.
+ * A UART chunk can straddle the end of a maximum-size frame; appending the
+ * whole chunk first would evict the still-incomplete frame's sync/header. */
+static void radio_process_framed_bytes(const uint8_t *data, size_t len)
+{
+  if (data == NULL) return;
+  while (len != 0U) {
+    const size_t room = RADIO_UART_FRAME_BUF_SIZE - g_frame_len;
+    const size_t take = len < room ? len : room;
+    radio_frame_buf_append(data, take);
+    data += take;
+    len -= take;
+    radio_process_buffered_frames();
   }
 }
 
