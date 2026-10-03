@@ -369,6 +369,8 @@ class BuildConfig:
 
     allocator: str = "threadx"
 
+    watchdog: bool = False
+
     @property
     def build_dir(self) -> Path:
         return self.repo_root / "build" / self.build_subdir
@@ -432,6 +434,7 @@ def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> 
     allocator_flag = f"-DTELEMETRY_USE_TLSF={'ON' if cfg.allocator == 'tlsf' else 'OFF'}"
     ui.say("info", f"Telemetry allocator: {cfg.allocator} (ThreadX scheduler)")
     telemetry_flag = f"-DENABLE_TELEMETRY={'ON' if cfg.telemetry else 'OFF'}"
+    watchdog_flag = f"-DENABLE_BOARD_WATCHDOG={'ON' if cfg.watchdog else 'OFF'}"
     simulation_flag = (
         "-DSEDS_FIRMWARE_SIM_TEST=ON"
         if os.environ.get("SEDS_FIRMWARE_SIM_TEST") == "1"
@@ -444,7 +447,8 @@ def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> 
             "--preset", cfg.build_type,
             "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
             allocator_flag,
-            telemetry_flag,
+            watchdog_flag,
+        telemetry_flag,
             simulation_flag,
         ], cwd=cfg.repo_root)
         assert_embedded_cache(ui, cfg.build_dir)
@@ -461,7 +465,8 @@ def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> 
             f"-DCMAKE_TOOLCHAIN_FILE={str(cfg.toolchain_file)}",
             "-DCMAKE_COMMAND=cmake",
             allocator_flag,
-            telemetry_flag,
+            watchdog_flag,
+        telemetry_flag,
             simulation_flag,
             "-S", str(cfg.repo_root),
             "-B", str(cfg.build_dir),
@@ -818,6 +823,7 @@ def make_parser() -> argparse.ArgumentParser:
         sp.add_argument("--allocator", choices=["threadx", "tlsf"], default="threadx",
                         help="Telemetry allocator (default: threadx); scheduling always uses ThreadX.")
         sp.add_argument("--no-telemetry", action="store_true", help="Configure with -DENABLE_TELEMETRY=OFF")
+        sp.add_argument("--watchdog", action="store_true", help="Enable board-owned task-progress hardware watchdog (requires matching bootloader).")
         sp.add_argument("--image", choices=["firmware", "bootloader", "factory", "ota"],
                         default="factory",
                         help="Artifact to build (default: factory bootloader+firmware image).")
@@ -888,6 +894,7 @@ def build_cfg_from_args(ui: UI, args: argparse.Namespace) -> BuildConfig:
         repo_root=repo_root,
         build_type=build_type,
         telemetry=not args.no_telemetry,
+        watchdog=args.watchdog,
         allocator=args.allocator,
         generator=args.generator,
         toolchain_file=toolchain,

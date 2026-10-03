@@ -75,3 +75,9 @@ The top-level CMake project is board-owned and reconnects generated STM32
 sources with SEDSNet, LaunchCore, its generated linker scripts, persistence, and
 the simulator probes. After generation, run
 `python3 build.py test --full --release` before flashing or committing.
+
+## Hardware watchdog
+
+[Board watchdog configuration and validation](docs/watchdog.md). Build with
+`./build.py build --release --watchdog`.
+Watchdogs are opt-in and require the matching bootloader.

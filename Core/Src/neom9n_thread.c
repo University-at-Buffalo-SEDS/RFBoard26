@@ -1,3 +1,4 @@
+#include "board_watchdog.h"
 /**
  * neom9n_thread.c
  *
@@ -303,6 +304,7 @@ void neom9n_thread_entry(ULONG initial_input)
 
     for michael
     {
+        board_watchdog_progress(BOARD_WATCHDOG_ACQUISITION);
         /* Sample before entering the receive/publish path. If the previous
          * pass approached its guard, expose the margin before another deep
          * SEDSNet call can consume it. */

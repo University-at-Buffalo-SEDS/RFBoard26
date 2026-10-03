@@ -1,3 +1,4 @@
+#include "board_watchdog.h"
 // telemetry_thread.c
 #include "RF-Threads.h"
 #include "tx_api.h"
@@ -163,6 +164,7 @@ void telemetry_thread_entry(ULONG initial_input)
     g_telemetry_init_result = (int32_t)init_telemetry_router();
     g_telemetry_init_stage = 3U;
     for (;;) {
+        board_watchdog_progress(BOARD_WATCHDOG_NETWORK);
         telemetry_update_stack_profile();
         const uint64_t now_ms = radio_window_now_ms();
         telemetry_print_alive_if_due(now_ms, &next_alive_print_ms);

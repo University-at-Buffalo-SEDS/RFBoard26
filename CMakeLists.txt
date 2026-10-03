@@ -199,3 +199,8 @@ set(LAUNCHCORE_APP_VECTOR_TABLE 0x08004200)
 set(LAUNCHCORE_METADATA0_BASE 0x0807E000)
 set(LAUNCHCORE_DELTA_SIZE 0x00006000)
 include(cmake/launchcore_stm32.cmake)
+
+# Board-owned progress watchdog; deliberately independent of SEDSnet.
+option(ENABLE_BOARD_WATCHDOG "Enable independent hardware watchdog with task progress gating" OFF)
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/Core/Src/board_watchdog.c)
+target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BOARD_WATCHDOG_ENABLE=$<BOOL:${ENABLE_BOARD_WATCHDOG}>)
