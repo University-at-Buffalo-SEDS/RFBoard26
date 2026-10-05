@@ -44,6 +44,7 @@ enable_language(C ASM)
 
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
+include(cmake/packet_store.cmake)
 include(cmake/tlsf_allocator.cmake)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     USER_VECT_TAB_ADDRESS VECT_TAB_OFFSET=0x00004200U)

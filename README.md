@@ -90,3 +90,16 @@ Normal builds continue to select `main`. Each branch has its own source cache;
 when the network is unavailable the last usable on-disk source is retained.
 The selected revision is printed during configure. An explicit CMake source
 override remains local and is never fetched or reset.
+
+### Experimental packet arena
+
+```sh
+python3 build.py build --release --packet-store compact
+```
+
+This selects the latest SEDSnet `dev` commit and initializes a 8192-byte,
+64-handle arena before the router starts. It uses the existing allocator
+pool and leaves ThreadX scheduling unchanged. Compression stays disabled.
+Use `--packet-store heap` to disable the arena, including in a previously enabled build cache.
+Startup fails cleanly if the reservation does not fit; router retries reuse
+the arena. This is an opt-in development build, not hardware qualification.
