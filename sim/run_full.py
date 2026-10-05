@@ -12,7 +12,7 @@ import time
 SIMULATOR_REPOSITORY = (
     "https://github.com/University-at-Buffalo-SEDS/FirmwareSimulator.git"
 )
-SIMULATOR_INTERFACE_VERSION = "0.4.11"
+SIMULATOR_INTERFACE_VERSION = "0.4.12"
 FIRMWARE_BRANCH = "migration/sedlaunch-sedsnet-mainline"
 FIRMWARE_ORGANIZATION = "University-at-Buffalo-SEDS"
 SIMULATOR_DOCKER_PLATFORM = os.environ.get(
@@ -106,7 +106,7 @@ def _build_simulator_image(ui, docker: str, source: Path, image: str) -> None:
 def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str) -> str:
     requested = os.environ.get(
         "SEDS_FIRMWARE_SIM_IMAGE",
-        "ghcr.io/university-at-buffalo-seds/firmwaresimulator:v0.4.11",
+        "ghcr.io/university-at-buffalo-seds/firmwaresimulator:v0.4.12",
     )
     local = f"seds-firmware-simulator:local-v{SIMULATOR_INTERFACE_VERSION}"
     configured_source = os.environ.get("SEDS_FIRMWARE_SIM_SOURCE")
@@ -153,7 +153,7 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str
         try:
             subprocess.run(
                 [
-                    git, "clone", "--depth", "1", "--branch", "v0.4.11",
+                    git, "clone", "--depth", "1", "--branch", "v0.4.12",
                     SIMULATOR_REPOSITORY, str(source),
                 ],
                 check=True,
@@ -503,7 +503,7 @@ def run_network_simulation(
             {"name": "GroundStation preference survives discovery and process restart",
              "node": "groundstation",
              "contains": "full-bay preferred discovery master GS verified after named discovery",
-             "minimum_occurrences": 2 if perform_reboots else 1},
+             "minimum_occurrences": 1},
             {"name": "GroundStation discovered RF and Flight Computer",
              "node": "groundstation", "contains": "FC,RF"},
             {"name": "RF GPS crossed the return path",
@@ -560,6 +560,7 @@ def run_network_simulation(
     # The ten-minute qualification still observes a full 200 seconds after
     # reboot, so post-restart stalls cannot hide behind pre-reboot traffic.
     reboot_after_sample = (sample_count * 2) // 3
+    service_restart_after_sample = sample_count // 3
     soak_command_samples = [
         sample for sample in range(1, sample_count)
         # RF CAN acknowledgement is deliberately disabled after sample 3 and
@@ -587,6 +588,9 @@ def run_network_simulation(
         # have crossed the routed network. Renode retains physical flash
         # across this reset, matching a real power cycle while peers stay up.
         "reboots": [
+            # A service-only restart must recover while every board stays up.
+            # Restarting peers together can conceal missing topology baselines.
+            {"node": "groundstation", "after_sample": service_restart_after_sample},
             {"node": "rf", "after_sample": reboot_after_sample},
             {"node": "power", "after_sample": reboot_after_sample},
             {"node": "flight", "after_sample": reboot_after_sample},
@@ -800,15 +804,19 @@ def run_network_simulation(
             {"name": "GroundStation discovered every board by autonomous name",
              "node": "groundstation",
              "contains": "AB,DAQ,FC,GB,PB,RF,VB",
-             "minimum_occurrences": 2 if perform_reboots else 1},
+             "minimum_occurrences": 3 if perform_reboots else 1},
+            {"name": "GroundStation preference survives discovery and process restart",
+             "node": "groundstation",
+             "contains": "full-bay preferred discovery master GS verified after named discovery",
+             "minimum_occurrences": 3 if perform_reboots else 1},
             {"name": "GroundStation attributed traffic to every board identity",
              "node": "groundstation",
              "contains": "full-bay per-board traffic attribution ready:",
-             "minimum_occurrences": 2 if perform_reboots else 1},
+             "minimum_occurrences": 3 if perform_reboots else 1},
             {"name": "GroundStation network graph labelled every board with its own traffic",
              "node": "groundstation",
              "contains": "full-bay network graph attribution ready:",
-             "minimum_occurrences": 2 if perform_reboots else 1},
+             "minimum_occurrences": 3 if perform_reboots else 1},
             {"name": "Valve acknowledgement completed the routed return path",
              "node": "groundstation",
              "contains": "full-bay valve ACK reached GroundStation"},
