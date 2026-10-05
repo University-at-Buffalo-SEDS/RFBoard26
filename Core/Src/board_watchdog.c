@@ -39,9 +39,23 @@ void board_watchdog_start(void)
     IWDG->KR = 0x5555U;
     IWDG->PR = 6U; /* /256 */
     IWDG->RLR = 2047U;
-    uint32_t spins = 1000000U;
-    while (IWDG->SR != 0U && --spins != 0U) { __NOP(); }
-    if (spins == 0U) { g_watchdog_config_error = 1U; return; }
+    /* H5 ONF stays set while enabled; EWIF is an event, not a busy bit.
+     * Only configuration-update bits must clear. Prescaled LSI synchronization
+     * can take tens of milliseconds, so a CPU-dependent spin budget is unsafe. */
+    uint32_t updates = IWDG_SR_PVU | IWDG_SR_RVU | IWDG_SR_WVU;
+#ifdef IWDG_SR_EWU
+    updates |= IWDG_SR_EWU;
+#endif
+    const uint32_t started = HAL_GetTick();
+    g_watchdog_started = 0U;
+    g_watchdog_config_error = 0U;
+    while ((IWDG->SR & updates) != 0U) {
+        if ((uint32_t)(HAL_GetTick() - started) >= 100U) {
+            g_watchdog_config_error = 1U;
+            return;
+        }
+        __NOP();
+    }
     IWDG->KR = 0xAAAAU;
     g_watchdog_started = 1U;
 #endif

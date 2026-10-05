@@ -6,9 +6,9 @@ import build
 from dataclasses import fields
 
 class WatchdogBuildFlagTests(unittest.TestCase):
-    def test_watchdog_flag_reaches_cmake_and_default_turns_it_off(self):
+    def test_watchdog_flag_reaches_cmake_and_default_turns_it_on(self):
         for enabled in (False, True):
-            args = build.make_parser().parse_args(["build"] + (["--watchdog"] if enabled else []))
+            args = build.make_parser().parse_args(["build"] + ([] if enabled else ["--no-watchdog"]))
             self.assertEqual(args.watchdog, enabled)
             with tempfile.TemporaryDirectory() as directory:
                 values = dict(repo_root=Path(directory), build_type="Release", telemetry=True,
