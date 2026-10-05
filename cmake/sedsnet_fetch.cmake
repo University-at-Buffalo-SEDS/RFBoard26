@@ -15,7 +15,7 @@ include("${CMAKE_SOURCE_DIR}/cmake/sedsnet_source.cmake")
 FetchContent_Declare(
     sedsnet
     GIT_REPOSITORY https://github.com/Rylan-Meilutis/SEDSnet.git
-    GIT_TAG main
+    GIT_TAG ${SEDSNET_GIT_REF}
     GIT_SHALLOW FALSE
     PATCH_COMMAND ${CMAKE_COMMAND}
                   -DSEDSNET_SOURCE_DIR=<SOURCE_DIR>

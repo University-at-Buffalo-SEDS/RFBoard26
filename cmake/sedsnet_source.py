@@ -1,4 +1,4 @@
-"""Select online main or the last usable on-disk SEDSnet without editing it."""
+"""Select an online development branch or the last usable on-disk SEDSnet without editing it."""
 import argparse
 import os
 from pathlib import Path
@@ -18,7 +18,9 @@ def usable(path):
     return all((path / f).is_file() for f in ('CMakeLists.txt', 'Cargo.toml', 'build.rs'))
 
 
-def select_source(cache, repository, fallbacks, offline=False, timeout=15):
+def select_source(cache, repository, fallbacks, offline=False, timeout=15, ref="main"):
+    if ref not in ("main", "dev"):
+        raise ValueError("SEDSnet ref must be main or dev")
     cache.mkdir(parents=True, exist_ok=True)
     marker = cache / 'last-source.txt'
     if marker.exists():
@@ -29,11 +31,11 @@ def select_source(cache, repository, fallbacks, offline=False, timeout=15):
             git('init', '--bare', upstream)
         try:
             git('--git-dir', upstream, 'fetch', '--depth=1', '--no-tags', repository,
-                '+refs/heads/main:refs/heads/main', timeout=timeout)
+                f"+refs/heads/{ref}:refs/heads/{ref}", timeout=timeout)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
-            print(f'SEDSnet main unavailable; using on-disk fallback ({type(error).__name__}).', file=sys.stderr)
+            print(f'SEDSnet {ref} unavailable; using on-disk fallback ({type(error).__name__}).', file=sys.stderr)
         else:
-            revision = git('--git-dir', upstream, 'rev-parse', 'refs/heads/main').stdout.strip()
+            revision = git('--git-dir', upstream, 'rev-parse', f"refs/heads/{ref}").stdout.strip()
             destination = cache / revision
             if not destination.exists():
                 # Build preparation modifies Cargo.toml/schema. Keep the upstream
@@ -43,12 +45,12 @@ def select_source(cache, repository, fallbacks, offline=False, timeout=15):
                     git('clone', '--shared', '--no-checkout', upstream, stage)
                     git('-C', stage, 'checkout', '--detach', revision)
                     if not usable(stage):
-                        raise RuntimeError('Fetched main is not a usable SEDSnet source tree')
+                        raise RuntimeError(f'Fetched {ref} is not a usable SEDSnet source tree')
                     stage.rename(destination)
             marker_tmp = marker.with_suffix('.tmp')
             marker_tmp.write_text(str(destination) + '\n')
             marker_tmp.replace(marker)
-            print(f'SEDSnet main: {revision}', file=sys.stderr)
+            print(f'SEDSnet {ref}: {revision}', file=sys.stderr)
             return destination
     for source in fallbacks:
         if usable(source):
@@ -68,9 +70,10 @@ def main():
     parser.add_argument('--repository', required=True)
     parser.add_argument('--fallback', action='append', default=[], type=Path)
     parser.add_argument('--offline', action='store_true')
+    parser.add_argument('--ref', choices=('main', 'dev'), default='main')
     args = parser.parse_args()
     try:
-        print(select_source(args.cache.resolve(), args.repository, args.fallback, args.offline))
+        print(select_source(args.cache.resolve(), args.repository, args.fallback, args.offline, ref=args.ref))
     except (RuntimeError, OSError, subprocess.SubprocessError) as error:
         parser.exit(1, f'{error}\n')
 

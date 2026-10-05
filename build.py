@@ -369,6 +369,7 @@ class BuildConfig:
 
     allocator: str = "threadx"
 
+    sedsnet_ref: str = "main"
     watchdog: bool = False
 
     @property
@@ -448,6 +449,7 @@ def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> 
             "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
             allocator_flag,
             watchdog_flag,
+        f"-DSEDSNET_GIT_REF={cfg.sedsnet_ref}",
         telemetry_flag,
             simulation_flag,
         ], cwd=cfg.repo_root)
@@ -466,6 +468,7 @@ def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> 
             "-DCMAKE_COMMAND=cmake",
             allocator_flag,
             watchdog_flag,
+        f"-DSEDSNET_GIT_REF={cfg.sedsnet_ref}",
         telemetry_flag,
             simulation_flag,
             "-S", str(cfg.repo_root),
@@ -822,6 +825,8 @@ def make_parser() -> argparse.ArgumentParser:
         mode.add_argument("--release", action="store_true", help="Release build.")
         sp.add_argument("--allocator", choices=["threadx", "tlsf"], default="threadx",
                         help="Telemetry allocator (default: threadx); scheduling always uses ThreadX.")
+        sp.add_argument("--sedsnet-ref", choices=["main", "dev"], default=None,
+                        help="SEDSnet branch; current remote commit is fetched, with offline fallback.")
         sp.add_argument("--no-telemetry", action="store_true", help="Configure with -DENABLE_TELEMETRY=OFF")
         sp.add_argument("--watchdog", action="store_true", help="Enable board-owned task-progress hardware watchdog (requires matching bootloader).")
         sp.add_argument("--image", choices=["firmware", "bootloader", "factory", "ota"],
@@ -895,6 +900,7 @@ def build_cfg_from_args(ui: UI, args: argparse.Namespace) -> BuildConfig:
         build_type=build_type,
         telemetry=not args.no_telemetry,
         watchdog=args.watchdog,
+        sedsnet_ref=args.sedsnet_ref or "main",
         allocator=args.allocator,
         generator=args.generator,
         toolchain_file=toolchain,

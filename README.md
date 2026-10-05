@@ -81,3 +81,12 @@ the simulator probes. After generation, run
 [Board watchdog configuration and validation](docs/watchdog.md). Build with
 `./build.py build --release --watchdog`.
 Watchdogs are opt-in and require the matching bootloader.
+
+## Experimental SEDSnet development builds
+
+Use `python3 build.py build --release --sedsnet-ref dev` to build the current
+SEDSnet `dev` commit. The same option is accepted by `test` and `flash`.
+Normal builds continue to select `main`. Each branch has its own source cache;
+when the network is unavailable the last usable on-disk source is retained.
+The selected revision is printed during configure. An explicit CMake source
+override remains local and is never fetched or reset.

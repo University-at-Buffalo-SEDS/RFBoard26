@@ -16,7 +16,8 @@ class LaunchCoreHandoffContract(unittest.TestCase):
         launchcore = (ROOT / "cmake/launchcore_stm32.cmake").read_text()
         sedsnet = (ROOT / "cmake/sedsnet_fetch.cmake").read_text()
         self.assertIn(f"GIT_TAG {FIXED_LAUNCHCORE}", launchcore)
-        self.assertIn(f"GIT_TAG {FIXED_SEDSNET}", sedsnet)
+        self.assertIn("GIT_TAG ${SEDSNET_GIT_REF}", sedsnet)
+        self.assertIn('set(SEDSNET_GIT_REF "main" CACHE STRING', (ROOT / "cmake/sedsnet_source.cmake").read_text())
 
     def test_underglow_is_restored_before_threadx_and_network_sync(self):
         main = (ROOT / "Core/Src/main.c").read_text()

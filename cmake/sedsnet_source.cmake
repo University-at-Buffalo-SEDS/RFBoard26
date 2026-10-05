@@ -1,8 +1,13 @@
-# Select main when reachable; preserve a usable local copy when disconnected.
+# Select the requested branch when reachable; preserve a usable local copy when disconnected.
 # A source override is deliberately local and never fetched/reset.
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(SEDSNET_GIT_REF "main" CACHE STRING "SEDSnet development branch: main or dev")
+set_property(CACHE SEDSNET_GIT_REF PROPERTY STRINGS main dev)
+if(NOT SEDSNET_GIT_REF MATCHES "^(main|dev)$")
+    message(FATAL_ERROR "SEDSNET_GIT_REF must be main or dev")
+endif()
 set(SEDSNET_REPOSITORY "https://github.com/Rylan-Meilutis/SEDSnet.git" CACHE STRING
-    "SEDSnet repository (main branch)")
+    "SEDSnet repository")
 option(SEDSNET_OFFLINE "Use the existing local SEDSnet source without network access" OFF)
 if(NOT FETCHCONTENT_SOURCE_DIR_SEDSNET)
     # Seed an empty cache entry so FetchContent cannot persist our automatic
@@ -15,7 +20,8 @@ if(NOT FETCHCONTENT_SOURCE_DIR_SEDSNET)
     endif()
     execute_process(
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/sedsnet_source.py"
-            --cache "${FETCHCONTENT_BASE_DIR}/sedsnet-main"
+            --cache "${FETCHCONTENT_BASE_DIR}/sedsnet-${SEDSNET_GIT_REF}"
+            --ref "${SEDSNET_GIT_REF}"
             --repository "${SEDSNET_REPOSITORY}"
             --fallback "${FETCHCONTENT_BASE_DIR}/sedsnet-src"
             --fallback "${SEDSNET_DIR}"
@@ -25,7 +31,7 @@ if(NOT FETCHCONTENT_SOURCE_DIR_SEDSNET)
         RESULT_VARIABLE _sedsnet_result
         OUTPUT_VARIABLE _sedsnet_source OUTPUT_STRIP_TRAILING_WHITESPACE)
     if(NOT _sedsnet_result EQUAL 0)
-        message(FATAL_ERROR "Unable to select SEDSnet main or an on-disk fallback")
+        message(FATAL_ERROR "Unable to select SEDSnet ${SEDSNET_GIT_REF} or an on-disk fallback")
     endif()
     # Normal variable, not cached: retry main on the next configure.
     set(FETCHCONTENT_SOURCE_DIR_SEDSNET "${_sedsnet_source}")

@@ -41,6 +41,22 @@ class SourceSelectionTests(unittest.TestCase):
         self.assertEqual((first / 'Cargo.toml').read_text(), 'board preparation\n')
         self.assertEqual(source.select_source(self.cache, str(self.remote), []), second)
 
+    def test_dev_updates_and_offline_fallback_preserve_prepared_source(self):
+        source.git('-C', self.remote, 'checkout', '-b', 'dev')
+        (self.remote / 'build.rs').write_text('arena dev initial\n')
+        self.commit()
+        first = source.select_source(self.cache, str(self.remote), [], ref='dev')
+        (first / 'Cargo.toml').write_text('prepared board schema\n')
+        (self.remote / 'build.rs').write_text('arena dev updated\n')
+        self.commit()
+        second = source.select_source(self.cache, str(self.remote), [], ref='dev')
+        self.assertNotEqual(first, second)
+        self.assertEqual((first / 'Cargo.toml').read_text(), 'prepared board schema\n')
+        self.assertEqual((second / 'build.rs').read_text(), 'arena dev updated\n')
+        self.assertEqual(source.select_source(self.cache, 'unavailable', [], offline=True, ref='dev'), second)
+        with self.assertRaises(ValueError):
+            source.select_source(self.cache, '', [], ref='dev;bad')
+
     def test_network_failure_uses_last_successful_source(self):
         first = source.select_source(self.cache, str(self.remote), [])
         self.assertEqual(source.select_source(self.cache, str(self.root / 'missing'), []), first)
