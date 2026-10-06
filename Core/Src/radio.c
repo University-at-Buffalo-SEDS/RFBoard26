@@ -140,6 +140,11 @@ static UART_HandleTypeDef *g_huart = NULL;
 static uint8_t g_rx_buf[RADIO_UART_RX_BUF_SIZE];
 static radio_sub_t g_subs[RADIO_UART_MAX_SUBSCRIBERS];
 static uint8_t g_frame_buf[RADIO_UART_FRAME_BUF_SIZE];
+/* Bound a corrupted length header without scanning arbitrary packet payloads
+ * for sync bytes. Unsigned elapsed time remains valid across tick wrap. */
+#define RADIO_PARTIAL_FRAME_TIMEOUT_MS 2000U
+static uint32_t g_partial_frame_started_ms;
+static uint8_t g_partial_frame_waiting;
 static size_t g_frame_len = 0U;
 static uint8_t g_current_rx_is_command_frame = 0U;
 
@@ -1176,6 +1181,7 @@ uint8_t radio_uart_current_rx_is_command_frame(void) {
 
 static void radio_frame_buf_consume(size_t count)
 {
+  g_partial_frame_waiting = 0U;
   if (count >= g_frame_len) {
     g_frame_len = 0U;
     return;
@@ -1260,6 +1266,17 @@ static void radio_process_buffered_frames(void)
     }
 
     if (g_frame_len < (RADIO_UART_FRAME_HEADER_SIZE + payload_len)) {
+      const uint32_t now = radio_now_ms();
+      if (!g_partial_frame_waiting) {
+        g_partial_frame_started_ms = now;
+        g_partial_frame_waiting = 1U;
+      } else if ((uint32_t)(now - g_partial_frame_started_ms) >=
+                 RADIO_PARTIAL_FRAME_TIMEOUT_MS) {
+        /* Discard only one byte so an intact following frame can recover. */
+        g_rx_bad_len++;
+        radio_frame_buf_consume(1U);
+        continue;
+      }
       return;
     }
 
@@ -1371,6 +1388,8 @@ void radio_uart_process_rx(void)
   if (processed == RADIO_UART_RX_SERVICE_BUDGET && g_rx_count > 0U) {
     g_radio_rx_service_budget_hits++;
   }
+  /* Expiry must run even when the damaged frame is followed by silence. */
+  radio_process_buffered_frames();
   g_radio_rx_service_passes++;
 }
 
