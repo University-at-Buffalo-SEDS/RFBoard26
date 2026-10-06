@@ -95,7 +95,7 @@ class QualificationContractTests(unittest.TestCase):
     def test_both_relay_sides_exist_before_timesync_startup(self):
         root = Path(build.__file__).resolve().parent
         telemetry = (root / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
-        self.assertIn('r, "can", 3U, tx_send, NULL, false,', telemetry)
+        self.assertIn('r, "can", 3U, tx_send_with_priority, NULL, false,', telemetry)
         prime = telemetry.index("seds_router_poll_timesync(r, &did_queue)")
         radio = telemetry.index('r, "radio", 5U, radio_tx_send')
         self.assertLess(radio, prime)
@@ -124,7 +124,7 @@ class QualificationContractTests(unittest.TestCase):
         body = telemetry[init:]
         epoch = body.index("g_router.start_time = init_now_ms;")
         create = body.index("seds_router_new_with_memory")
-        can_side = body.index('r, "can", 3U, tx_send')
+        can_side = body.index('r, "can", 3U, tx_send_with_priority')
         radio_side = body.index('r, "radio", 5U, radio_tx_send')
 
         self.assertLess(epoch, create)
@@ -160,7 +160,7 @@ class QualificationContractTests(unittest.TestCase):
         telemetry = (root / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
         radio = (root / "Core" / "Src" / "radio.c").read_text(encoding="utf-8")
         self.assertIn(
-            "seds_router_add_side_packed_profile(",
+            "seds_router_add_side_packed_profile_with_priority(",
             telemetry,
         )
         self.assertIn("RF_RADIO_MAX_FRAME_BYTES 1024U", telemetry)

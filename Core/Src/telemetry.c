@@ -68,8 +68,9 @@ static void print_data_no_telem(void *data, size_t len) {
 #define TELEMETRY_FLIGHT_CAN_ID 0x101U
 #define TELEMETRY_FLIGHT_HEARTBEAT_CAN_ID 0x001U
 
-static uint32_t telemetry_flight_can_id(const uint8_t *bytes, size_t len) {
-  return sim_probe_packed_data_type(bytes, len) == (uint32_t)SEDS_DT_HEARTBEAT
+static uint32_t telemetry_flight_can_id(const uint8_t *bytes, size_t len, uint8_t priority) {
+  return (priority >= 200U ||
+          sim_probe_packed_data_type(bytes, len) == (uint32_t)SEDS_DT_HEARTBEAT)
              ? TELEMETRY_FLIGHT_HEARTBEAT_CAN_ID
              : TELEMETRY_FLIGHT_CAN_ID;
 }
@@ -111,6 +112,7 @@ extern void telemetry_memory_profile_mark(uint32_t stage);
 
 typedef struct {
   size_t len;
+  uint32_t can_id;
   uint8_t data[TELEMETRY_PENDING_CAN_MAX_LEN];
 } TelemetryPendingCanCommand;
 
@@ -144,7 +146,7 @@ volatile uint32_t g_sim_gps_publish_ok RF_HEALTH_PROBE = 0U;
 volatile uint32_t g_sim_avionics_telemetry_ingress RF_HEALTH_PROBE = 0U;
 volatile uint32_t g_sim_avionics_telemetry_radio_egress RF_HEALTH_PROBE = 0U;
 
-static SedsResult telemetry_send_or_queue_can_packet(const uint8_t *bytes, size_t len);
+static SedsResult telemetry_send_or_queue_can_packet(const uint8_t *bytes, size_t len, uint8_t priority);
 
 static uint64_t tx_raw_now_ms_locked(void) {
   const uint32_t ticks32 = (uint32_t)tx_time_get();
@@ -169,7 +171,7 @@ static uint32_t telemetry_timesync_role(void) {
                                         : TELEMETRY_TIMESYNC_ROLE_CONSUMER;
 }
 
-static bool telemetry_enqueue_pending_can_command(const uint8_t *bytes, size_t len) {
+static bool telemetry_enqueue_pending_can_command(const uint8_t *bytes, size_t len, uint32_t can_id) {
   if (!bytes || len == 0U || len > TELEMETRY_PENDING_CAN_MAX_LEN) {
     return false;
   }
@@ -181,24 +183,25 @@ static bool telemetry_enqueue_pending_can_command(const uint8_t *bytes, size_t l
   }
 
   g_pending_can[g_pending_can_tail].len = len;
+  g_pending_can[g_pending_can_tail].can_id = can_id;
   memcpy(g_pending_can[g_pending_can_tail].data, bytes, len);
   g_pending_can_tail = (uint8_t)((g_pending_can_tail + 1U) % TELEMETRY_PENDING_CAN_DEPTH);
   g_pending_can_count++;
   return true;
 }
 
-static SedsResult telemetry_send_or_queue_can_packet(const uint8_t *bytes, size_t len) {
+static SedsResult telemetry_send_or_queue_can_packet(const uint8_t *bytes, size_t len, uint8_t priority) {
   /* New traffic must not overtake previously accepted fragments. */
   if (g_pending_can_count != 0U) {
-    return telemetry_enqueue_pending_can_command(bytes, len) ? SEDS_OK : SEDS_IO;
+    return telemetry_enqueue_pending_can_command(bytes, len, telemetry_flight_can_id(bytes, len, priority)) ? SEDS_OK : SEDS_IO;
   }
   const HAL_StatusTypeDef status =
-      can_bus_send_large(bytes, len, telemetry_flight_can_id(bytes, len));
+      can_bus_send_large(bytes, len, telemetry_flight_can_id(bytes, len, priority));
   if (status == HAL_OK) {
     return SEDS_OK;
   }
 
-  return telemetry_enqueue_pending_can_command(bytes, len) ? SEDS_OK : SEDS_IO;
+  return telemetry_enqueue_pending_can_command(bytes, len, telemetry_flight_can_id(bytes, len, priority)) ? SEDS_OK : SEDS_IO;
 }
 
 void telemetry_retry_pending_can_commands(void) {
@@ -206,7 +209,7 @@ void telemetry_retry_pending_can_commands(void) {
     TelemetryPendingCanCommand *cmd = &g_pending_can[g_pending_can_head];
     const HAL_StatusTypeDef status =
         can_bus_send_large(cmd->data, cmd->len,
-                           telemetry_flight_can_id(cmd->data, cmd->len));
+                           cmd->can_id);
     if (status != HAL_OK) {
       return;
     }
@@ -352,6 +355,14 @@ void telemetry_set_unix_time_ms(uint64_t unix_ms) {
 #endif
 }
 
+static SedsResult tx_send_with_priority(const uint8_t *bytes, size_t len,
+                                        uint8_t priority, void *user);
+
+SedsResult tx_send(const uint8_t *bytes, size_t len, void *user) {
+  return tx_send_with_priority(bytes, len, 0U, user);
+}
+
+
 static uint64_t node_now_since_ms(void *user) {
   (void)user;
   const RouterState s = g_router;
@@ -359,7 +370,8 @@ static uint64_t node_now_since_ms(void *user) {
   return s.r ? (now - s.start_time) : 0ULL;
 }
 
-SedsResult tx_send(const uint8_t *bytes, size_t len, void *user) {
+static SedsResult tx_send_with_priority(const uint8_t *bytes, size_t len,
+                                        uint8_t priority, void *user) {
   (void)user;
 
   if (!bytes || len == 0U) {
@@ -367,7 +379,7 @@ SedsResult tx_send(const uint8_t *bytes, size_t len, void *user) {
   }
   sim_probe_observe_can_tx(bytes, len);
 
-  return telemetry_send_or_queue_can_packet(bytes, len);
+  return telemetry_send_or_queue_can_packet(bytes, len, priority);
 }
 
 static SedsResult radio_tx_send(const uint8_t *bytes, size_t len,
@@ -687,8 +699,8 @@ SedsResult init_telemetry_router(void) {
   }
   telemetry_memory_profile_mark(1U);
 
-  g_can_side_id = seds_router_add_side_packed_profile(
-      r, "can", 3U, tx_send, NULL, false,
+  g_can_side_id = seds_router_add_side_packed_profile_with_priority(
+      r, "can", 3U, tx_send_with_priority, NULL, false,
       SEDS_SIDE_TRANSPORT_PROFILE_IPV6_LIKE, RF_CAN_MAX_FRAME_BYTES, 0U,
       RF_SIDE_TRANSPORT_TEMPLATES);
   if (g_can_side_id < 0) {

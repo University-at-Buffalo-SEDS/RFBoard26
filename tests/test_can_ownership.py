@@ -6,6 +6,7 @@ ROOT=Path(__file__).resolve().parents[1]
 class CanOwnershipTests(unittest.TestCase):
     def test_full_pending_queue_retains_accepted_frames_and_fifo_order(self):
         s=(ROOT/'Core/Src/telemetry.c').read_text()
+        identifier=s[s.index('static uint32_t telemetry_flight_can_id('):s.index('#define TELEMETRY_PENDING_CAN_DEPTH')]
         funcs=s[s.index('static bool telemetry_enqueue_pending_can_command'):s.index('static bool telemetry_unix_ms_to_utc')]
         code=r'''
 #include <assert.h>
@@ -18,26 +19,33 @@ class CanOwnershipTests(unittest.TestCase):
 typedef int SedsResult;
 typedef int HAL_StatusTypeDef;
 enum {SEDS_OK,SEDS_IO,HAL_OK=0,HAL_BUSY=1};
-typedef struct {size_t len;uint8_t data[128];} TelemetryPendingCanCommand;
+typedef struct {size_t len;uint32_t can_id;uint8_t data[128];} TelemetryPendingCanCommand;
 static TelemetryPendingCanCommand g_pending_can[3];
 static unsigned g_pending_can_count,g_pending_can_head,g_pending_can_tail,g_pending_can_drops;
 static unsigned busy=1,calls,sent;static uint8_t seen[8];
-static uint32_t telemetry_flight_can_id(const uint8_t *p,size_t n){(void)p;(void)n;return 1;}
-static int can_bus_send_large(const uint8_t *p,size_t n,uint32_t id){assert(n==1 && id==1);calls++;if(busy)return HAL_BUSY;seen[sent++]=*p;return HAL_OK;}
+#define SEDS_DT_HEARTBEAT 120
+#define TELEMETRY_FLIGHT_CAN_ID 0x101U
+#define TELEMETRY_FLIGHT_HEARTBEAT_CAN_ID 0x001U
+static uint32_t sim_probe_packed_data_type(const uint8_t *p,size_t n){(void)p;(void)n;return 0;}
+''' + identifier + r'''
+static int can_bus_send_large(const uint8_t *p,size_t n,uint32_t id){assert(n==1 && id==(*p==1?0x101:0x001));calls++;if(busy)return HAL_BUSY;seen[sent++]=*p;return HAL_OK;}
 ''' + funcs+r'''
 int main(void){
     uint8_t a=1,b=2,c=3,d=4;
-    assert(telemetry_send_or_queue_can_packet(&a,1)==SEDS_OK);
-    assert(telemetry_send_or_queue_can_packet(&b,1)==SEDS_OK);
-    assert(telemetry_send_or_queue_can_packet(&c,1)==SEDS_OK);
+    uint8_t opaque[3][8]={{83,68,84,1},{83,68,84,2},{83,68,7,1}};
+    for(unsigned i=0;i<3;i++) for(unsigned p=0;p<256;p++)
+      assert(telemetry_flight_can_id(opaque[i],8,p)==(p>=200?0x001:0x101));
+    assert(telemetry_send_or_queue_can_packet(&a,1,0)==SEDS_OK);
+    assert(telemetry_send_or_queue_can_packet(&b,1,255)==SEDS_OK);
+    assert(telemetry_send_or_queue_can_packet(&c,1,200)==SEDS_OK);
     assert(calls==1); /* only the first may attempt hardware while backlog exists */
-    assert(telemetry_send_or_queue_can_packet(&d,1)==SEDS_IO);
+    assert(telemetry_send_or_queue_can_packet(&d,1,254)==SEDS_IO);
     assert(g_pending_can_count==3 && g_pending_can_drops==1);
     telemetry_retry_pending_can_commands();assert(g_pending_can_count==3 && sent==0);
     busy=0;telemetry_retry_pending_can_commands();
     assert(g_pending_can_count==0 && sent==3);
     assert(seen[0]==1 && seen[1]==2 && seen[2]==3);
-    assert(telemetry_send_or_queue_can_packet(&d,1)==SEDS_OK);
+    assert(telemetry_send_or_queue_can_packet(&d,1,254)==SEDS_OK);
     assert(sent==4 && seen[3]==4);
 }
 '''

@@ -222,7 +222,7 @@
       ],
       "reliable_mode": "Ordered",
       "reliable": true,
-      "priority": 0
+      "priority": 200
     },
     {
       "rust": "ActuatorFlightCommand",
@@ -241,7 +241,7 @@
       ],
       "reliable_mode": "Ordered",
       "reliable": true,
-      "priority": 0
+      "priority": 200
     },
     {
       "rust": "ActuatorFuelTankPressure",
@@ -348,7 +348,7 @@
         "ActuatorActuatorBoard",
         "ActuatorGroundStation"
       ],
-      "priority": 0
+      "priority": 200
     },
     {
       "rust": "ActuatorUmbilicalStatus",
