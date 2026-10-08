@@ -168,7 +168,7 @@ class SedsnetMemoryTests(unittest.TestCase):
         source = (ROOT / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
         receive = source.split("static void telemetry_radio_rx", 1)[1]
         receive = receive.split("void rx_asynchronous", 1)[0]
-        self.assertIn("seds_router_receive_packed_from_side", receive)
+        self.assertIn("telemetry_observe_receive", receive)
         self.assertNotIn("can_bus_send_large", receive)
         self.assertNotIn("telemetry_send_or_queue_can", receive)
 

@@ -50,6 +50,7 @@ SedsResult telemetry_poll_timesync(void);
 SedsResult telemetry_announce_discovery(void);
 SedsResult telemetry_poll_discovery(void);
 void telemetry_retry_pending_can_commands(void);
+void telemetry_publish_link_diagnostics(void);
 
 uint64_t telemetry_now_ms(void);
 uint64_t telemetry_unix_ms(void);

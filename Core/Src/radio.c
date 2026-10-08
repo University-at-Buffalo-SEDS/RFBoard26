@@ -8,7 +8,7 @@
 
 /* Tune these */
 #define RADIO_UART_RX_BUF_SIZE         256
-#define RADIO_UART_MAX_SUBSCRIBERS     8
+#define RADIO_UART_MAX_SUBSCRIBERS     4 /* RF registers one telemetry consumer. */
 #define RADIO_UART_TX_TIMEOUT_FLOOR_MS 100U
 #define RADIO_UART_TX_TIMEOUT_MARGIN_MS 100U
 /* Legacy E22 mode pins only require RADIO_E22_MODE_SETTLE_MS before AUX becomes

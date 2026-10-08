@@ -188,6 +188,7 @@ void telemetry_thread_entry(ULONG initial_input)
         (void)telemetry_poll_timesync();
         ota_stream_poll();
 
+        telemetry_publish_link_diagnostics();
         (void)radio_uart_process_tx();
 
         /* Advances only after ingress, routing, timers, OTA, and egress all
