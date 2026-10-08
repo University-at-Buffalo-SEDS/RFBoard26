@@ -92,7 +92,11 @@ static uint32_t telemetry_flight_can_id(const uint8_t *bytes, size_t len, uint8_
 #endif
 #define RF_RADIO_MAX_FRAME_BYTES 1024U
 #define RF_CAN_MAX_FRAME_BYTES 128U
-#define RF_SIDE_TRANSPORT_TEMPLATES 4U
+/* These are side-wide receive dictionaries. Four entries cannot retain
+ * the GroundStation control flows or the combined FC/PowerBoard CAN flows.
+ * Keep them bounded; allocator admission still protects packet/schema work. */
+#define RF_CAN_SIDE_TRANSPORT_TEMPLATES 16U
+#define RF_RADIO_SIDE_TRANSPORT_TEMPLATES 16U
 
 _Static_assert(RF_SEDSNET_QUEUE_BUDGET >=
                    (RF_SEDSNET_MAX_RECENT_RX_IDS * sizeof(uint64_t)) +
@@ -702,7 +706,7 @@ SedsResult init_telemetry_router(void) {
   g_can_side_id = seds_router_add_side_packed_profile_with_priority(
       r, "can", 3U, tx_send_with_priority, NULL, false,
       SEDS_SIDE_TRANSPORT_PROFILE_IPV6_LIKE, RF_CAN_MAX_FRAME_BYTES, 0U,
-      RF_SIDE_TRANSPORT_TEMPLATES);
+      RF_CAN_SIDE_TRANSPORT_TEMPLATES);
   if (g_can_side_id < 0) {
     printf("Error: failed to add CAN side: %ld\r\n", (long)g_can_side_id);
     g_can_side_id = -1;
@@ -718,7 +722,7 @@ SedsResult init_telemetry_router(void) {
   g_radio_side_id = seds_router_add_side_packed_profile_with_priority(
       r, "radio", 5U, radio_tx_send, NULL, false,
       SEDS_SIDE_TRANSPORT_PROFILE_IPV6_LIKE, RF_RADIO_MAX_FRAME_BYTES, 0U,
-      RF_SIDE_TRANSPORT_TEMPLATES);
+      RF_RADIO_SIDE_TRANSPORT_TEMPLATES);
   if (g_radio_side_id < 0) {
     printf("Error: failed to add radio side: %ld\r\n", (long)g_radio_side_id);
     g_radio_side_id = -1;
