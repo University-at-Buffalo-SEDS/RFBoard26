@@ -136,9 +136,9 @@ set(RF_SEDSNET_LARGE_POOL_SIZE "25088" CACHE STRING
     "SEDSNet storage reserved for allocations of 1 KiB or larger" FORCE)
 set(RF_SEDSNET_EMERGENCY_POOL_SIZE "19456" CACHE STRING
     "Reclaimed static RAM used only after both normal SEDSNet arenas are pressured" FORCE)
-set(RF_SEDSNET_QUEUE_BUDGET "6144" CACHE STRING
+set(RF_SEDSNET_QUEUE_BUDGET "16384" CACHE STRING
     "Bound fallback, reliable, and discovery storage on the two-sided RF router" FORCE)
-set(RF_SEDSNET_STARTING_ALLOCATION "512" CACHE STRING
+set(RF_SEDSNET_STARTING_ALLOCATION "2048" CACHE STRING
     "Fixed fallback queue storage; normal telemetry dispatches immediately" FORCE)
 set(SEDSNET_MAX_QUEUE_BUDGET "${RF_SEDSNET_QUEUE_BUDGET}" CACHE STRING "" FORCE)
 set(SEDSNET_MAX_RECENT_RX_IDS "16" CACHE STRING "" FORCE)

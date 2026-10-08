@@ -70,9 +70,9 @@ class SedsnetMemoryTests(unittest.TestCase):
         recent = int(re.search(r'set\(SEDSNET_MAX_RECENT_RX_IDS "(\d+)"', cmake).group(1))
 
         self.assertEqual(pool, 67072 + 1024)
-        self.assertEqual(budget, 6144)
+        self.assertEqual(budget, 16384)
         self.assertGreaterEqual(pool - budget, 16384)
-        self.assertEqual(start, 512)
+        self.assertEqual(start, 2048)
         self.assertGreater(budget, recent * 8 + start)
 
     def test_release_disables_usb_and_gives_its_headroom_to_router(self):

@@ -1120,6 +1120,22 @@ void* tlsf_malloc(tlsf_t tlsf, size_t size)
 	return block_prepare_used(control, block, adjust);
 }
 
+int tlsf_can_memalign(tlsf_t tlsf, size_t align, size_t size)
+{
+    control_t* control = tlsf_cast(control_t*, tlsf);
+    int fl = 0, sl = 0;
+    size_t adjust, required;
+    if (!control || !align || (align & (align - 1)) ||
+        size >= block_size_max || align > block_size_max - size ||
+        sizeof(block_header_t) > block_size_max - size - align) return 0;
+    adjust = adjust_request_size(size, ALIGN_SIZE);
+    required = (adjust && align > ALIGN_SIZE) ?
+        adjust_request_size(adjust + align + sizeof(block_header_t), align) : adjust;
+    if (!required) return 0;
+    mapping_search(required, &fl, &sl);
+    return fl < FL_INDEX_COUNT && search_suitable_block(control, &fl, &sl) != 0;
+}
+
 void* tlsf_memalign(tlsf_t tlsf, size_t align, size_t size)
 {
 	control_t* control = tlsf_cast(control_t*, tlsf);

@@ -242,9 +242,7 @@ bool telemetry_tlsf_admit(size_t additional, size_t largest)
                 largest <= reserve_free && reserve <= reserve_free - largest;
             const size_t padding = slot_available ?
                 ((largest + RESERVE_BLOCK_BYTES - 1U) / RESERVE_BLOCK_BYTES) * RESERVE_BLOCK_BYTES - largest : 0U;
-            void *scratch = tlsf_memalign(allocator, 8U, largest);
-            if (scratch) {
-                tlsf_free(allocator, scratch);
+            if (tlsf_can_memalign(allocator, 8U, largest)) {
                 allowed = true;
             } else {
                 allowed = slot_available && padding <= available - additional - reserve;
