@@ -78,7 +78,15 @@
 #endif
 
 #ifndef RADIO_AIR_BIT_RATE_BPS
-#define RADIO_AIR_BIT_RATE_BPS RADIO_BAUD_RATE
+#define RADIO_AIR_BIT_RATE_BPS 64000U
+#endif
+
+#ifndef RADIO_AIR_SHARE_PERCENT
+#define RADIO_AIR_SHARE_PERCENT 40U
+#endif
+
+#if RADIO_AIR_SHARE_PERCENT < 1 || RADIO_AIR_SHARE_PERCENT > 100
+#error "Radio air share must be between 1 and 100 percent"
 #endif
 
 #ifndef RADIO_AIR_FRAME_OVERHEAD_BYTES
@@ -86,7 +94,7 @@
 #endif
 
 #ifndef RADIO_TX_COOLDOWN_MS
-#define RADIO_TX_COOLDOWN_MS 25U
+#define RADIO_TX_COOLDOWN_MS 0U
 #endif
 
 #if defined(RADIO_E22_M0_GPIO_Port) && defined(RADIO_E22_M0_Pin) && \
@@ -210,6 +218,7 @@ static volatile uint32_t g_tx_dma_complete = 0U;
 volatile uint32_t g_tx_dma_recoveries = 0U;
 static volatile uint32_t g_tx_dma_started_at_ms = 0U;
 static volatile uint32_t g_tx_quiet_until_ms = 0U;
+static uint32_t g_tx_air_budget_active;
 static volatile uint32_t g_aux_busy_count = 0U;
 static volatile uint32_t g_e22_mode0_set_at_ms = 0U;
 
@@ -779,12 +788,13 @@ static uint32_t radio_now_ms(void)
 
 static uint32_t radio_uart_air_ms(uint16_t len)
 {
-  uint32_t air_bps = RADIO_AIR_BIT_RATE_BPS;
+  uint32_t air_bps = (uint32_t)(((uint64_t)RADIO_AIR_BIT_RATE_BPS *
+                               RADIO_AIR_SHARE_PERCENT) / 100U);
   if (air_bps == 0U) {
     air_bps = 2400U;
   }
   const uint64_t bytes = (uint64_t)len + (uint64_t)RADIO_AIR_FRAME_OVERHEAD_BYTES;
-  return (uint32_t)(((bytes * 10ULL * 1000ULL) + (uint64_t)air_bps - 1ULL) /
+  return (uint32_t)(((bytes * 8ULL * 1000ULL) + (uint64_t)air_bps - 1ULL) /
                     (uint64_t)air_bps);
 }
 
@@ -792,11 +802,15 @@ static void radio_uart_mark_tx_quiet(uint16_t len)
 {
   const uint32_t quiet_ms = radio_uart_air_ms(len) + RADIO_TX_COOLDOWN_MS;
   g_tx_quiet_until_ms = radio_now_ms() + quiet_ms;
+  g_tx_air_budget_active = 1U;
 }
 
 uint8_t radio_uart_air_busy(void)
 {
-  return (radio_now_ms() < g_tx_quiet_until_ms) ? 1U : 0U;
+  if (g_tx_air_budget_active &&
+      (int32_t)(radio_now_ms() - g_tx_quiet_until_ms) < 0) return 1U;
+  g_tx_air_budget_active = 0U;
+  return 0U;
 }
 
 uint8_t radio_uart_tx_ready(void)
@@ -864,7 +878,7 @@ radio_uart_stats_t radio_uart_stats_snapshot(void)
   }
   const uint32_t now_ms = radio_now_ms();
   stats.tx_quiet_remaining_ms =
-      (g_tx_quiet_until_ms > now_ms) ? (g_tx_quiet_until_ms - now_ms) : 0U;
+      radio_uart_air_busy() ? (g_tx_quiet_until_ms - now_ms) : 0U;
   stats.aux_high = radio_e22_aux_high();
   stats.e22_mode0_pins_configured = RADIO_E22_HAS_MODE_PINS ? 1U : 0U;
   stats.rx_pin_samples_high = g_rx_pin_samples_high;
@@ -1080,12 +1094,11 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
     return 0U;
   }
 
-  /*
-   * The RFD900x UART is flow-controlled by the HAL/DMA completion itself.
-   * Do not apply the former LoRa airtime scheduler here: reserving estimated
-   * on-air time after every DMA completion needlessly starves RX-to-TX relay
-   * traffic and causes the software FIFO to grow under normal network load.
-   */
+  /* DMA completion only drains the UART, not the modem's over-air FIFO.
+   * Reserve 40% of the shared 64 kbit/s link per peer, leaving room for radio
+   * overhead/retries. Return immediately while waiting so CAN and RX progress.
+   * Priority is chosen after this gate, so a new command can precede telemetry. */
+  if (radio_uart_air_busy()) return 0U;
   while (sent < RADIO_UART_TX_FRAMES_PER_SERVICE &&
          radio_uart_dequeue_frame_with_budget(&item, budget_ms)) {
     g_tx_dma_item = item;
@@ -1096,6 +1109,7 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
       g_tx_errors++;
       break;
     }
+    radio_uart_mark_tx_quiet(g_tx_dma_item.len);
     g_radio_tx_ok++;
     HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
     sent++;
@@ -1126,6 +1140,7 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
     }
 
     HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
+    radio_uart_mark_tx_quiet(g_tx_dma_item.len);
     g_tx_dma_started++;
     sent++;
 #endif
