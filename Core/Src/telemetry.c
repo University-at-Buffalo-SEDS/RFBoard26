@@ -411,44 +411,6 @@ static SedsResult radio_tx_send(const uint8_t *bytes, size_t len,
   return (status == HAL_OK) ? SEDS_OK : SEDS_IO;
 }
 
-/* Read-only diagnostic counters: do not count a rejected packet as discovery. */
-volatile uint32_t g_rf_can_rx_fail, g_rf_radio_rx_fail, g_rf_queue_fail;
-volatile int32_t g_rf_can_rx_last, g_rf_radio_rx_last, g_rf_queue_last;
-static SedsResult telemetry_observe_receive(const uint8_t *data, size_t len, int32_t side,
-                                           volatile uint32_t *fail, volatile int32_t *last) {
-  SedsResult result = side >= 0
-      ? seds_router_receive_packed_from_side(g_router.r, (uint32_t)side, data, len)
-      : seds_router_receive_packed(g_router.r, data, len);
-  *last = result;
-  if (result != SEDS_OK) ++*fail;
-  return result;
-}
-
-void telemetry_publish_link_diagnostics(void) {
-  static uint32_t previous_ms;
-  const uint32_t now = HAL_GetTick();
-  if (!g_router.r || (uint32_t)(now - previous_ms) < 5000U) return;
-  previous_ms = now; /* Diagnostics never spin/retry on queue pressure. */
-  extern volatile uint32_t g_watchdog_reset_flags, g_watchdog_feed_count;
-  extern volatile uint32_t g_telemetry_loop_completions;
-  extern volatile uint32_t g_av_bay_underglow_updates, g_av_bay_underglow_persist_errors;
-  extern volatile uint32_t g_av_bay_underglow_enabled, g_av_bay_underglow_persist_writes;
-  const radio_uart_stats_t r = radio_uart_stats_snapshot();
-  const uint32_t values[32] = {
-    1U, now, g_watchdog_reset_flags, g_watchdog_feed_count, g_telemetry_loop_completions,
-    g_rf_radio_rx_fail, (uint32_t)g_rf_radio_rx_last, g_rf_can_rx_fail,
-    (uint32_t)g_rf_can_rx_last, g_rf_queue_fail, (uint32_t)g_rf_queue_last,
-    r.rx_frames_ok, r.rx_isr_drops, r.rx_bad_len, r.rx_errors, r.rx_restart_errors,
-    r.tx_ok, r.tx_errors, r.tx_busy, r.tx_drops, r.tx_queue_count, r.tx_dma_recoveries,
-    g_pending_can_count, g_pending_can_drops, g_av_bay_underglow_updates,
-    g_av_bay_underglow_persist_errors, g_av_bay_underglow_enabled,
-    g_av_bay_underglow_persist_writes, g_telemetry_discovery_seen, g_radio_link_seen,
-    r.rx_isr_bytes, r.rx_sync_loss
-  };
-  (void)seds_router_log_typed(g_router.r, (SedsDataType)1000U, values, 32U,
-                            sizeof(values[0]), SEDS_EK_UNSIGNED);
-}
-
 static void telemetry_can_rx(const uint8_t *data, size_t len, void *user) {
   (void)user;
   sim_probe_observe_packed(data, len);
@@ -471,9 +433,13 @@ static void telemetry_can_rx(const uint8_t *data, size_t len, void *user) {
     return;
   }
 
-  if (telemetry_observe_receive(data, len, g_can_side_id,
-                                &g_rf_can_rx_fail, &g_rf_can_rx_last) == SEDS_OK)
-    g_telemetry_discovery_seen = 1U;
+  if (g_can_side_id >= 0) {
+    (void)seds_router_receive_packed_from_side(
+        g_router.r, (uint32_t)g_can_side_id, data, len);
+  } else {
+    (void)seds_router_receive_packed(g_router.r, data, len);
+  }
+  g_telemetry_discovery_seen = 1U;
 #else
   (void)data;
   (void)len;
@@ -506,11 +472,14 @@ static void telemetry_radio_rx(const uint8_t *data, size_t len, void *user) {
   printf("\r\n");
 #endif
 
-  if (telemetry_observe_receive(data, len, g_radio_side_id,
-                                &g_rf_radio_rx_fail, &g_rf_radio_rx_last) == SEDS_OK) {
-    g_radio_link_seen = 1U;
-    g_telemetry_discovery_seen = 1U;
+  if (g_radio_side_id >= 0) {
+    (void)seds_router_receive_packed_from_side(
+        g_router.r, (uint32_t)g_radio_side_id, data, len);
+  } else {
+    (void)seds_router_receive_packed(g_router.r, data, len);
   }
+  g_radio_link_seen = 1U;
+  g_telemetry_discovery_seen = 1U;
 #else
   (void)data;
   (void)len;
@@ -713,12 +682,6 @@ SedsResult init_telemetry_router(void) {
 #ifdef TELEMETRY_USE_TLSF
   seds_set_memory_admission_probe(telemetry_tlsf_admit);
 #endif
-  /* Application diagnostic schema, independent of generic SEDSNet internals. */
-  static const char diagnostic_name[] = "RF_LINK_DIAGNOSTICS";
-  const uint32_t diagnostic_endpoint = SEDS_EP_GROUND_STATION;
-  result = seds_dtype_register(1000U, diagnostic_name, sizeof(diagnostic_name)-1U,
-                              true, 32U, 4U, 0U, 0U, 100U, &diagnostic_endpoint, 1U);
-  if (result != SEDS_OK) return result;
   result = board_packet_store_init();
   if (result != SEDS_OK) return result;
 
@@ -970,10 +933,7 @@ SedsResult process_all_queues_timeout(uint32_t timeout_ms) {
     return SEDS_ERR;
   }
 
-  const SedsResult result = seds_router_process_all_queues_with_timeout(g_router.r, timeout_ms);
-  g_rf_queue_last = result;
-  if (result != SEDS_OK) ++g_rf_queue_fail;
-  return result;
+  return seds_router_process_all_queues_with_timeout(g_router.r, timeout_ms);
 #endif
 }
 
