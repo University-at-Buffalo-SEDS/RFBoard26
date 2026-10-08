@@ -4,7 +4,9 @@ fn bootstrap(budget: usize, start: usize) -> bool {
  let router = Router::new_with_clock(config, Box::new(||0));
  router.add_side_packed("radio", |_|Ok(()));
  router.add_side_packed("can", |_|Ok(()));
- router.announce_discovery().is_ok()
+ let announced = router.announce_discovery().is_ok();
+ if announced { router.process_all_queues().expect("accepted discovery must drain"); }
+ announced
 }
 fn main() {
  assert!(!bootstrap(6144,512), "old shared budget unexpectedly accepted bootstrap");
