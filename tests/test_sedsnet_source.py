@@ -87,6 +87,24 @@ class SourceSelectionTests(unittest.TestCase):
                       f'-DSEDSNET_REPOSITORY={self.root / "missing"}'))
         self.assertNotIn('main unavailable', configure(f'-DFETCHCONTENT_SOURCE_DIR_SEDSNET={local}'))
 
+        # Reproduce a deleted temporary override persisted in CMakeCache.txt.
+        override = self.root / 'temporary-override'
+        shutil.copytree(local, override)
+        self.assertNotIn('main unavailable', configure(f'-DFETCHCONTENT_SOURCE_DIR_SEDSNET={override}'))
+        shutil.rmtree(override)
+        recovered = configure()
+        self.assertIn('Ignoring missing or incomplete SEDSnet source override', recovered)
+        self.assertIn('main unavailable', recovered)
+        cache = (self.root / 'build/CMakeCache.txt').read_text()
+        self.assertIn('FETCHCONTENT_SOURCE_DIR_SEDSNET:PATH=\n', cache)
+        self.assertIn(f'SEDSNET_DIR:PATH={local}\n', cache)
+        self.assertNotIn('Ignoring missing or incomplete', configure('-DSEDSNET_OFFLINE=ON'))
+
+        incomplete = self.root / 'incomplete-override'
+        incomplete.mkdir()
+        self.assertIn('Ignoring missing or incomplete', configure(
+            f'-DFETCHCONTENT_SOURCE_DIR_SEDSNET={incomplete}'))
+
     def test_offline_without_source_fails_clearly(self):
         with self.assertRaisesRegex(RuntimeError, 'No usable SEDSnet source'):
             source.select_source(self.cache, 'unavailable', [], offline=True)

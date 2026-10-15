@@ -9,6 +9,17 @@ endif()
 set(SEDSNET_REPOSITORY "https://github.com/Rylan-Meilutis/SEDSnet.git" CACHE STRING
     "SEDSnet repository")
 option(SEDSNET_OFFLINE "Use the existing local SEDSnet source without network access" OFF)
+# CMake caches explicit overrides across builds. Temporary qualification trees
+# may disappear; do not let a stale path permanently bypass branch selection.
+if(FETCHCONTENT_SOURCE_DIR_SEDSNET AND
+   (NOT EXISTS "${FETCHCONTENT_SOURCE_DIR_SEDSNET}/CMakeLists.txt" OR
+    NOT EXISTS "${FETCHCONTENT_SOURCE_DIR_SEDSNET}/Cargo.toml" OR
+    NOT EXISTS "${FETCHCONTENT_SOURCE_DIR_SEDSNET}/build.rs"))
+    message(WARNING
+        "Ignoring missing or incomplete SEDSnet source override: ${FETCHCONTENT_SOURCE_DIR_SEDSNET}; retrying ${SEDSNET_GIT_REF} with on-disk fallback")
+    unset(FETCHCONTENT_SOURCE_DIR_SEDSNET CACHE)
+    unset(FETCHCONTENT_SOURCE_DIR_SEDSNET)
+endif()
 if(NOT FETCHCONTENT_SOURCE_DIR_SEDSNET)
     # Seed an empty cache entry so FetchContent cannot persist our automatic
     # normal-variable selection as a user override on the next configure.
