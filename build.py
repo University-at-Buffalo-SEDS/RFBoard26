@@ -35,6 +35,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from build_cleanup import clean_generated, format_reclaimed
 from typing import Iterable, Optional
 
 
@@ -410,24 +411,18 @@ def assert_embedded_cache(ui: UI, build_dir: Path) -> None:
 
 
 def clean_build(ui: UI, repo_root: Path, build_subdir: str | None = None) -> None:
-    """Remove generated build artifacts without allowing paths outside build/."""
-    build_root = (repo_root / "build").resolve()
-    target = build_root if build_subdir is None else (build_root / build_subdir).resolve()
+    """Remove selected build outputs and shared CRC32 artifacts; report space."""
+    build_root = repo_root / "build"
+    target = build_root if build_subdir is None else build_root / build_subdir
     try:
-        target.relative_to(build_root)
+        removed, reclaimed = clean_generated(build_root, target)
     except ValueError as exc:
-        raise FriendlyError(
-            f"Refusing to clean outside the build directory: {target}"
-        ) from exc
-
-    if not target.exists():
-        ui.say("info", f"Already clean: {target}")
-        return
-    if target.is_symlink():
-        raise FriendlyError(f"Refusing to recursively clean a symbolic link: {target}")
-
-    shutil.rmtree(target)
-    ui.say("ok", f"Cleaned build artifacts: {target}")
+        raise FriendlyError(str(exc)) from exc
+    for path in removed:
+        ui.say("ok", f"Cleaned build artifacts: {path}")
+    if not removed:
+        ui.say("info", "Already clean")
+    ui.say("ok", f"Reclaimed approximately {format_reclaimed(reclaimed)} ({reclaimed:,} allocated file bytes)")
 
 
 def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> tuple[Path, Path]:
@@ -834,7 +829,7 @@ def make_parser() -> argparse.ArgumentParser:
 
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("clean", help="Remove generated files under ./build")
+    sub.add_parser("clean", help="Remove build/ and CRC32 artifacts; report reclaimed space")
 
     def add_mode_and_common(sp: argparse.ArgumentParser) -> None:
         mode = sp.add_mutually_exclusive_group()
