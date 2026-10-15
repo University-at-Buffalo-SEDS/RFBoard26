@@ -105,6 +105,7 @@ bool gps_config(SPI_HandleTypeDef *hspi, uint32_t timeout_ms);
  * @param timeout_ms Timeout in milliseconds
  * @return true if configuration succeeded
  */
+/* timeout_ms bounds the entire multi-setting attempt, including ACK waits. */
 bool gps_configure_custom(SPI_HandleTypeDef *hspi, const gps_config_t *config, uint32_t timeout_ms);
 
 /**

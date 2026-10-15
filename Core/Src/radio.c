@@ -923,18 +923,13 @@ UINT radio_uart_init_tx_queue(TX_BYTE_POOL *byte_pool) {
 HAL_StatusTypeDef radio_uart_start_rx(void) {
   if (!g_huart) return HAL_ERROR;
 
-#ifdef SEDS_FIRMWARE_SIM_TEST
-  /* Renode's G4 USART model has no DMA request GPIO. The service loop polls
-   * its real RDR register so framing still consumes actual UART traffic. */
-  return HAL_OK;
-#else
   HAL_StatusTypeDef status =
       HAL_UARTEx_ReceiveToIdle_DMA(g_huart, g_rx_buf, sizeof(g_rx_buf));
   if (status == HAL_OK && g_huart->hdmarx != NULL) {
     __HAL_DMA_DISABLE_IT(g_huart->hdmarx, DMA_IT_HT);
   }
   return status;
-#endif
+
 }
 
 HAL_StatusTypeDef radio_uart_send_bytes(const uint8_t *bytes, size_t len) {
@@ -1069,7 +1064,6 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
   /* A lost UART/DMA completion must not disable the return path forever.
    * Recover in thread context, where it is safe to use the queue mutex, and
    * retry the complete owned frame from its sync header. */
-#ifndef SEDS_FIRMWARE_SIM_TEST
   if (g_tx_dma_busy) {
     const uint32_t elapsed = radio_now_ms() - g_tx_dma_started_at_ms;
     const uint32_t deadline =
@@ -1087,7 +1081,6 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
       }
     }
   }
-#endif
 
   if (!radio_uart_tx_ready() || g_tx_dma_busy || !radio_e22_ready_for_uart()) {
     g_tx_startup_delays++;
@@ -1102,21 +1095,6 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
   while (sent < RADIO_UART_TX_FRAMES_PER_SERVICE &&
          radio_uart_dequeue_frame_with_budget(&item, budget_ms)) {
     g_tx_dma_item = item;
-#ifdef SEDS_FIRMWARE_SIM_TEST
-    status = HAL_UART_Transmit(g_huart, g_tx_dma_item.data, g_tx_dma_item.len,
-                               radio_uart_tx_timeout_ms(g_tx_dma_item.len));
-    if (status != HAL_OK) {
-      g_tx_errors++;
-      break;
-    }
-    radio_uart_mark_tx_quiet(g_tx_dma_item.len);
-    g_radio_tx_ok++;
-    HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
-    sent++;
-    if (radio_uart_start_rx() != HAL_OK) {
-      g_rx_restart_errors++;
-    }
-#else
     g_tx_dma_busy = 1U;
     g_tx_dma_preserves_rx = 1U;
     g_tx_dma_started_at_ms = radio_now_ms();
@@ -1143,7 +1121,7 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
     radio_uart_mark_tx_quiet(g_tx_dma_item.len);
     g_tx_dma_started++;
     sent++;
-#endif
+
   }
 
   return sent;
@@ -1380,19 +1358,7 @@ void radio_uart_process_rx(void)
   uint32_t processed = 0U;
   radio_uart_sample_rx_pin();
 
-#ifdef SEDS_FIRMWARE_SIM_TEST
-  uint32_t simulated_bytes = 0U;
-  while (simulated_bytes < RADIO_UART_SIM_RX_BYTE_BUDGET &&
-         __HAL_UART_GET_FLAG(g_huart, UART_FLAG_RXNE) != RESET) {
-    const uint8_t byte = (uint8_t)g_huart->Instance->RDR;
-    radio_process_framed_bytes(&byte, 1U);
-    simulated_bytes++;
-  }
-  if (simulated_bytes == RADIO_UART_SIM_RX_BYTE_BUDGET &&
-      __HAL_UART_GET_FLAG(g_huart, UART_FLAG_RXNE) != RESET) {
-    g_radio_rx_service_budget_hits++;
-  }
-#endif
+
 
   radio_rx_item_t item;
   while (processed < RADIO_UART_RX_SERVICE_BUDGET &&
@@ -1432,14 +1398,7 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
   }
 }
 
-#ifdef SEDS_FIRMWARE_SIM_TEST
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-  if (!g_huart || huart == NULL || huart->Instance != g_huart->Instance) return;
-  g_rx_irq_events++;
-  radio_rx_ring_push_isr(g_rx_buf, 1U);
-  if (radio_uart_start_rx() != HAL_OK) g_rx_restart_errors++;
-}
-#endif
+
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {

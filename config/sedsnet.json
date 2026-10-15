@@ -61,8 +61,7 @@
         "FillSdCard",
         "ActuatorGroundStation"
       ],
-      "reliable_mode": "Ordered",
-      "reliable": true,
+      "reliable": "Ordered",
       "priority": 0
     },
     {
@@ -80,8 +79,7 @@
         "FillSdCard",
         "ActuatorFlightController"
       ],
-      "reliable_mode": "None",
-      "reliable": false,
+      "reliable": "Off",
       "priority": 0
     },
     {
@@ -97,8 +95,7 @@
       "endpoints": [
         "ActuatorGroundStation"
       ],
-      "reliable_mode": "None",
-      "reliable": false,
+      "reliable": "Off",
       "priority": 0
     },
     {
@@ -114,8 +111,7 @@
       "endpoints": [
         "ActuatorGroundStation"
       ],
-      "reliable_mode": "None",
-      "reliable": false,
+      "reliable": "Off",
       "priority": 0
     },
     {
@@ -132,8 +128,7 @@
         "ActuatorGroundStation",
         "FillSdCard"
       ],
-      "reliable_mode": "None",
-      "reliable": false,
+      "reliable": "Off",
       "priority": 0
     },
     {
@@ -150,8 +145,7 @@
         "ActuatorGroundStation",
         "FillSdCard"
       ],
-      "reliable_mode": "None",
-      "reliable": false,
+      "reliable": "Off",
       "priority": 0
     },
     {
@@ -167,8 +161,7 @@
       "endpoints": [
         "ActuatorGroundStation"
       ],
-      "reliable_mode": "None",
-      "reliable": false,
+      "reliable": "Off",
       "priority": 0
     },
     {
@@ -184,8 +177,7 @@
         "ActuatorAbort",
         "FillSdCard"
       ],
-      "reliable_mode": "Unordered",
-      "reliable": true,
+      "reliable": "Unordered",
       "priority": 0
     },
     {
@@ -202,8 +194,7 @@
         "ActuatorGroundStation",
         "FillSdCard"
       ],
-      "reliable_mode": "None",
-      "reliable": false,
+      "reliable": "Off",
       "priority": 0
     },
     {
@@ -220,8 +211,7 @@
         "ActuatorGroundStation",
         "ActuatorValveBoard"
       ],
-      "reliable_mode": "Ordered",
-      "reliable": true,
+      "reliable": "Ordered",
       "priority": 200
     },
     {
@@ -239,8 +229,7 @@
         "FillSdCard",
         "ActuatorFlightController"
       ],
-      "reliable_mode": "Ordered",
-      "reliable": true,
+      "reliable": "Ordered",
       "priority": 200
     },
     {
@@ -257,8 +246,7 @@
         "ActuatorGroundStation",
         "FillSdCard"
       ],
-      "reliable_mode": "None",
-      "reliable": false,
+      "reliable": "Off",
       "priority": 0
     },
     {
@@ -276,8 +264,7 @@
         "FillSdCard",
         "ActuatorGroundStation"
       ],
-      "reliable_mode": "Ordered",
-      "reliable": true,
+      "reliable": "Ordered",
       "priority": 16
     },
     {
@@ -295,8 +282,7 @@
         "ActuatorGroundStation",
         "ActuatorFlightController"
       ],
-      "reliable_mode": "None",
-      "reliable": false,
+      "reliable": "Off",
       "priority": 255
     },
     {
@@ -312,8 +298,7 @@
         "FillSdCard",
         "ActuatorGroundStation"
       ],
-      "reliable_mode": "Ordered",
-      "reliable": true,
+      "reliable": "Ordered",
       "priority": 0
     },
     {
@@ -328,16 +313,14 @@
       "endpoints": [
         "ActuatorGroundStation"
       ],
-      "reliable_mode": "None",
-      "reliable": false,
+      "reliable": "Off",
       "priority": 0
     },
     {
       "rust": "ActuatorActuatorCommand",
       "name": "ACTUATOR_COMMAND",
       "doc": "Commands to be sent to the actuator board (1 u8)",
-      "reliable": true,
-      "reliable_mode": "Ordered",
+      "reliable": "Ordered",
       "class": "Data",
       "element": {
         "kind": "Static",
@@ -354,8 +337,7 @@
       "rust": "ActuatorUmbilicalStatus",
       "name": "UMBILICAL_STATUS",
       "doc": "The status of the umbilical setup (valves, actuator position, ingnighter state, etc)(2 u8's valve, position)",
-      "reliable": true,
-      "reliable_mode": "Ordered",
+      "reliable": "Ordered",
       "class": "Data",
       "element": {
         "kind": "Static",
@@ -371,8 +353,7 @@
       "rust": "ActuatorKG1000",
       "name": "KG1000",
       "doc": "1000kg loadcell values (1 float32)",
-      "reliable": false,
-      "reliable_mode": "None",
+      "reliable": "Off",
       "class": "Data",
       "element": {
         "kind": "Static",
@@ -388,8 +369,7 @@
       "rust": "ActuatorKG50",
       "name": "KG50",
       "doc": "50kg Loadcell (1 float32)",
-      "reliable": false,
-      "reliable_mode": "None",
+      "reliable": "Off",
       "class": "Data",
       "element": {
         "kind": "Static",
@@ -405,8 +385,7 @@
       "rust": "ActuatorGpsSatelliteNumber",
       "name": "GPS_SATELLITE_NUMBER",
       "doc": "(1 x U8) The number of satelites the gps sees in the sky.",
-      "reliable": false,
-      "reliable_mode": "None",
+      "reliable": "Off",
       "class": "Data",
       "element": {
         "kind": "Static",
@@ -422,8 +401,7 @@
       "rust": "ActuatorEulerAngles",
       "name": "EULER_ANGLES",
       "doc": "Initial condition euler angles: 3 x float32 values.",
-      "reliable": true,
-      "reliable_mode": "Unordered",
+      "reliable": "Unordered",
       "priority": 0,
       "class": "Data",
       "element": {
@@ -440,8 +418,7 @@
       "rust": "ActuatorOrderedMessage",
       "name": "ORDERED_MESSAGE",
       "doc": "Ordered Message: MessageData variant for responses to manual commands and critical state changes.",
-      "reliable": true,
-      "reliable_mode": "Ordered",
+      "reliable": "Ordered",
       "priority": 0,
       "class": "Data",
       "element": {
@@ -457,8 +434,7 @@
       "rust": "ActuatorAscentState",
       "name": "ASCENT_STATE",
       "doc": "Ascent State: Quaternion vector (4 x 1 x float32) and shared state (2 x 1 x float32). Logged only to GroundStation.",
-      "reliable": false,
-      "reliable_mode": "None",
+      "reliable": "Off",
       "priority": 0,
       "class": "Data",
       "element": {
@@ -474,8 +450,7 @@
       "rust": "ActuatorDescentState",
       "name": "DESCENT_STATE",
       "doc": "Descent State: low pass coordinates (2 x 1 x float32) and shared state (2 x 1 x float32). Logged only to GroundStation.",
-      "reliable": false,
-      "reliable_mode": "None",
+      "reliable": "Off",
       "priority": 0,
       "class": "Data",
       "element": {
@@ -491,8 +466,7 @@
       "rust": "ActuatorAscentBiases",
       "name": "ASCENT_BIASES",
       "doc": "Ascent Biases: pre-launch command to update biases of Ascent KF (4 x float32).",
-      "reliable": true,
-      "reliable_mode": "Unordered",
+      "reliable": "Unordered",
       "priority": 0,
       "class": "Data",
       "element": {
@@ -510,8 +484,7 @@
       "rust": "ActuatorGyroLocal",
       "name": "GYRO_LOCAL",
       "doc": "Gyro Data: 3 × float32 elements (x, y, z). Logged only to SD.",
-      "reliable": false,
-      "reliable_mode": "None",
+      "reliable": "Off",
       "priority": 0,
       "class": "Data",
       "element": {
@@ -527,8 +500,7 @@
       "rust": "ActuatorAccelLocal",
       "name": "ACCEL_LOCAL",
       "doc": "Accel Data: 3 × float32 elements (x, y, z). Logged only to SD.",
-      "reliable": false,
-      "reliable_mode": "None",
+      "reliable": "Off",
       "priority": 0,
       "class": "Data",
       "element": {
@@ -544,8 +516,7 @@
       "rust": "ActuatorIMUData",
       "name": "IMU_DATA",
       "doc": "Accel and Gyro Data: 6 × float32 elements (ax, ay, az, gx, gy, gz). Logged only to GroundStation.",
-      "reliable": false,
-      "reliable_mode": "None",
+      "reliable": "Off",
       "priority": 0,
       "class": "Data",
       "element": {
@@ -561,8 +532,7 @@
       "rust": "ActuatorIMULocal",
       "name": "IMU_LOCAL",
       "doc": "Accel and Gyro Data: 6 × float32 elements (ax, ay, az, gx, gy, gz). Logged only to SD.",
-      "reliable": false,
-      "reliable_mode": "None",
+      "reliable": "Off",
       "priority": 0,
       "class": "Data",
       "element": {
@@ -578,8 +548,7 @@
       "rust": "ActuatorBarometerLocal",
       "name": "BAROMETER_LOCAL",
       "doc": "Barometer Data: 3 × float32 elements (alt, prs, tmp). Logged only to SD.",
-      "reliable": false,
-      "reliable_mode": "None",
+      "reliable": "Off",
       "priority": 0,
       "class": "Data",
       "element": {
@@ -595,8 +564,7 @@
       "rust": "ActuatorAscentLocal",
       "name": "ASCENT_LOCAL",
       "doc": "Ascent State: Quaternion vector (4 x 1 x float32) and shared state (2 x 1 x float32). Logged only to SD.",
-      "reliable": false,
-      "reliable_mode": "None",
+      "reliable": "Off",
       "priority": 0,
       "class": "Data",
       "element": {
@@ -612,8 +580,7 @@
       "rust": "ActuatorDescentLocal",
       "name": "DESCENT_LOCAL",
       "doc": "Descent State: low pass coordinates (2 x 1 x float32) and shared state (2 x 1 x float32). Logged only to SD.",
-      "reliable": false,
-      "reliable_mode": "None",
+      "reliable": "Off",
       "priority": 0,
       "class": "Data",
       "element": {
@@ -629,8 +596,7 @@
       "rust": "AvBayUnderglow",
       "name": "AV_BAY_UNDERGLOW",
       "doc": "Persistent avionics-bay underglow network variable (0 off, 1 on).",
-      "reliable": true,
-      "reliable_mode": "Ordered",
+      "reliable": "Ordered",
       "priority": 16,
       "class": "Data",
       "element": {
@@ -646,8 +612,7 @@
       "rust": "FlightBuzzer",
       "name": "FLIGHT_BUZZER",
       "doc": "Persistent Flight Computer buzzer network variable (0 off, 1 on).",
-      "reliable": true,
-      "reliable_mode": "Ordered",
+      "reliable": "Ordered",
       "priority": 16,
       "class": "Data",
       "element": {
@@ -661,17 +626,17 @@
     },
     {
       "rust": "Reserved135", "name": "RESERVED_135", "doc": "Reserved legacy rate ID; telemetry rates are compile-time board settings.",
-      "reliable": true, "reliable_mode": "Ordered", "priority": 16, "class": "Data",
+      "reliable": "Ordered", "priority": 16, "class": "Data",
       "element": {"kind": "Static", "data_type": "Float32", "count": 1}, "endpoints": []
     },
     {
       "rust": "Reserved136", "name": "RESERVED_136", "doc": "Reserved legacy rate ID; telemetry rates are compile-time board settings.",
-      "reliable": true, "reliable_mode": "Ordered", "priority": 16, "class": "Data",
+      "reliable": "Ordered", "priority": 16, "class": "Data",
       "element": {"kind": "Static", "data_type": "Float32", "count": 1}, "endpoints": []
     },
     {
       "rust": "DaqLoadcellCalibration", "name": "DAQ_LOADCELL_CALIBRATION", "doc": "DAQ calibration [KG1000 slope, KG1000 intercept, IADC slope, IADC intercept].",
-      "reliable": true, "reliable_mode": "Ordered", "priority": 16, "class": "Data",
+      "reliable": "Ordered", "priority": 16, "class": "Data",
       "element": {"kind": "Static", "data_type": "Float32", "count": 4}, "endpoints": ["FillSdCard"]
     }
   ]

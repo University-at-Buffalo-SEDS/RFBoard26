@@ -433,7 +433,7 @@ def run_network_simulation(
     # counters moving even when the RF service loop stops making progress.
     power_absent_topology = {
         "name": "rf-flight-groundstation-power-absent",
-        "quantum_seconds": 0.001,
+        "quantum_seconds": 0.0001,
         "virtual_time_ms": int(
             os.environ.get("SEDS_FIRMWARE_SIM_AVIONICS_TIME_MS", "16000")
         ),
@@ -569,9 +569,10 @@ def run_network_simulation(
     ]
     topology = {
         "name": "complete-seds-avionics-and-fill-network",
-        # One millisecond is below the firmware service cadence while avoiding
-        # the 10x synchronization overhead of a 100 us multi-machine quantum.
-        "quantum_seconds": 0.001,
+        # Synchronize within the CAN FIFO receive window at this bus rate.
+        # A 1 ms quantum can deliver more than the three-slot hardware FIFO
+        # holds before the receiving CPU advances. Preserve finite FIFO loss.
+        "quantum_seconds": 0.0001,
         # The linked test proves connectivity; each board's separate profile
         # stage performs the long-duration allocator qualification.
         # The Pico-Fi/radio path deliberately models constrained serial links.
@@ -872,9 +873,9 @@ def run_network_simulation(
                  "contains": f"full-bay fill telemetry reached GroundStation from {node}"}
                 for node in ("GB", "AB", "VB", "DAQ")
             ],
-            {"name": "GroundStation received the DAQ raw 50 Hz loadcell stream",
+            {"name": "GroundStation received the DAQ raw 250 Hz loadcell stream",
              "node": "groundstation",
-             "contains": "full-bay DAQ raw loadcell 50 Hz stream reached GroundStation"},
+             "contains": "full-bay DAQ raw loadcell 250 Hz stream reached GroundStation"},
         ],
     }
 

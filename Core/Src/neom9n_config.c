@@ -183,6 +183,8 @@ bool ubx_wait_for_ack(SPI_HandleTypeDef *hspi, uint8_t msg_class, uint8_t msg_id
  * @brief Set a single configuration value
  */
 bool ubx_set_config(SPI_HandleTypeDef *hspi, uint32_t key_id, uint32_t value, uint8_t value_size, uint8_t layers, uint32_t timeout_ms) {
+    if (timeout_ms == 0U) return false;
+    const uint32_t started = HAL_GetTick();
     uint8_t payload[64];
     uint16_t idx = 0;
     
@@ -208,11 +210,15 @@ bool ubx_set_config(SPI_HandleTypeDef *hspi, uint32_t key_id, uint32_t value, ui
         return false;
     }
     
-    // Give GPS time to process
-    tx_thread_sleep(100);
-    
-    // Wait for ACK
-    return ubx_wait_for_ack(hspi, UBX_CLASS_CFG, UBX_CFG_VALSET, timeout_ms);
+    // The send, processing delay and ACK share one deadline.
+    uint32_t elapsed = (uint32_t)(HAL_GetTick() - started);
+    if (elapsed >= timeout_ms) return false;
+    uint32_t settle = timeout_ms - elapsed;
+    if (settle > 100U) settle = 100U;
+    tx_thread_sleep((settle * TX_TIMER_TICKS_PER_SECOND + 999U) / 1000U);
+    elapsed = (uint32_t)(HAL_GetTick() - started);
+    if (elapsed >= timeout_ms) return false;
+    return ubx_wait_for_ack(hspi, UBX_CLASS_CFG, UBX_CFG_VALSET, timeout_ms - elapsed);
 }
 
 /* -- HIGH-LEVEL CONFIGURATION FUNCTIONS ------------ */
@@ -255,56 +261,40 @@ bool gps_set_dynamic_model_only(SPI_HandleTypeDef *hspi, gps_dynamic_model_t mod
  * @brief Configure GPS with custom settings
  */
 bool gps_configure_custom(SPI_HandleTypeDef *hspi, const gps_config_t *config, uint32_t timeout_ms) {
-    bool success = true;
-    
-    // Set dynamic model
-    if (!ubx_set_config(hspi, CFG_NAVSPG_DYNMODEL, (uint32_t)config->dynamic_model, 1, config->layers, timeout_ms)) {
-        success = false;
+    if (config == NULL || timeout_ms == 0U) return false;
+    const uint32_t started = HAL_GetTick();
+    const struct {
+        uint32_t key, value;
+        uint8_t size;
+        uint16_t settle_ms;
+    } steps[] = {
+        {CFG_NAVSPG_DYNMODEL, (uint32_t)config->dynamic_model, 1, 200},
+        {CFG_RATE_MEAS, (uint32_t)config->update_rate_ms, 2, 200},
+        {CFG_RATE_NAV, 1, 2, 200},
+        {CFG_MSGOUT_NMEA_ID_GGA_SPI, config->enable_gga ? 1U : 0U, 1, 100},
+        {CFG_MSGOUT_NMEA_ID_RMC_SPI, config->enable_rmc ? 1U : 0U, 1, 100},
+        {CFG_MSGOUT_NMEA_ID_GNS_SPI, config->enable_gns ? 1U : 0U, 1, 100},
+        {CFG_MSGOUT_NMEA_ID_GLL_SPI, 0, 1, 100},
+        {CFG_MSGOUT_NMEA_ID_GSA_SPI, 0, 1, 100},
+        {CFG_MSGOUT_NMEA_ID_GSV_SPI, 0, 1, 100},
+        {CFG_MSGOUT_NMEA_ID_VTG_SPI, 0, 1, 0},
+    };
+    /* One deadline for the whole attempt. A missing GPS must not consume ten
+     * separate timeouts before acquisition can report progress to the watchdog. */
+    for (unsigned i = 0; i < sizeof(steps) / sizeof(steps[0]); ++i) {
+        uint32_t elapsed = (uint32_t)(HAL_GetTick() - started);
+        if (elapsed >= timeout_ms) return false;
+        if (!ubx_set_config(hspi, steps[i].key, steps[i].value, steps[i].size,
+                            config->layers, timeout_ms - elapsed)) return false;
+        elapsed = (uint32_t)(HAL_GetTick() - started);
+        if (elapsed >= timeout_ms) return false;
+        uint32_t settle = steps[i].settle_ms;
+        if (settle > timeout_ms - elapsed) settle = timeout_ms - elapsed;
+        if (settle != 0U) {
+            tx_thread_sleep((settle * TX_TIMER_TICKS_PER_SECOND + 999U) / 1000U);
+        }
     }
-    tx_thread_sleep(200);
-    
-    // Set measurement rate
-    if (!ubx_set_config(hspi, CFG_RATE_MEAS, (uint32_t)config->update_rate_ms, 2, config->layers, timeout_ms)) {
-        success = false;
-    }
-    tx_thread_sleep(200);
-    
-    // Set navigation rate (1 = every measurement)
-    if (!ubx_set_config(hspi, CFG_RATE_NAV, 1, 2, config->layers, timeout_ms)) {
-        success = false;
-    }
-    tx_thread_sleep(200);
-    
-    // Configure message outputs
-    // Enable GGA
-    if (!ubx_set_config(hspi, CFG_MSGOUT_NMEA_ID_GGA_SPI, config->enable_gga ? 1 : 0, 1, config->layers, timeout_ms)) {
-        success = false;
-    }
-    tx_thread_sleep(100);
-    
-    // Enable RMC
-    if (!ubx_set_config(hspi, CFG_MSGOUT_NMEA_ID_RMC_SPI, config->enable_rmc ? 1 : 0, 1, config->layers, timeout_ms)) {
-        success = false;
-    }
-    tx_thread_sleep(100);
-    
-    // Enable GNS
-    if (!ubx_set_config(hspi, CFG_MSGOUT_NMEA_ID_GNS_SPI, config->enable_gns ? 1 : 0, 1, config->layers, timeout_ms)) {
-        success = false;
-    }
-    tx_thread_sleep(100);
-    
-    // Disable unnecessary messages
-    ubx_set_config(hspi, CFG_MSGOUT_NMEA_ID_GLL_SPI, 0, 1, config->layers, timeout_ms); 
-    tx_thread_sleep(100);
-    ubx_set_config(hspi, CFG_MSGOUT_NMEA_ID_GSA_SPI, 0, 1, config->layers, timeout_ms); 
-    tx_thread_sleep(100);
-    ubx_set_config(hspi, CFG_MSGOUT_NMEA_ID_GSV_SPI, 0, 1, config->layers, timeout_ms);
-    tx_thread_sleep(100);
-    ubx_set_config(hspi, CFG_MSGOUT_NMEA_ID_VTG_SPI, 0, 1, config->layers, timeout_ms);
-    tx_thread_sleep(100);
-    
-    return success;
+    return true;
 }
 
 /**

@@ -371,7 +371,8 @@ static uint64_t node_now_since_ms(void *user) {
   (void)user;
   const RouterState s = g_router;
   const uint64_t now = tx_raw_now_ms_locked();
-  return s.r ? (now - s.start_time) : 0ULL;
+  /* Construction and initial maintenance also need an advancing clock. */
+  return now - s.start_time;
 }
 
 static SedsResult tx_send_with_priority(const uint8_t *bytes, size_t len,
@@ -607,25 +608,6 @@ SedsResult telemetry_poll_discovery(void) {
   const SedsResult result = seds_router_poll_discovery(g_router.r, &did_queue);
   if (result == SEDS_OK) {
     sim_probe_emit_heartbeat(g_router.r, telemetry_now_ms());
-#ifdef SEDS_FIRMWARE_SIM_TEST
-    /* Renode does not execute the external NEO-M9N's NMEA stream. Emit the
-     * production no-fix value at the real 1 Hz cadence so qualification
-     * exercises RF -> radio -> GroundStation telemetry routing under load. */
-    {
-      static uint64_t next_sim_gps_ms = 0ULL;
-      const uint64_t now_ms = telemetry_now_ms();
-      if (now_ms >= next_sim_gps_ms) {
-        const uint8_t satellites = 0U;
-        g_sim_gps_publish_attempts++;
-        if (seds_router_log_typed(g_router.r, SEDS_DT_GPS_SATELLITE_NUMBER,
-                                  &satellites, 1U, sizeof(satellites),
-                                  SEDS_EK_UNSIGNED) == SEDS_OK) {
-          g_sim_gps_publish_ok++;
-          next_sim_gps_ms = now_ms + rf_telemetry_period_ms();
-        }
-      }
-    }
-#endif
     (void)av_bay_underglow_poll(g_router.r);
   }
   telemetry_update_network_health(g_router.r);

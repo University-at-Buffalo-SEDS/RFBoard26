@@ -1,8 +1,9 @@
 # Board watchdog
 
 Build with `./build.py build --release --watchdog` (or CMake
-`-DENABLE_BOARD_WATCHDOG=ON`). The default is OFF; the script explicitly clears a
-previously enabled CMake cache when the flag is omitted. ThreadX still schedules
+`-DENABLE_BOARD_WATCHDOG=ON`). The default is ON; use `--no-watchdog` for
+diagnostics. The script explicitly configures ON/OFF to prevent stale cache
+settings. ThreadX still schedules
 all tasks. The watchdog belongs to this board, with no SEDSnet changes.
 
 The independent LSI-driven IWDG has a nominal 16.384 second deadline (/256,

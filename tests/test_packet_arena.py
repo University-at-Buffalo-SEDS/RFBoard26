@@ -15,7 +15,7 @@ class PacketArenaTests(unittest.TestCase):
                 if hasattr(build, 'make_parser'):
                     args=build.make_parser().parse_args(['build','--release'] + (['--packet-store','compact'] if compact else []))
                     cfg=build.build_cfg_from_args(mock.Mock(),args)
-                    self.assertEqual(cfg.sedsnet_ref, 'dev' if compact else 'main')
+                    self.assertEqual(cfg.sedsnet_ref, 'main')
                     cfg.repo_root=Path(directory)
                     cfg.build_dir.mkdir(parents=True)
                     (cfg.build_dir / (cfg.project_name+'.elf')).touch()
@@ -27,7 +27,7 @@ class PacketArenaTests(unittest.TestCase):
                     options['packet-store-compact']=compact
                     with mock.patch.object(build,'PROJECT',Path(directory)), mock.patch.object(build,'run',side_effect=commands.append):
                         build.configure(Path(directory)/'build','Release',options)
-                self.assertIn('-DSEDSNET_GIT_REF='+('dev' if compact else 'main'),commands[0])
+                self.assertIn('-DSEDSNET_GIT_REF='+('main'),commands[0])
                 self.assertIn('-DSEDSNET_COMPACT_PACKET_STORE='+('ON' if compact else 'OFF'),commands[0])
                 self.assertIn('-DSEDSNET_COMPACT_PACKET_COMPRESSION=OFF',commands[0])
 

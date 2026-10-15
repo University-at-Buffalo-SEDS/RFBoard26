@@ -144,6 +144,10 @@ set(SEDSNET_MAX_QUEUE_BUDGET "${RF_SEDSNET_QUEUE_BUDGET}" CACHE STRING "" FORCE)
 set(SEDSNET_MAX_RECENT_RX_IDS "16" CACHE STRING "" FORCE)
 set(SEDSNET_ENV_STARTING_QUEUE_SIZE "${RF_SEDSNET_STARTING_ALLOCATION}" CACHE STRING "" FORCE)
 set(SEDSNET_ENV_QUEUE_GROW_STEP "1.0" CACHE STRING "" FORCE)
+# Radio startup ACK measured at 2.820 s, beyond the default retry window.
+# Keep 200 ms resend timing and existing bounded pending/queue capacities.
+set(SEDSNET_ENV_RELIABLE_MAX_RETRIES "24" CACHE STRING
+    "Allow bounded radio startup receipt latency" FORCE)
 set(SEDSNET_ENV_PAYLOAD_COMPRESS_THRESHOLD "30" CACHE STRING "" FORCE)
 set(SEDSNET_TARGET "thumbv7em-none-eabihf" CACHE STRING "" FORCE)
 include(cmake/sedsnet_fetch.cmake)

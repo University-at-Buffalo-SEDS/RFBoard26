@@ -58,6 +58,17 @@ int main(void) {
     assert(calls == 8);
     sim_probe_emit_heartbeat(&router, 501);
     assert(calls == 8);
+    sim_probe_emit_heartbeat(&router, UINT32_MAX - 1000U);
+    assert(calls == 9);
+    sim_probe_emit_heartbeat(&router, UINT32_MAX - 1U);
+    assert(calls == 9);
+    sim_probe_emit_heartbeat(&router, UINT32_MAX);
+    assert(calls == 10);
+    sim_probe_emit_heartbeat(&router, 0);
+    sim_probe_emit_heartbeat(&router, 998);
+    assert(calls == 10);
+    sim_probe_emit_heartbeat(&router, 999);
+    assert(calls == 11);
 #else
     assert(calls == 0 && g_sim_heartbeat_attempts == 0);
 #endif

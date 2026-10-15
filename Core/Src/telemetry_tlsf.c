@@ -161,7 +161,10 @@ void *telemetry_tlsf_malloc(size_t size)
     void *ptr = NULL;
     if (initialize() && size <= tlsf_block_size_max() - 64U) {
         /* Startup topology/replay buffers should not occupy the reserve. */
-        ptr = tlsf_memalign(allocator, 8U, size ? size : 1U);
+        /* Rust reserves its own alignment/header in telemetryMalloc's raw
+         * allocation. CAN callers own byte storage. Extra memalign padding
+         * strands small free blocks even for a ten-byte request. */
+        ptr = tlsf_malloc(allocator, size ? size : 1U);
         if (!ptr) ptr = large_slot_allocate(size);
     }
     if (ptr) {
@@ -242,7 +245,7 @@ bool telemetry_tlsf_admit(size_t additional, size_t largest)
                 largest <= reserve_free && reserve <= reserve_free - largest;
             const size_t padding = slot_available ?
                 ((largest + RESERVE_BLOCK_BYTES - 1U) / RESERVE_BLOCK_BYTES) * RESERVE_BLOCK_BYTES - largest : 0U;
-            if (tlsf_can_memalign(allocator, 8U, largest)) {
+            if (tlsf_can_memalign(allocator, tlsf_align_size(), largest)) {
                 allowed = true;
             } else {
                 allowed = slot_available && padding <= available - additional - reserve;
@@ -255,7 +258,7 @@ bool telemetry_tlsf_admit(size_t additional, size_t largest)
                 unsigned probes = 0U;
                 while (allowed && remaining != 0U && probes++ < 128U) {
                     const size_t chunk = remaining > 128U ? 128U : remaining;
-                    void *block = tlsf_memalign(allocator, 8U,
+                    void *block = tlsf_malloc(allocator,
                         chunk < sizeof(void *) ? sizeof(void *) : chunk);
                     if (!block) { allowed = false; break; }
                     *(void **)block = head;
