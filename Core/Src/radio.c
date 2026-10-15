@@ -1,4 +1,5 @@
 #include "radio.h"
+#include "recovery_mesh.h"
 #include "main.h"
 #include "sedsnet_config.h"
 #include "tx_api.h"
@@ -1280,7 +1281,13 @@ static void radio_process_buffered_frames(void)
                              &g_last_frame_preview_len,
                              &g_frame_buf[RADIO_UART_FRAME_HEADER_SIZE],
                              payload_len);
-    radio_notify_rx(&g_frame_buf[RADIO_UART_FRAME_HEADER_SIZE], payload_len);
+    const uint8_t *notify_data = &g_frame_buf[RADIO_UART_FRAME_HEADER_SIZE];
+    size_t notify_len = payload_len;
+    uint8_t notify_command = is_command_frame;
+    if (recovery_mesh_uplink(&notify_data, &notify_len, &notify_command)) {
+      g_current_rx_is_command_frame = notify_command;
+      radio_notify_rx(notify_data, notify_len);
+    }
     g_current_rx_is_command_frame = 0U;
     g_radio_rx_frames_ok++;
     radio_frame_buf_consume(RADIO_UART_FRAME_HEADER_SIZE + payload_len);

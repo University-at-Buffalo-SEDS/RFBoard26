@@ -414,6 +414,12 @@ static SedsResult radio_tx_send(const uint8_t *bytes, size_t len,
 
 static void telemetry_can_rx(const uint8_t *data, size_t len, void *user) {
   (void)user;
+  /* Recovery envelopes are for the ground hosts. Only the RRLS-unwrapped
+   * canonical uplink is eligible for routing or radio-link liveness. */
+  if (radio_uart_current_rx_is_command_frame() && data && len >= 3U &&
+      data[0] == 'R' && data[1] == 'R' && data[2] == 1U) {
+    return;
+  }
   sim_probe_observe_packed(data, len);
 #ifdef SEDS_FIRMWARE_SIM_TEST
   {

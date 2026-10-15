@@ -52,6 +52,7 @@ int main(void){
     }
 }
 '''
+        code = f'#include "{ROOT / "Core/Inc/recovery_mesh.h"}"\n' + code
         with tempfile.TemporaryDirectory() as d:
             exe=Path(d)/'framing'
             p=subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-x','c','-','-o',str(exe)],input=code,text=True,capture_output=True)

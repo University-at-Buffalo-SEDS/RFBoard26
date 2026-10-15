@@ -80,7 +80,7 @@
         "ActuatorFlightController"
       ],
       "reliable": "Off",
-      "priority": 0
+      "priority": 255
     },
     {
       "rust": "ActuatorGyroData",
