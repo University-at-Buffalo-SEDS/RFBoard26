@@ -22,7 +22,7 @@ SIMULATOR_DOCKER_PLATFORM = os.environ.get(
 
 def simulated_fill_link() -> dict[str, str]:
     """Select the actual bounded Pico transport for linked qualification."""
-    mode = os.environ.get("SEDS_FIRMWARE_SIM_FILL_TRANSPORT", "i2c").strip().lower()
+    mode = os.environ.get("SEDS_FIRMWARE_SIM_FILL_TRANSPORT", "tcp").strip().lower()
     if mode not in {"i2c", "tcp"}:
         raise RuntimeError("SEDS_FIRMWARE_SIM_FILL_TRANSPORT must be i2c or tcp")
     return {
@@ -39,8 +39,11 @@ def write_network_comms_config(root: Path) -> None:
         "version": 1,
         "av_bay": {"interface": "serial", "port": "/dev/ttyAMA0",
                    "baud_rate": 115200, "protocol": "raw_uart"},
-        "fill_box": {"interface": "i2c", "bus": 1, "addr": 85,
-                     "chunk_delay_ms": 0, "initial_wait_ms": 0, "protocol_version": 2},
+        "fill_box": ({"interface": "pico_fi_tcp", "mode": "client",
+                      "address": "127.0.0.1:9000"}
+                     if simulated_fill_link()["transport"] == "pico_fi_tcp_to_uart" else
+                     {"interface": "i2c", "bus": 1, "addr": 85,
+                      "chunk_delay_ms": 0, "initial_wait_ms": 0, "protocol_version": 2}),
     }
     path = root / "comms-v2.json"
     path.write_text(json.dumps(config, indent=2), encoding="utf-8")
