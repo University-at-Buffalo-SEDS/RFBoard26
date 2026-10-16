@@ -1,5 +1,9 @@
 include(FetchContent)
 
+# Cold-path fair reclamation is valuable on two-sided bridges. Keep it
+# optional in the generic SDK so flash-constrained leaf nodes need not link it.
+set(SEDSNET_FAIR_ADMISSION ON CACHE BOOL "Reclaim dominant bulk sender backlog under pressure" FORCE)
+
 set(SEDSNET_SCHEMA_FILE "${CMAKE_SOURCE_DIR}/config/sedsnet.json")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
              "${SEDSNET_SCHEMA_FILE}")
@@ -11,6 +15,11 @@ set(SEDSNET_ENABLE_CRYPTOGRAPHY OFF CACHE BOOL
     "Keep the current unencrypted embedded transport" FORCE)
 
 include("${CMAKE_SOURCE_DIR}/cmake/sedsnet_source.cmake")
+
+if(SEDSNET_FAIR_ADMISSION AND
+   NOT EXISTS "${SEDSNET_DIR}/src/admission_fairness.rs")
+    message(FATAL_ERROR "Selected SEDSnet source lacks fair admission; fetch main online or provide a current local checkout")
+endif()
 
 if(SEDSNET_COMPACT_PACKET_STORE AND NOT EXISTS "${SEDSNET_DIR}/src/packet_store.rs")
     message(FATAL_ERROR "Selected SEDSnet lacks the packet arena; fetch dev or supply a current dev checkout")
