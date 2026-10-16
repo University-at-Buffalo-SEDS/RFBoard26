@@ -23,6 +23,7 @@ static uint32_t radio_now_ms(void) { return now; }
 assert(!radio_uart_air_busy());
 assert(radio_uart_air_ms(104)==38);
 assert(radio_uart_air_ms(1028)==327);
+assert(radio_uart_air_ms(260)==87);
 now=UINT32_MAX-10; radio_uart_mark_tx_quiet(104);
 assert(radio_uart_air_busy()); now=20; assert(radio_uart_air_busy());
 now=27; assert(!radio_uart_air_busy());

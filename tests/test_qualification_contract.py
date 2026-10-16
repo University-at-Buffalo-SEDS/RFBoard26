@@ -163,7 +163,7 @@ class QualificationContractTests(unittest.TestCase):
             "seds_router_add_side_packed_profile_with_priority(",
             telemetry,
         )
-        self.assertIn("RF_RADIO_MAX_FRAME_BYTES 1024U", telemetry)
+        self.assertIn("RF_RADIO_MAX_FRAME_BYTES 256U", telemetry)
         self.assertIn("RF_CAN_MAX_FRAME_BYTES 128U", telemetry)
         self.assertIn("SEDS_SIDE_TRANSPORT_PROFILE_IPV6_LIKE", telemetry)
         self.assertIn("RF_CAN_SIDE_TRANSPORT_TEMPLATES 16U", telemetry)

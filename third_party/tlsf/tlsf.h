@@ -71,6 +71,8 @@ void tlsf_free(tlsf_t tlsf, void* ptr);
 size_t tlsf_block_size(void* ptr);
 
 /* Overheads/limits of internal structures. */
+/* Exact free payload bytes across all pools, in constant time. */
+size_t tlsf_free_size(tlsf_t tlsf);
 size_t tlsf_size(void);
 size_t tlsf_align_size(void);
 size_t tlsf_block_size_min(void);

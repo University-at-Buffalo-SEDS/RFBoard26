@@ -19,6 +19,15 @@ extern volatile uint32_t g_telemetry_tlsf_active;
 #define TELEMETRY_STDIO_DEBUG 0
 #endif
 
+/* These ThreadX-only counters have no writers in the TLSF build. Keep
+ * explicit read-only zeroes for debugger/simulator probes without charging RAM.
+ * Active TLSF failure and free-space counters remain live and writable. */
+#ifdef TELEMETRY_USE_TLSF
+#define THREADX_ONLY_PROBE const __attribute__((used, retain))
+#else
+#define THREADX_ONLY_PROBE volatile
+#endif
+
 #ifndef TELEMETRY_USE_TLSF
 static TX_BYTE_POOL *rust_byte_pool_external = NULL;
 static TX_BYTE_POOL *rust_large_byte_pool_external = NULL;
@@ -33,7 +42,7 @@ static UINT g_telemetry_mutex_ready = 0U;
 volatile uint32_t g_telemetry_lock_get_fail = 0U;
 volatile uint32_t g_telemetry_lock_put_fail = 0U;
 volatile uint32_t g_telemetry_alloc_fail = 0U;
-volatile uint32_t g_telemetry_alloc_cross_pool_recoveries = 0U;
+THREADX_ONLY_PROBE uint32_t g_telemetry_alloc_cross_pool_recoveries = 0U;
 volatile uint32_t g_telemetry_panic_count = 0U;
 /* Preserve the first bytes of the Rust panic message for debugger/simulator
  * post-mortems. USB CDC may not be connected when a field failure occurs. */
@@ -52,11 +61,11 @@ volatile uint32_t g_telemetry_alloc_failure_thread = 0U;
 volatile ULONG g_telemetry_pool_available = 0U;
 volatile ULONG g_telemetry_pool_low_water = ~0UL;
 volatile ULONG g_telemetry_pool_fragments = 0U;
-volatile ULONG g_telemetry_small_pool_available = 0U;
+THREADX_ONLY_PROBE ULONG g_telemetry_small_pool_available = 0U;
 volatile ULONG g_telemetry_small_pool_fragments = 0U;
-volatile ULONG g_telemetry_large_pool_available = 0U;
+THREADX_ONLY_PROBE ULONG g_telemetry_large_pool_available = 0U;
 volatile ULONG g_telemetry_large_pool_fragments = 0U;
-volatile ULONG g_telemetry_emergency_pool_available = 0U;
+THREADX_ONLY_PROBE ULONG g_telemetry_emergency_pool_available = 0U;
 volatile size_t g_telemetry_max_alloc_request = 0U;
 volatile uint32_t g_telemetry_alloc_count = 0U;
 volatile uint32_t g_telemetry_free_count = 0U;

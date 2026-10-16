@@ -72,14 +72,43 @@ def require_docker() -> str:
 
 def load_layout_for_build(repo_root: Path, build_subdir: str | None) -> dict:
     layout = json.loads((repo_root / "sim" / "board.json").read_text(encoding="utf-8"))
-    if build_subdir is None:
-        return layout
-    for name, value in layout.get("artifacts", {}).items():
-        parts = Path(value).parts
-        if len(parts) >= 3 and parts[0] == "build":
-            layout["artifacts"][name] = str(
-                Path("build", build_subdir, *parts[2:])
-            )
+    if build_subdir is not None:
+        for name, value in layout.get("artifacts", {}).items():
+            parts = Path(value).parts
+            if len(parts) >= 3 and parts[0] == "build":
+                layout["artifacts"][name] = str(
+                    Path("build", build_subdir, *parts[2:])
+                )
+    # Resolve an explicitly requested legacy hook from the exact ELF. Never
+    # introduce synthetic time into a layout using its real hardware timer.
+    elf_value = layout.get("artifacts", {}).get("elf")
+    nm = shutil.which("arm-none-eabi-nm")
+    if elf_value:
+        elf = repo_root / elf_value
+        cache_path = elf.parent / "CMakeCache.txt"
+        if not nm and cache_path.is_file():
+            for line in cache_path.read_text(encoding="utf-8").splitlines():
+                if line.startswith("CMAKE_NM:FILEPATH="):
+                    candidate = line.split("=", 1)[1]
+                    if Path(candidate).is_file():
+                        nm = candidate
+                    break
+        if elf.is_file():
+            probes = layout.get("execution", {}).get("memory_probes", [])
+            if probes and not nm:
+                raise RuntimeError("arm-none-eabi-nm is required to validate simulator probe symbols")
+            if nm and (probes or "hal_tick_address" in layout.get("execution", {})):
+                output = subprocess.check_output([nm, "-n", str(elf)], text=True)
+                symbols = {fields[-1]: fields[0] for line in output.splitlines()
+                           if len(fields := line.split()) >= 3}
+                missing = [probe["symbol"] for probe in probes if probe["symbol"] not in symbols]
+                if missing:
+                    raise RuntimeError(
+                        f"Simulator probes missing from {elf}: {', '.join(missing)}. "
+                        "Rebuild with SEDS_FIRMWARE_SIM_TEST=ON and retain the configured diagnostics."
+                    )
+                if "hal_tick_address" in layout.get("execution", {}) and "uwTick" in symbols:
+                    layout["execution"]["hal_tick_address"] = int(symbols["uwTick"], 16)
     return layout
 
 
@@ -344,6 +373,26 @@ def network_sample_count(layouts: dict[str, dict], requested: int) -> int:
     return max(requested, warmup + 2)
 
 
+def simulated_pico_uart_baud() -> int:
+    try:
+        baud = int(os.environ.get("SEDS_FIRMWARE_SIM_PICO_BAUD", "1000000"))
+    except ValueError as error:
+        raise RuntimeError("Simulator Pico UART baud must be an integer") from error
+    if not 1200 <= baud <= 1000000:
+        raise RuntimeError("Simulator Pico UART baud must be between 1200 and 1000000")
+    return baud
+
+
+def network_firmware_build_command(root: Path, repository: str, release: bool) -> list[str]:
+    if repository == "FlightComputer26":
+        return [sys.executable, str(root / "build.py"), "release" if release else "debug", "firmware"]
+    command = [sys.executable, str(root / "build.py"), "build", "--release" if release else "--debug", "--image", "firmware"]
+    if repository in {"gateway-board", "gateway-board26"}:
+        # Qualification uses the deployed Pico1M pair, not the RFD radio baud.
+        command += ["--pico-baud", str(simulated_pico_uart_baud())]
+    return command
+
+
 def run_network_simulation(
     ui,
     repo_root: Path,
@@ -398,10 +447,7 @@ def run_network_simulation(
                 root.parent.mkdir(parents=True, exist_ok=True)
                 subprocess.run([git, "clone", "--depth", "1", "--branch", FIRMWARE_BRANCH, remote, str(root)], check=True)
         roots[node] = root
-        if repository == "FlightComputer26":
-            command = [sys.executable, str(root / "build.py"), "release" if release else "debug", "firmware"]
-        else:
-            command = [sys.executable, str(root / "build.py"), "build", "--release" if release else "--debug", "--image", "firmware"]
+        command = network_firmware_build_command(root, repository, release)
         if os.environ.get("SEDS_FIRMWARE_SIM_SKIP_BUILD") != "1":
             ui.say("run", " ".join(command))
             subprocess.run(command, cwd=root, env=simulation_env, check=True)
@@ -456,6 +502,7 @@ def run_network_simulation(
                 "GS_SIM_EXPECT_DISCOVERY_NODES": "RF,FC",
                 "GS_SIM_VALIDATE_FLIGHT_COMMAND": "1",
                 "GS_SIM_VALIDATE_TELEMETRY_RETURN": "1",
+                    "GS_SIM_VALIDATE_VALVE_POWER": "1",
                 "GS_HEARTBEAT_INTERVAL_MS": "1000",
                 "GS_SIM_ROUTER_TIME_DIVISOR": "8",
                 "GS_SIM_COMPACT_INITIAL_DISCOVERY": "1",
@@ -675,7 +722,7 @@ def run_network_simulation(
              "endpoints": [
                  {"node": "rf", "peripheral": "usart1", "tx_probe": "radio_tx_frames", "rx_probe": "radio_rx_frames"},
                  {"node": "groundstation", "peripheral": "av_bay"}]},
-            {"name": "fill_pico", "kind": "pico_fi",
+            {"name": "fill_pico", "kind": "pico_fi", "baud_rate": simulated_pico_uart_baud(),
              "transport_path": ["GroundStation26 host binary", "Pico-Fi pair", "Gateway USART2"],
              "endpoints": [
                  {"node": "groundstation", "peripheral": "fill_box"},
@@ -843,7 +890,16 @@ def run_network_simulation(
              "contains": "full-bay discovery latency within bound"},
             {"name": "Managed variables completed within their latency bound",
              "node": "groundstation",
-             "contains": "full-bay managed-variable latency within bound"},
+             "contains": "full-bay managed-variable latency within bound", "minimum_occurrences": 3},
+            *[
+                {"name": f"No managed-variable delivery failure: {marker}",
+                 "node": "groundstation", "contains": marker, "minimum_occurrences": 0, "maximum_occurrences": 0}
+                for marker in [
+                    "full-bay reliable delivery missed latency deadline",
+                    "full-bay reliable delivery exceeded latency bound",
+                    "full-bay reliable delivery timed out",
+                ]
+            ],
             {"name": "Valve command acknowledgement met its latency bound",
              "node": "groundstation",
              "contains": "full-bay valve ACK latency within bound"},
@@ -867,6 +923,12 @@ def run_network_simulation(
                  if ultra_soak
                  else "full-bay Power telemetry reached GroundStation"
              )},
+            {"name":"Valve battery reports remain fresh", "node":"groundstation",
+             "contains":"full-bay Valve battery 1 Hz stream reached GroundStation"},
+            {"name":"Valve current reports remain fresh", "node":"groundstation",
+             "contains":"full-bay Valve current 1 Hz stream reached GroundStation"},
+            {"name":"No valve power telemetry stale gaps", "node":"groundstation",
+             "contains":"full-bay Valve power telemetry stale", "minimum_occurrences":0, "maximum_occurrences":0},
             *[
                 {"name": f"GroundStation observed {node} fill-system telemetry",
                  "node": "groundstation",

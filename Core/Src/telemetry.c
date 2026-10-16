@@ -90,7 +90,10 @@ static uint32_t telemetry_flight_can_id(const uint8_t *bytes, size_t len, uint8_
 #ifndef RF_SEDSNET_STARTING_ALLOCATION
 #define RF_SEDSNET_STARTING_ALLOCATION 1024U
 #endif
-#define RF_RADIO_MAX_FRAME_BYTES 1024U
+/* At 64 kbit/s with a 40% airtime share, a 1 KiB frame blocks the
+ * non-preemptible modem path for about 327 ms. Short schema chunks bound
+ * that interval to about 87 ms while leaving ordinary telemetry intact. */
+#define RF_RADIO_MAX_FRAME_BYTES 256U
 #define RF_CAN_MAX_FRAME_BYTES 128U
 /* These are side-wide receive dictionaries. Four entries cannot retain
  * the GroundStation control flows or the combined FC/PowerBoard CAN flows.
@@ -621,6 +624,15 @@ SedsResult telemetry_poll_discovery(void) {
 #endif
 }
 
+#ifdef TELEMETRY_USE_TLSF
+static bool radio_admission_probe(size_t additional, size_t largest, uint32_t work)
+{
+  if (work == SEDS_MEMORY_WORK_SMALL_PROTECTED)
+    return telemetry_tlsf_admit_small_protected(additional, largest);
+  return telemetry_tlsf_admit(additional, largest);
+}
+#endif
+
 SedsResult init_telemetry_router(void) {
 #ifndef TELEMETRY_ENABLED
   return SEDS_OK;
@@ -668,7 +680,7 @@ SedsResult init_telemetry_router(void) {
       .queue_grow_step = 1.0,
   };
 #ifdef TELEMETRY_USE_TLSF
-  seds_set_memory_admission_probe(telemetry_tlsf_admit);
+  seds_set_memory_admission_probe_v2(radio_admission_probe);
 #endif
   result = board_packet_store_init();
   if (result != SEDS_OK) return result;

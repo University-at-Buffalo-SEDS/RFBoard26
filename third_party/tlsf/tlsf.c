@@ -347,6 +347,9 @@ typedef struct control_t
 	/* Empty lists point at this block to indicate they are free. */
 	block_header_t block_null;
 
+	/* Sum of allocatable free payload bytes; updated with the free lists. */
+	size_t free_bytes;
+
 	/* Bitmaps for free lists. */
 	unsigned int fl_bitmap;
 	unsigned int sl_bitmap[FL_INDEX_COUNT];
@@ -575,6 +578,8 @@ static block_header_t* search_suitable_block(control_t* control, int* fli, int* 
 /* Remove a free block from the free list.*/
 static void remove_free_block(control_t* control, block_header_t* block, int fl, int sl)
 {
+	tlsf_assert(control->free_bytes >= block_size(block));
+	control->free_bytes -= block_size(block);
 	block_header_t* prev = block->prev_free;
 	block_header_t* next = block->next_free;
 	tlsf_assert(prev && "prev_free field can not be null");
@@ -604,6 +609,7 @@ static void remove_free_block(control_t* control, block_header_t* block, int fl,
 /* Insert a free block into the free block list. */
 static void insert_free_block(control_t* control, block_header_t* block, int fl, int sl)
 {
+	control->free_bytes += block_size(block);
 	block_header_t* current = control->blocks[fl][sl];
 	tlsf_assert(current && "free list cannot have a null entry");
 	tlsf_assert(block && "cannot insert a null entry into the free list");
@@ -801,6 +807,7 @@ static void control_construct(control_t* control)
 	control->block_null.next_free = &control->block_null;
 	control->block_null.prev_free = &control->block_null;
 
+	control->free_bytes = 0;
 	control->fl_bitmap = 0;
 	for (i = 0; i < FL_INDEX_COUNT; ++i)
 	{
@@ -916,6 +923,12 @@ void tlsf_walk_pool(pool_t pool, tlsf_walker walker, void* user)
 			user);
 		block = block_next(block);
 	}
+}
+
+/* Caller provides the same synchronization required by allocation/free. */
+size_t tlsf_free_size(tlsf_t tlsf)
+{
+	return tlsf ? tlsf_cast(control_t*, tlsf)->free_bytes : 0;
 }
 
 size_t tlsf_block_size(void* ptr)

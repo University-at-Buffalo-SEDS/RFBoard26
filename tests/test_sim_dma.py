@@ -24,6 +24,7 @@ typedef int HAL_StatusTypeDef;
 typedef struct {void *hdmarx;} UART_HandleTypeDef;
 static UART_HandleTypeDef *g_huart;
 static uint8_t g_rx_buf[512];
+static uint16_t g_rx_dma_position;
 static unsigned calls,disabled;
 static int result;
 static int HAL_UARTEx_ReceiveToIdle_DMA(UART_HandleTypeDef *u,uint8_t *p,unsigned n){assert(u==g_huart && p==g_rx_buf && n==512);calls++;return result;}
@@ -31,9 +32,9 @@ static int HAL_UARTEx_ReceiveToIdle_DMA(UART_HandleTypeDef *u,uint8_t *p,unsigne
 int main(void){
  assert(radio_uart_start_rx()==HAL_ERROR && calls==0);
  UART_HandleTypeDef u={(void*)1};g_huart=&u;
- assert(radio_uart_start_rx()==HAL_OK && calls==1 && disabled==1);
- result=HAL_BUSY;assert(radio_uart_start_rx()==HAL_BUSY && calls==2 && disabled==1);
- result=HAL_ERROR;assert(radio_uart_start_rx()==HAL_ERROR && calls==3 && disabled==1);
+ assert(radio_uart_start_rx()==HAL_OK && calls==1 && disabled==0);
+ result=HAL_BUSY;assert(radio_uart_start_rx()==HAL_BUSY && calls==2 && disabled==0);
+ result=HAL_ERROR;assert(radio_uart_start_rx()==HAL_ERROR && calls==3 && disabled==0);
 }
 '''
         with tempfile.TemporaryDirectory() as tmp:

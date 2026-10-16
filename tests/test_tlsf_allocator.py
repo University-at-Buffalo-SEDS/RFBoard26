@@ -66,6 +66,27 @@ int main(int argc,char**argv){
  if(argc>1 && strcmp(argv[1],"init-failure")==0){fail_init=1;assert(!telemetry_tlsf_malloc(32));assert(g_telemetry_tlsf_init_failed);assert(!g_telemetry_tlsf_active);assert(mock_irq==0);return 0;}
  void *first=telemetry_tlsf_malloc(0);assert(first&&g_telemetry_tlsf_active);telemetry_tlsf_free(first);
  assert(!telemetry_tlsf_malloc(SIZE_MAX));
+ if(argc>1 && strcmp(argv[1],"protected-control")==0){
+  void *held[512];unsigned count=0;
+  while(telemetry_tlsf_admit(2201,83)){
+   assert(count<512);held[count]=telemetry_tlsf_malloc(256);assert(held[count]);count++;
+  }
+  // The captured 51-byte fixed control retains its full 2201-byte estimate,
+  // but can use control headroom after general work is refused.
+  assert(count>0 && telemetry_tlsf_admit_small_protected(2201,83));
+  void *decode=telemetry_tlsf_malloc(1024),*owned=telemetry_tlsf_malloc(1024);
+  void *wire=telemetry_tlsf_malloc(153);assert(decode&&owned&&wire);
+  memset(decode,0x4d,1024);memset(owned,0x6e,1024);memset(wire,0x7f,153);
+  assert(tlsf_free_size(allocator)+RESERVE_BLOCK_COUNT*RESERVE_BLOCK_BYTES-reserve_live_bytes>=512);
+  telemetry_tlsf_free(decode);telemetry_tlsf_free(owned);telemetry_tlsf_free(wire);
+  while(telemetry_tlsf_admit_small_protected(2201,83)){
+   assert(count<512);held[count]=telemetry_tlsf_malloc(256);assert(held[count]);count++;
+  }
+  assert(!telemetry_tlsf_admit_small_protected(2201,83));
+  assert(!telemetry_tlsf_admit_small_protected(2201,161));
+  for(unsigned i=0;i<count;i++)telemetry_tlsf_free(held[i]);
+  assert(g_telemetry_tlsf_live_bytes==0);return 0;
+ }
  if(argc>1 && strcmp(argv[1],"fragmentation")==0){
   // Reproduce plentiful free bytes with no decode-sized contiguous TLSF block.
   void *keepers[256]={0},*temporary[256]={0};unsigned count=0;
@@ -97,7 +118,15 @@ int main(int argc,char**argv){
   // A tiny frame estimate must not admit work whose owned object needs 676 B.
   assert(!telemetry_tlsf_admit(384,160));
   telemetry_tlsf_free(guard_block);telemetry_tlsf_free(medium);
-  telemetry_tlsf_free(decode);assert(!telemetry_tlsf_admit(8192,2048));
+  telemetry_tlsf_free(decode);
+  // Exact accounting and a private fallback trial can now admit this work.
+  // Materialize its full budget and prove the 4 KiB safety headroom remains.
+  assert(telemetry_tlsf_admit(8192,2048));
+  void *scratch=telemetry_tlsf_malloc(2048),*pieces[48];assert(scratch);
+  for(unsigned i=0;i<48;i++){pieces[i]=telemetry_tlsf_malloc(128);assert(pieces[i]);}
+  assert(tlsf_free_size(allocator)+RESERVE_BLOCK_COUNT*RESERVE_BLOCK_BYTES-reserve_live_bytes>=4096);
+  for(unsigned i=0;i<48;i++)telemetry_tlsf_free(pieces[i]);
+  telemetry_tlsf_free(scratch);
   decode=telemetry_tlsf_malloc(2048);assert(decode);
   for(unsigned j=0;j<4096;j++)assert(((unsigned char*)nested)[j]==0x7c);
   telemetry_tlsf_free(decode);telemetry_tlsf_free(nested);
@@ -163,3 +192,4 @@ int main(int argc,char**argv){
             subprocess.run([exe],check=True)
             subprocess.run([exe,'init-failure'],check=True)
             subprocess.run([exe,'fragmentation'],check=True)
+            subprocess.run([exe,'protected-control'],check=True)

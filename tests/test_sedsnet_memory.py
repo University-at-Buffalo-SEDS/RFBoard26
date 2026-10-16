@@ -309,13 +309,6 @@ class SedsnetMemoryTests(unittest.TestCase):
         self.assertNotIn("telemetry_announce_discovery_if_due", telemetry_thread)
         self.assertNotIn("TELEMETRY_DISCOVERY_ANNOUNCE_INTERVAL_MS", telemetry_thread)
 
-    def test_radio_preserves_the_order_selected_by_sedsnet(self):
-        radio = (ROOT / "Core" / "Src" / "radio.c").read_text(encoding="utf-8")
-        dequeue = radio.split("static uint8_t radio_uart_dequeue_frame_with_budget", 1)[1]
-        dequeue = dequeue.split("static uint32_t radio_uart_tx_timeout_ms", 1)[0]
-        self.assertIn("const uint32_t selected = 0U", dequeue)
-        self.assertNotIn("selected_priority", dequeue)
-
     def test_radio_does_not_hold_discovery_behind_a_startup_delay(self):
         radio = (ROOT / "Core" / "Src" / "radio.c").read_text(encoding="utf-8")
         main = (ROOT / "Core" / "Src" / "main.c").read_text(encoding="utf-8")

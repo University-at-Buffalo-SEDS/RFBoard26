@@ -10,4 +10,5 @@ void *telemetry_tlsf_malloc(size_t size);
 void telemetry_tlsf_free(void *ptr);
 void telemetry_tlsf_sample(void);
 bool telemetry_tlsf_admit(size_t additional, size_t largest);
+bool telemetry_tlsf_admit_small_protected(size_t additional, size_t largest);
 #endif

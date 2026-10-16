@@ -99,33 +99,40 @@
       {"name": "fdcan_irqs", "symbol": "g_fdcan_irq_count"},
       {"name": "fdcan_rx", "symbol": "g_fdcan_rx_count"},
       {"name": "fdcan_tx_ok", "symbol": "g_fdcan_tx_ok_count"},
-      {"name": "fdcan_tx_fail", "symbol": "g_fdcan_tx_fail_count"}
-      ,{"name": "radio_rx_frames", "symbol": "g_radio_rx_frames_ok"}
-      ,{"name": "radio_tx_frames", "symbol": "g_radio_tx_ok"}
-      ,{"name": "radio_tx_drops", "symbol": "g_tx_drops"}
-      ,{"name": "radio_rx_service_passes", "symbol": "g_radio_rx_service_passes", "minimum": 1}
-      ,{"name": "radio_rx_service_budget_hits", "symbol": "g_radio_rx_service_budget_hits"}
-      ,{"name": "telemetry_loop_completions", "symbol": "g_telemetry_loop_completions", "minimum": 1, "minimum_interval_gain": 1}
-      ,{"name": "hardfault_mmfar", "symbol": "g_hardfault_mmfar"}
-      ,{"name": "hardfault_bfar", "symbol": "g_hardfault_bfar"}
-      ,{"name": "hardfault_stacked_lr", "symbol": "g_hardfault_stacked_lr"}
-      ,{"name": "hardfault_stacked_pc", "symbol": "g_hardfault_stacked_pc"}
-      ,{"name": "hardfault_stacked_xpsr", "symbol": "g_hardfault_stacked_xpsr"}
-      ,{"name": "hardfault_psp", "symbol": "g_hardfault_psp"}
-      ,{"name": "hardfault_msp", "symbol": "g_hardfault_msp"}
-      ,{"name": "hardfault_fault_stack", "symbol": "g_hardfault_fault_stack"}
-      ,{"name": "hardfault_core_frame", "symbol": "g_hardfault_core_frame"}
-      ,{"name": "hardfault_exc_return", "symbol": "g_hardfault_exc_return"}
-      ,{"name": "telemetry_stack_start_at_fault", "symbol": "g_telemetry_stack_start"}
-      ,{"name": "telemetry_stack_end_at_fault", "symbol": "g_telemetry_stack_end"}
-      ,{"name": "flight_state_cache", "symbol": "g_flight_state_cache_value", "maximum": 15}
-      ,{"name": "flight_state_restores", "symbol": "g_flight_state_cache_restores"}
-      ,{"name": "flight_state_writes", "symbol": "g_flight_state_cache_writes"}
-      ,{"name": "flight_state_updates", "symbol": "g_flight_state_cache_updates"}
-      ,{"name": "flight_state_errors", "symbol": "g_flight_state_cache_errors", "maximum": 0}
-      ,{"name": "hardfault_count", "symbol": "g_hardfault_count", "maximum": 0}
-      ,{"name": "hardfault_cfsr", "symbol": "g_hardfault_cfsr", "maximum": 0}
-      ,{"name": "hardfault_hfsr", "symbol": "g_hardfault_hfsr", "maximum": 0}
+      {"name": "fdcan_tx_fail", "symbol": "g_fdcan_tx_fail_count"},
+      {"name": "radio_rx_frames", "symbol": "g_radio_rx_frames_ok"},
+      {"name": "radio_tx_frames", "symbol": "g_radio_tx_ok"},
+      {"name": "radio_tx_drops", "symbol": "g_tx_drops"},
+      {"name": "radio_rx_service_passes", "symbol": "g_radio_rx_service_passes", "minimum": 1},
+      {"name": "radio_rx_service_budget_hits", "symbol": "g_radio_rx_service_budget_hits"},
+      {"name": "telemetry_loop_completions", "symbol": "g_telemetry_loop_completions", "minimum": 1, "minimum_interval_gain": 1},
+      {"name": "hardfault_mmfar", "symbol": "g_hardfault_mmfar"},
+      {"name": "hardfault_bfar", "symbol": "g_hardfault_bfar"},
+      {"name": "hardfault_stacked_lr", "symbol": "g_hardfault_stacked_lr"},
+      {"name": "hardfault_stacked_pc", "symbol": "g_hardfault_stacked_pc"},
+      {"name": "hardfault_stacked_xpsr", "symbol": "g_hardfault_stacked_xpsr"},
+      {"name": "hardfault_psp", "symbol": "g_hardfault_psp"},
+      {"name": "hardfault_msp", "symbol": "g_hardfault_msp"},
+      {"name": "hardfault_fault_stack", "symbol": "g_hardfault_fault_stack"},
+      {"name": "hardfault_core_frame", "symbol": "g_hardfault_core_frame"},
+      {"name": "hardfault_exc_return", "symbol": "g_hardfault_exc_return"},
+      {"name": "telemetry_stack_start_at_fault", "symbol": "g_telemetry_stack_start"},
+      {"name": "telemetry_stack_end_at_fault", "symbol": "g_telemetry_stack_end"},
+      {"name": "flight_state_cache", "symbol": "g_flight_state_cache_value", "maximum": 15},
+      {"name": "flight_state_restores", "symbol": "g_flight_state_cache_restores"},
+      {"name": "flight_state_writes", "symbol": "g_flight_state_cache_writes"},
+      {"name": "flight_state_updates", "symbol": "g_flight_state_cache_updates"},
+      {"name": "flight_state_errors", "symbol": "g_flight_state_cache_errors", "maximum": 0},
+      {"name": "hardfault_count", "symbol": "g_hardfault_count", "maximum": 0},
+      {"name": "hardfault_cfsr", "symbol": "g_hardfault_cfsr", "maximum": 0},
+      {"name": "hardfault_hfsr", "symbol": "g_hardfault_hfsr", "maximum": 0},
+      {"name": "rf_memory_admission_drops", "symbol": "g_rf_memory_admission_drops"},
+      {"name": "rf_admission_last_additional", "symbol": "g_rf_admission_last_additional"},
+      {"name": "rf_admission_last_largest", "symbol": "g_rf_admission_last_largest"},
+      {"name": "radio_rx_isr_drops", "symbol": "g_rx_isr_drops", "maximum": 0},
+      {"name": "radio_rx_errors", "symbol": "g_rx_errors", "maximum": 0},
+      {"name": "radio_rx_sync_loss", "symbol": "g_rx_sync_loss"},
+      {"name": "radio_rx_restart_errors", "symbol": "g_rx_restart_errors", "maximum": 0}
     ]
   },
   "traffic": {

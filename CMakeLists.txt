@@ -51,6 +51,15 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
 option(SEDS_FIRMWARE_SIM_TEST
     "Seed deterministic external time for linked firmware qualification" OFF)
 if(SEDS_FIRMWARE_SIM_TEST)
+    # Inactive allocator probes are read-only zeroes in TLSF builds; LTO
+    # still needs explicit roots so the debugger can resolve their symbols.
+    target_link_options(RFBoard26 PRIVATE
+        -Wl,--undefined=g_telemetry_alloc_cross_pool_recoveries
+        -Wl,--undefined=g_telemetry_small_pool_available
+        -Wl,--undefined=g_telemetry_large_pool_available
+        -Wl,--undefined=g_telemetry_emergency_pool_available
+    )
+
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
         SEDS_FIRMWARE_SIM_TEST=1)
     # These probes are read directly from the ELF by the simulator. Keep the
