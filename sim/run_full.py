@@ -128,6 +128,18 @@ def load_layout_for_build(repo_root: Path, build_subdir: str | None) -> dict:
                 output = subprocess.check_output([nm, "-n", str(elf)], text=True)
                 symbols = {fields[-1]: fields[0] for line in output.splitlines()
                            if len(fields := line.split()) >= 3}
+                # GCC LTO can privatize a file-local volatile counter while
+                # retaining it at the same real guest address. Resolve only a
+                # unique exact compiler suffix; ambiguous probes fail closed.
+                for probe in probes:
+                    symbol = probe["symbol"]
+                    if symbol in symbols:
+                        continue
+                    prefix = symbol + ".lto_priv."
+                    aliases = [candidate for candidate in symbols
+                               if candidate.startswith(prefix) and candidate[len(prefix):].isdigit()]
+                    if len(aliases) == 1:
+                        probe["symbol"] = aliases[0]
                 missing = [probe["symbol"] for probe in probes if probe["symbol"] not in symbols]
                 if missing:
                     raise RuntimeError(

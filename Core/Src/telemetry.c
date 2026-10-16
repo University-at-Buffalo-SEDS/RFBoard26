@@ -685,6 +685,17 @@ SedsResult init_telemetry_router(void) {
   result = board_packet_store_init();
   if (result != SEDS_OK) return result;
 
+  /* Match GroundStation's short-frame radio retry cadence. A 500 ms replay
+   * gate cannot recover a lost downstream receipt inside a 500 ms target.
+   * Keep the same 4.5-second total retry window and all queue/memory limits. */
+  SedsRuntimeTuningConfig tuning;
+  result = seds_get_runtime_tuning_config(&tuning);
+  if (result != SEDS_OK) return result;
+  tuning.reliable_retransmit_ms = 250U;
+  tuning.reliable_max_retries = 17U;
+  result = seds_set_runtime_tuning_config(&tuning);
+  if (result != SEDS_OK) return result;
+
   r = seds_router_new_with_memory(node_now_since_ms, NULL, NULL, 0U,
                                   SEDS_ROUTER_E2E_DISABLED, 0U, &memory);
   if (!r) {
