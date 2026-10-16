@@ -22,28 +22,35 @@ SIMULATOR_DOCKER_PLATFORM = os.environ.get(
 
 def simulated_fill_link() -> dict[str, str]:
     """Select the actual bounded Pico transport for linked qualification."""
-    mode = os.environ.get("SEDS_FIRMWARE_SIM_FILL_TRANSPORT", "tcp").strip().lower()
-    if mode not in {"i2c", "tcp"}:
-        raise RuntimeError("SEDS_FIRMWARE_SIM_FILL_TRANSPORT must be i2c or tcp")
-    return {
-        "link": "fill_pico",
-        "env": "GS_FILL_PICO_TCP_ADDRESS" if mode == "tcp" else "GS_SIMULATED_I2C_SOCKET",
-        "transport": "pico_fi_tcp_to_uart" if mode == "tcp" else "pico_fi_i2c_to_uart",
+    mode = os.environ.get("SEDS_FIRMWARE_SIM_FILL_TRANSPORT", "discovery").strip().lower()
+    modes = {
+        "discovery": ("GS_FILL_PICO_DISCOVERY_PORT", "pico_fi_discovery_to_uart"),
+        "tcp": ("GS_FILL_PICO_TCP_ADDRESS", "pico_fi_tcp_to_uart"),
+        "i2c": ("GS_SIMULATED_I2C_SOCKET", "pico_fi_i2c_to_uart"),
     }
+    if mode not in modes:
+        raise RuntimeError("SEDS_FIRMWARE_SIM_FILL_TRANSPORT must be discovery, tcp or i2c")
+    env, transport = modes[mode]
+    return {"link": "fill_pico", "env": env, "transport": transport}
 
 
 def write_network_comms_config(root: Path) -> None:
-    # Keep qualification independent of the user's live transport settings.
-    # The TCP peer override is supplied by firmware-sim when selected above.
+    # A private fixture: never modify the user's live transport settings.
+    transport = simulated_fill_link()["transport"]
+    if transport == "pico_fi_discovery_to_uart":
+        fill = {"interface": "pico_fi_tcp", "mode": "server",
+                "address": "0.0.0.0:0", "discovery": True}
+    elif transport == "pico_fi_tcp_to_uart":
+        fill = {"interface": "pico_fi_tcp", "mode": "client",
+                "address": "127.0.0.1:9000", "discovery": False}
+    else:
+        fill = {"interface": "i2c", "bus": 1, "addr": 85,
+                "chunk_delay_ms": 0, "initial_wait_ms": 0, "protocol_version": 2}
     config = {
         "version": 1,
         "av_bay": {"interface": "serial", "port": "/dev/ttyAMA0",
                    "baud_rate": 115200, "protocol": "raw_uart"},
-        "fill_box": ({"interface": "pico_fi_tcp", "mode": "client",
-                      "address": "127.0.0.1:9000"}
-                     if simulated_fill_link()["transport"] == "pico_fi_tcp_to_uart" else
-                     {"interface": "i2c", "bus": 1, "addr": 85,
-                      "chunk_delay_ms": 0, "initial_wait_ms": 0, "protocol_version": 2}),
+        "fill_box": fill,
     }
     path = root / "comms-v2.json"
     path.write_text(json.dumps(config, indent=2), encoding="utf-8")
