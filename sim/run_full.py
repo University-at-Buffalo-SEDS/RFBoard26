@@ -12,12 +12,39 @@ import time
 SIMULATOR_REPOSITORY = (
     "https://github.com/University-at-Buffalo-SEDS/FirmwareSimulator.git"
 )
-SIMULATOR_INTERFACE_VERSION = "0.4.12"
+SIMULATOR_INTERFACE_VERSION = "0.4.13"
 FIRMWARE_BRANCH = "migration/sedlaunch-sedsnet-mainline"
 FIRMWARE_ORGANIZATION = "University-at-Buffalo-SEDS"
 SIMULATOR_DOCKER_PLATFORM = os.environ.get(
     "SEDS_FIRMWARE_SIM_PLATFORM", "linux/amd64"
 )
+
+
+def simulated_fill_link() -> dict[str, str]:
+    """Select the actual bounded Pico transport for linked qualification."""
+    mode = os.environ.get("SEDS_FIRMWARE_SIM_FILL_TRANSPORT", "i2c").strip().lower()
+    if mode not in {"i2c", "tcp"}:
+        raise RuntimeError("SEDS_FIRMWARE_SIM_FILL_TRANSPORT must be i2c or tcp")
+    return {
+        "link": "fill_pico",
+        "env": "GS_FILL_PICO_TCP_ADDRESS" if mode == "tcp" else "GS_SIMULATED_I2C_SOCKET",
+        "transport": "pico_fi_tcp_to_uart" if mode == "tcp" else "pico_fi_i2c_to_uart",
+    }
+
+
+def write_network_comms_config(root: Path) -> None:
+    # Keep qualification independent of the user's live transport settings.
+    # The TCP peer override is supplied by firmware-sim when selected above.
+    config = {
+        "version": 1,
+        "av_bay": {"interface": "serial", "port": "/dev/ttyAMA0",
+                   "baud_rate": 115200, "protocol": "raw_uart"},
+        "fill_box": {"interface": "i2c", "bus": 1, "addr": 85,
+                     "chunk_delay_ms": 0, "initial_wait_ms": 0, "protocol_version": 2},
+    }
+    path = root / "comms-v2.json"
+    path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+    path.chmod(0o644)
 
 
 def docker_run_prefix(docker: str) -> list[str]:
@@ -135,7 +162,7 @@ def _build_simulator_image(ui, docker: str, source: Path, image: str) -> None:
 def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str) -> str:
     requested = os.environ.get(
         "SEDS_FIRMWARE_SIM_IMAGE",
-        "ghcr.io/university-at-buffalo-seds/firmwaresimulator:v0.4.12",
+        "ghcr.io/university-at-buffalo-seds/firmwaresimulator:v0.4.13",
     )
     local = f"seds-firmware-simulator:local-v{SIMULATOR_INTERFACE_VERSION}"
     configured_source = os.environ.get("SEDS_FIRMWARE_SIM_SOURCE")
@@ -182,7 +209,7 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str
         try:
             subprocess.run(
                 [
-                    git, "clone", "--depth", "1", "--branch", "v0.4.12",
+                    git, "clone", "--depth", "1", "--branch", "v0.4.13",
                     SIMULATOR_REPOSITORY, str(source),
                 ],
                 check=True,
@@ -498,6 +525,8 @@ def run_network_simulation(
                 "GS_DEBUG_PRINTS": "0",
                 "RUST_LOG": "info",
                 "GS_SIMULATED_SERIAL_PTY": "1",
+                    "GS_BIND_ADDRESS": "127.0.0.1:0",
+                    "GS_COMMS_LINK_CONFIG": "/simulation/comms-v2.json",
                 "GS_LAYOUT_PATH": "/opt/groundstation/backend/layout/layout_hitl.json",
                 "GS_SIM_EXPECT_DISCOVERY_NODES": "RF,FC",
                 "GS_SIM_VALIDATE_FLIGHT_COMMAND": "1",
@@ -668,6 +697,8 @@ def run_network_simulation(
                     "GS_RADIO_DIAGNOSTICS": "1",
                     "RUST_LOG": "info",
                     "GS_SIMULATED_SERIAL_PTY": "1",
+                    "GS_BIND_ADDRESS": "127.0.0.1:0",
+                    "GS_COMMS_LINK_CONFIG": "/simulation/comms-v2.json",
                     "GS_LAYOUT_PATH": "/opt/groundstation/backend/layout/layout_hitl.json",
                     "GS_AV_BAY_UNDERGLOW_DEFAULT": "1",
                     "GS_FLIGHT_STATE_DEFAULT": "1",
@@ -700,17 +731,13 @@ def run_network_simulation(
                     # Bounds are measured using GroundStation's simulator-
                     # normalized router clock, not slow host wall time.
                     "GS_SIM_DISCOVERY_MAX_LATENCY_MS": "10000",
-                    "GS_SIM_MANAGED_VARIABLE_MAX_LATENCY_MS": "2500",
+                    "GS_SIM_MANAGED_VARIABLE_MAX_LATENCY_MS": "500",
                     "GS_SIM_VALVE_ACK_MAX_LATENCY_MS": "2500",
                     "GS_SIM_FLIGHT_STATE_SEQUENCE": "1,0,1"
                 },
                 "serial_links": [
                     {"link": "rocket_radio", "env": "GS_AV_BAY_SERIAL_PORT"},
-                    {
-                        "link": "fill_pico",
-                        "env": "GS_SIMULATED_I2C_SOCKET",
-                        "transport": "pico_fi_i2c_to_uart"
-                    }
+                    simulated_fill_link()
                 ]
             }
         ],
@@ -954,6 +981,7 @@ def run_network_simulation(
     with tempfile.TemporaryDirectory(prefix="seds-firmware-network-") as directory:
         root = Path(directory)
         root.chmod(0o755)
+        write_network_comms_config(root)
         for node, layout in layouts.items():
             path = root / f"{node}.json"
             path.write_text(json.dumps(layout, indent=2), encoding="utf-8")
