@@ -11,6 +11,7 @@ class BoardWatchdogTests(unittest.TestCase):
         src='\n'.join(line for line in src.splitlines() if not line.startswith('#include'))
         stub=r'''
 #include <stdint.h>
+#include "board_uptime.h"
 #include <assert.h>
 typedef uint32_t ULONG;
 #define BOARD_WATCHDOG_ENABLE 1
@@ -64,7 +65,7 @@ int main(void){
 '''
         with tempfile.TemporaryDirectory() as d:
             exe=str(Path(d)/'watchdog')
-            subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-x','c','-','-o',exe],input=stub+src+main,text=True,check=True)
+            subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-I',str(ROOT/'Core/Inc'),'-fsanitize=address,undefined','-x','c','-','-o',exe],input=stub+src+main,text=True,check=True)
             subprocess.run([exe],check=True,timeout=5)
 
     def test_bootloader_feeds_already_running_watchdog(self):

@@ -1,3 +1,5 @@
+#include "can_tx_queue.h"
+#include "board_health.h"
 #ifdef TELEMETRY_USE_TLSF
 #include "telemetry_tlsf.h"
 #endif
@@ -7,6 +9,7 @@
 #include "av_bay_underglow.h"
 #include "flight_state_cache.h"
 #include "sim_network_probe.h"
+#include "board_can_priority.h"
 #include "ota_stream.h"
 
 #include "app_threadx.h"
@@ -69,13 +72,10 @@ static void print_data_no_telem(void *data, size_t len) {
 #define TELEMETRY_FLIGHT_HEARTBEAT_CAN_ID 0x001U
 
 static uint32_t telemetry_flight_can_id(const uint8_t *bytes, size_t len, uint8_t priority) {
-  return (priority >= 200U ||
-          sim_probe_packed_data_type(bytes, len) == (uint32_t)SEDS_DT_HEARTBEAT)
-             ? TELEMETRY_FLIGHT_HEARTBEAT_CAN_ID
-             : TELEMETRY_FLIGHT_CAN_ID;
+  return board_can_arbitration_id(bytes, len, priority,
+      sim_probe_packed_data_type(bytes, len), (uint32_t)SEDS_DT_HEARTBEAT,
+      TELEMETRY_FLIGHT_HEARTBEAT_CAN_ID);
 }
-#define TELEMETRY_PENDING_CAN_DEPTH 3U
-#define TELEMETRY_PENDING_CAN_MAX_LEN 128U
 #define TELEMETRY_ROUTER_RETRY_MS 5000ULL
 
 #ifndef RF_SEDSNET_MEMORY_POOL_SIZE
@@ -92,9 +92,9 @@ static uint32_t telemetry_flight_can_id(const uint8_t *bytes, size_t len, uint8_
 #endif
 /* At 64 kbit/s with a 40% airtime share, a 1 KiB frame blocks the
  * non-preemptible modem path for about 327 ms. Short schema chunks bound
- * that interval to about 87 ms while leaving ordinary telemetry intact. */
-#define RF_RADIO_MAX_FRAME_BYTES 256U
-#define RF_CAN_MAX_FRAME_BYTES 128U
+ * that interval to about 67 ms while leaving ordinary telemetry intact. */
+#define RF_RADIO_MAX_FRAME_BYTES 192U
+#define RF_CAN_MAX_FRAME_BYTES CAN_TX_ALIGNED_FRAME_BYTES
 /* These are side-wide receive dictionaries. Four entries cannot retain
  * the GroundStation control flows or the combined FC/PowerBoard CAN flows.
  * Keep them bounded; allocator admission still protects packet/schema work. */
@@ -112,32 +112,24 @@ static int32_t g_can_side_id = -1;
 static int32_t g_radio_side_id = -1;
 static uint8_t g_local_unix_valid = 0U;
 static uint64_t g_local_unix_ms = 0ULL;
-static uint64_t g_router_retry_after_ms = 0ULL;
+static uint32_t g_router_retry_after_ms = 0U;
 static uint8_t g_radio_link_seen = 0U;
 
 extern void telemetry_memory_profile_mark(uint32_t stage);
 
-typedef struct {
-  size_t len;
-  uint32_t can_id;
-  uint8_t data[TELEMETRY_PENDING_CAN_MAX_LEN];
-} TelemetryPendingCanCommand;
-
-static TelemetryPendingCanCommand g_pending_can[TELEMETRY_PENDING_CAN_DEPTH];
-static uint8_t g_pending_can_head = 0U;
-static uint8_t g_pending_can_tail = 0U;
-static uint8_t g_pending_can_count = 0U;
-static uint32_t g_pending_can_drops = 0U;
-
 static uint8_t g_discovery_schema_announced = 0U;
 static uint8_t g_discovery_schema_requested = 0U;
-static uint64_t g_discovery_schema_retry_ms = 0ULL;
+static uint32_t g_discovery_schema_retry_ms = 0U;
 
 RouterState g_router = {.r = NULL, .created = 0U, .start_time = 0ULL};
 
 /* Exported simulator/HIL health signals. A linked-bay test requires both a
  * remote discovery topology change and a valid SEDSNet network clock. */
 #define RF_HEALTH_PROBE __attribute__((used, externally_visible))
+#if SEDS_FIRMWARE_SIM_TEST
+volatile uint32_t g_rf_memory_counters[16] RF_HEALTH_PROBE;
+volatile uint32_t g_rf_memory_snapshot_tick RF_HEALTH_PROBE;
+#endif
 volatile uint32_t g_telemetry_discovery_seen RF_HEALTH_PROBE = 0U;
 volatile uint32_t g_telemetry_timesync_valid RF_HEALTH_PROBE = 0U;
 volatile uint32_t g_telemetry_network_ready RF_HEALTH_PROBE = 0U;
@@ -153,7 +145,7 @@ volatile uint32_t g_sim_gps_publish_ok RF_HEALTH_PROBE = 0U;
 volatile uint32_t g_sim_avionics_telemetry_ingress RF_HEALTH_PROBE = 0U;
 volatile uint32_t g_sim_avionics_telemetry_radio_egress RF_HEALTH_PROBE = 0U;
 
-static SedsResult telemetry_send_or_queue_can_packet(const uint8_t *bytes, size_t len, uint8_t priority);
+static SedsResult telemetry_send_can_packet(const uint8_t *bytes, size_t len, uint8_t priority);
 
 static uint64_t tx_raw_now_ms_locked(void) {
   const uint32_t ticks32 = (uint32_t)tx_time_get();
@@ -178,52 +170,9 @@ static uint32_t telemetry_timesync_role(void) {
                                         : TELEMETRY_TIMESYNC_ROLE_CONSUMER;
 }
 
-static bool telemetry_enqueue_pending_can_command(const uint8_t *bytes, size_t len, uint32_t can_id) {
-  if (!bytes || len == 0U || len > TELEMETRY_PENDING_CAN_MAX_LEN) {
-    return false;
-  }
-
-  if (g_pending_can_count >= TELEMETRY_PENDING_CAN_DEPTH) {
-    /* Never evict a packet after reporting successful ownership transfer. */
-    g_pending_can_drops++; /* Refused new admissions, not accepted-packet loss. */
-    return false;
-  }
-
-  g_pending_can[g_pending_can_tail].len = len;
-  g_pending_can[g_pending_can_tail].can_id = can_id;
-  memcpy(g_pending_can[g_pending_can_tail].data, bytes, len);
-  g_pending_can_tail = (uint8_t)((g_pending_can_tail + 1U) % TELEMETRY_PENDING_CAN_DEPTH);
-  g_pending_can_count++;
-  return true;
-}
-
-static SedsResult telemetry_send_or_queue_can_packet(const uint8_t *bytes, size_t len, uint8_t priority) {
-  /* New traffic must not overtake previously accepted fragments. */
-  if (g_pending_can_count != 0U) {
-    return telemetry_enqueue_pending_can_command(bytes, len, telemetry_flight_can_id(bytes, len, priority)) ? SEDS_OK : SEDS_IO;
-  }
-  const HAL_StatusTypeDef status =
-      can_bus_send_large(bytes, len, telemetry_flight_can_id(bytes, len, priority));
-  if (status == HAL_OK) {
-    return SEDS_OK;
-  }
-
-  return telemetry_enqueue_pending_can_command(bytes, len, telemetry_flight_can_id(bytes, len, priority)) ? SEDS_OK : SEDS_IO;
-}
-
-void telemetry_retry_pending_can_commands(void) {
-  while (g_pending_can_count > 0U) {
-    TelemetryPendingCanCommand *cmd = &g_pending_can[g_pending_can_head];
-    const HAL_StatusTypeDef status =
-        can_bus_send_large(cmd->data, cmd->len,
-                           cmd->can_id);
-    if (status != HAL_OK) {
-      return;
-    }
-
-    g_pending_can_head = (uint8_t)((g_pending_can_head + 1U) % TELEMETRY_PENDING_CAN_DEPTH);
-    g_pending_can_count--;
-  }
+static SedsResult telemetry_send_can_packet(const uint8_t *bytes, size_t len, uint8_t priority) {
+  return can_bus_send_large(bytes, len, telemetry_flight_can_id(bytes, len, priority)) == HAL_OK
+      ? SEDS_OK : SEDS_IO;
 }
 
 static bool telemetry_unix_ms_to_utc(uint64_t unix_ms, int32_t *year, uint8_t *month,
@@ -387,7 +336,7 @@ static SedsResult tx_send_with_priority(const uint8_t *bytes, size_t len,
   }
   sim_probe_observe_can_tx(bytes, len);
 
-  return telemetry_send_or_queue_can_packet(bytes, len, priority);
+  return telemetry_send_can_packet(bytes, len, priority);
 }
 
 static SedsResult radio_tx_send(const uint8_t *bytes, size_t len,
@@ -399,7 +348,7 @@ static SedsResult radio_tx_send(const uint8_t *bytes, size_t len,
     return SEDS_BAD_ARG;
   }
 
-#ifdef SEDS_FIRMWARE_SIM_TEST
+#if SEDS_FIRMWARE_SIM_TEST
   g_sim_radio_egress_peer_mask |= sim_probe_peer_bit_packed(bytes, len);
   {
     const uint32_t ty = sim_probe_packed_data_type(bytes, len);
@@ -424,7 +373,7 @@ static void telemetry_can_rx(const uint8_t *data, size_t len, void *user) {
     return;
   }
   sim_probe_observe_packed(data, len);
-#ifdef SEDS_FIRMWARE_SIM_TEST
+#if SEDS_FIRMWARE_SIM_TEST
   {
     const uint32_t ty = sim_probe_packed_data_type(data, len);
     if (ty == (uint32_t)SEDS_DT_IMU_DATA ||
@@ -543,6 +492,18 @@ static UNUSED_FUNCTION void rx_synchronous(const uint8_t *bytes, size_t len) {
 }
 
 static void telemetry_update_network_health(SedsRouter *router) {
+#if SEDS_FIRMWARE_SIM_TEST
+  /* Fixed counters allocate nothing and stay off production RX paths. */
+  const uint32_t now = HAL_GetTick();
+  if ((uint32_t)(now - g_rf_memory_snapshot_tick) >= 100U) {
+    uint32_t counters[16];
+    if (seds_router_copy_memory_counters(router, counters, 16U) == 16) {
+      for (unsigned i = 0; i < 16U; ++i) g_rf_memory_counters[i] = counters[i];
+    }
+    g_rf_memory_snapshot_tick = now;
+  }
+#endif
+
   uint64_t network_time_ms = 0ULL;
   if (seds_router_get_network_time_ms(router, &network_time_ms) == SEDS_OK) {
     g_telemetry_timesync_valid = 1U;
@@ -585,6 +546,10 @@ SedsResult telemetry_announce_discovery(void) {
 }
 
 SedsResult telemetry_poll_discovery(void) {
+#ifdef TELEMETRY_ENABLED
+  if (g_router.r) board_health_poll(g_router.r);
+#endif
+
 #ifndef TELEMETRY_ENABLED
   return SEDS_OK;
 #else
@@ -597,9 +562,11 @@ SedsResult telemetry_poll_discovery(void) {
    * catalog once after startup so existing relays learn newly added types.
    * Leave queue processing running between bounded retries on queue pressure. */
   const uint64_t now = tx_raw_now_ms_locked();
-  if (now >= g_discovery_schema_retry_ms) {
+  if (g_discovery_schema_retry_ms == 0U ||
+      (int32_t)((uint32_t)now - g_discovery_schema_retry_ms) >= 0) {
     if (!g_discovery_schema_announced) {
-      g_discovery_schema_retry_ms = now + 1000ULL;
+      g_discovery_schema_retry_ms = (uint32_t)now + 1000U;
+      if (!g_discovery_schema_retry_ms) g_discovery_schema_retry_ms = 1U;
       if (seds_router_announce_discovery(g_router.r) == SEDS_OK) {
         g_discovery_schema_announced = 1U;
       }
@@ -607,7 +574,8 @@ SedsResult telemetry_poll_discovery(void) {
       /* Recover peer definitions when this board restarts after the peers'
        * startup announcements. Wait for a peer, and separate the two bursts. */
       static const uint8_t empty = 0U;
-      g_discovery_schema_retry_ms = now + 1000ULL;
+      g_discovery_schema_retry_ms = (uint32_t)now + 1000U;
+      if (!g_discovery_schema_retry_ms) g_discovery_schema_retry_ms = 1U;
       if (seds_router_log_bytes(g_router.r, SEDS_DT_DISCOVERY_SCHEMA_REQUEST,
                                 &empty, 0U) == SEDS_OK) {
         g_discovery_schema_requested = 1U;
@@ -645,7 +613,8 @@ SedsResult init_telemetry_router(void) {
   }
 
   const uint64_t init_now_ms = tx_raw_now_ms_locked();
-  if (g_router_retry_after_ms != 0ULL && init_now_ms < g_router_retry_after_ms) {
+  if (g_router_retry_after_ms != 0U &&
+      (int32_t)((uint32_t)init_now_ms - g_router_retry_after_ms) < 0) {
     return SEDS_ERR;
   }
   telemetry_memory_profile_mark(0U);
@@ -704,7 +673,8 @@ SedsResult init_telemetry_router(void) {
     g_router.created = 0U;
     g_can_side_id = -1;
     g_radio_side_id = -1;
-    g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
+    g_router_retry_after_ms = (uint32_t)(init_now_ms + TELEMETRY_ROUTER_RETRY_MS);
+    if (!g_router_retry_after_ms) g_router_retry_after_ms = 1U;
     return SEDS_ERR;
   }
   if (seds_router_set_preferred_discovery_master(r, "GS", 2U) != SEDS_OK) {
@@ -745,7 +715,8 @@ SedsResult init_telemetry_router(void) {
     g_router.created = 0U;
     g_can_side_id = -1;
     g_radio_side_id = -1;
-    g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
+    g_router_retry_after_ms = (uint32_t)(init_now_ms + TELEMETRY_ROUTER_RETRY_MS);
+    if (!g_router_retry_after_ms) g_router_retry_after_ms = 1U;
     return SEDS_ERR;
   }
   telemetry_memory_profile_mark(3U);
@@ -758,7 +729,8 @@ SedsResult init_telemetry_router(void) {
     g_router.created = 0U;
     g_can_side_id = -1;
     g_radio_side_id = -1;
-    g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
+    g_router_retry_after_ms = (uint32_t)(init_now_ms + TELEMETRY_ROUTER_RETRY_MS);
+    if (!g_router_retry_after_ms) g_router_retry_after_ms = 1U;
     return result;
   }
   telemetry_memory_profile_mark(4U);
@@ -769,7 +741,8 @@ SedsResult init_telemetry_router(void) {
     seds_router_free(r);
     g_router.r = NULL;
     g_router.created = 0U;
-    g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
+    g_router_retry_after_ms = (uint32_t)(init_now_ms + TELEMETRY_ROUTER_RETRY_MS);
+    if (!g_router_retry_after_ms) g_router_retry_after_ms = 1U;
     return result;
   }
   telemetry_memory_profile_mark(5U);
@@ -777,7 +750,8 @@ SedsResult init_telemetry_router(void) {
   result = av_bay_underglow_init(r);
   if (result != SEDS_OK) {
     seds_router_free(r);
-    g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
+    g_router_retry_after_ms = (uint32_t)(init_now_ms + TELEMETRY_ROUTER_RETRY_MS);
+    if (!g_router_retry_after_ms) g_router_retry_after_ms = 1U;
     return result;
   }
 
@@ -789,7 +763,7 @@ SedsResult init_telemetry_router(void) {
   g_router.created = 1U;
   g_discovery_schema_announced = 0U;
   g_discovery_schema_requested = 0U;
-  g_discovery_schema_retry_ms = 0ULL;
+  g_discovery_schema_retry_ms = 0U;
   /* Prime the first source announcement after the router clock and sides are
    * fully live.  This avoids depending on a later scheduler tick to make a
    * newly booted bay discover a valid network clock. */
@@ -802,13 +776,14 @@ SedsResult init_telemetry_router(void) {
       g_router.created = 0U;
       g_can_side_id = -1;
       g_radio_side_id = -1;
-      g_router_retry_after_ms = init_now_ms + TELEMETRY_ROUTER_RETRY_MS;
+      g_router_retry_after_ms = (uint32_t)(init_now_ms + TELEMETRY_ROUTER_RETRY_MS);
+    if (!g_router_retry_after_ms) g_router_retry_after_ms = 1U;
       return result;
     }
     if (result == SEDS_OK && did_queue) g_telemetry_timesync_queued++;
   }
 
-  g_router_retry_after_ms = 0ULL;
+  g_router_retry_after_ms = 0U;
   return SEDS_OK;
 #endif
 }
@@ -858,8 +833,12 @@ SedsResult log_telemetry_asynchronous(SedsDataType data_type, const void *data,
    * Dispatch into the transport immediately; the transport scheduler still
    * controls when bytes reach the wire.
    */
-  return seds_router_log_typed(g_router.r, data_type, data, element_count, element_size,
-                               guess_kind_from_elem_size(element_size));
+  if (data_type == SEDS_DT_GPS_DATA) ++g_sim_gps_publish_attempts;
+  const SedsResult result = seds_router_log_typed(
+      g_router.r, data_type, data, element_count, element_size,
+      guess_kind_from_elem_size(element_size));
+  if (data_type == SEDS_DT_GPS_DATA && result == SEDS_OK) ++g_sim_gps_publish_ok;
+  return result;
 #else
   (void)data_type;
   print_data_no_telem((void *)data, element_count * element_size);

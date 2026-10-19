@@ -1,0 +1,85 @@
+{
+  "candidate": "unpublished SEDSnet4.2.4 + RF128-byte reserve blocks",
+  "capture": "Jupiter:receipt-diagnostics/bay-1792367136419247305",
+  "old_refusal": {
+    "working_bytes": 2177,
+    "largest_block_floor": 1024,
+    "safety_reserve": 512,
+    "tlsf_free": 604,
+    "largest_tlsf_free": 120,
+    "live_requests": [
+      112,
+      112,
+      112,
+      112,
+      112,
+      112,
+      392,
+      140,
+      2572
+    ],
+    "requested_bytes": 3776,
+    "charged_bytes": 5120
+  },
+  "tuning": {
+    "reserve_capacity_before": 8192,
+    "reserve_capacity_after": 8192,
+    "block_bytes_before": 256,
+    "block_bytes_after": 128,
+    "block_count_before": 32,
+    "block_count_after": 64,
+    "same_requests_charged_after": 4224,
+    "bytes_saved_for_live_set": 896,
+    "bookkeeping_ram_increase": 40,
+    "moves_existing_pointers": false,
+    "scheduler": "ThreadX unchanged"
+  },
+  "validation": {
+    "captured_state_old": "fails admission regression",
+    "captured_state_new": "passes and materializes full working estimate while preserving512B reserve",
+    "rf_native_tests": 160,
+    "sdk_checks": {
+      "rf-native": 0,
+      "rf-macos": 0,
+      "sdk-default": 0,
+      "sdk-experimental": 0,
+      "sdk-clippy": 0
+    },
+    "macos_rf_flash": 456012,
+    "macos_rf_ram": 114312,
+    "linux_rf_native_tests": 160,
+    "linux_existing_platform_skip": 1,
+    "gcc_radio_signedness_warning": "fixed with unsigned 32-bit decoded length comparison",
+    "sdk_default_passed": 577,
+    "sdk_experimental_passed": 601,
+    "linux_diagnostic_rf_flash": 459332,
+    "linux_diagnostic_rf_ram": 114404
+  },
+  "status": "blocked on intermittent RF ingress memory refusal; extended qualification incomplete",
+  "qualification_cohort": "release424-rf-components-trace",
+  "remaining_failure": {
+    "capture": "Jupiter:receipt-diagnostics/bay-1792376010004650721",
+    "packet_id": 13473466163471060698,
+    "type": "RF-proxied FLIGHT_BUZZER",
+    "ingress_ms": [
+      2934.9076,
+      3124.9,
+      3434.90484
+    ],
+    "forward_ms": 3437.90484,
+    "fc_receipt_ms": 3443.2,
+    "completed_rf_uart_ms": 3452.4,
+    "finding": "First two ingress attempts refused under memory pressure; accepted retry completes FC/ACK path promptly. Cause of retained RF memory peak is not yet established."
+  },
+  "simulator_diagnostics": {
+    "component_counter_count": 16,
+    "interval_ms": 100,
+    "network_traffic_added": false,
+    "allocates": false,
+    "guard": "Numeric flag checked with #if; real preprocessing tested for undefined/0/1. Old #ifdef fails the two production cases without fixture errors.",
+    "macos_native": "160 passed",
+    "linux_native": "160 passed, one existing platform skip",
+    "first_instrumented_startup": "passed; observed RF live peak55260B; repetitions still in progress",
+    "production_factory": "macOS passed; no hardware flashed"
+  }
+}

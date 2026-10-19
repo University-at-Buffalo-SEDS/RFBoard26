@@ -24,7 +24,7 @@ enum { SEDS_OK=0, SEDS_ERR=1 };
 static struct { void *r; } g_router = {(void*)1};
 static uint8_t g_discovery_schema_announced;
 static uint8_t g_discovery_schema_requested;
-static uint64_t g_discovery_schema_retry_ms;
+static uint32_t g_discovery_schema_retry_ms;
 static uint64_t now;
 static unsigned attempts, polls, health, requests;
 static int ready, fail;
@@ -35,6 +35,7 @@ static uint64_t telemetry_now_ms(void) { return now; }
 static int seds_router_announce_discovery(void *r) { assert(r); ++attempts; return fail; }
 static int seds_router_log_bytes(void *r,unsigned ty,const uint8_t *p,size_t n) { assert(r && ty==12 && p && n==0); ++requests; return fail; }
 static int seds_router_poll_discovery(void *r, bool *queued) { assert(r && queued); ++polls; return SEDS_OK; }
+static void board_health_poll(void *r) { assert(r); }
 static void telemetry_update_network_health(void *r) { assert(r); ++health; }
 static void sim_probe_emit_heartbeat(void *r,uint64_t t) { (void)r;(void)t; }
 static int flight_state_cache_poll(void *r) { (void)r;return 0; }
@@ -63,6 +64,12 @@ int main(void) {
  /* Successful router recreation resets bootstrap state. */
  g_discovery_schema_announced=0; g_discovery_schema_requested=0; g_discovery_schema_retry_ms=0;
  telemetry_poll_discovery(); assert(attempts==4);
+ /* Retry deadlines must survive the 32-bit millisecond wrap. */
+ g_discovery_schema_announced=0; g_discovery_schema_retry_ms=0; fail=SEDS_ERR;
+ now=UINT32_MAX-499ULL; telemetry_poll_discovery(); assert(attempts==5);
+ now+=999; telemetry_poll_discovery(); assert(attempts==5);
+ ++now; telemetry_poll_discovery(); assert(attempts==6);
+
 }
 '''
         with tempfile.TemporaryDirectory() as directory:
@@ -72,7 +79,7 @@ int main(void) {
                 input=code,text=True,capture_output=True)
             self.assertEqual(result.returncode,0,result.stderr)
             subprocess.run([str(exe)],check=True)
-        self.assertIn('g_router.created = 1U;\n  g_discovery_schema_announced = 0U;\n  g_discovery_schema_requested = 0U;\n  g_discovery_schema_retry_ms = 0ULL;',source)
+        self.assertIn('g_router.created = 1U;\n  g_discovery_schema_announced = 0U;\n  g_discovery_schema_requested = 0U;\n  g_discovery_schema_retry_ms = 0U;',source)
 
 if __name__ == '__main__':
     unittest.main()

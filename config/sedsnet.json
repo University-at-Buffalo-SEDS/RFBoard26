@@ -67,7 +67,7 @@
     {
       "rust": "ActuatorGpsData",
       "name": "GPS_DATA",
-      "doc": "GPS Data: 3 × float32 elements (latitude, longitude, altitude).",
+      "doc": "GPS Data: 3 \u00d7 float32 elements (latitude, longitude, altitude).",
       "class": "Data",
       "element": {
         "kind": "Static",
@@ -85,7 +85,7 @@
     {
       "rust": "ActuatorGyroData",
       "name": "GYRO_DATA",
-      "doc": "Gyro Data: 3 × float32 elements (x, y, z). Logged only to GroundStation.",
+      "doc": "Gyro Data: 3 \u00d7 float32 elements (x, y, z). Logged only to GroundStation.",
       "class": "Data",
       "element": {
         "kind": "Static",
@@ -101,7 +101,7 @@
     {
       "rust": "ActuatorAccelData",
       "name": "ACCEL_DATA",
-      "doc": "Accel Data: 3 × float32 elements (x, y, z). Logged only to GroundStation.",
+      "doc": "Accel Data: 3 \u00d7 float32 elements (x, y, z). Logged only to GroundStation.",
       "class": "Data",
       "element": {
         "kind": "Static",
@@ -117,7 +117,7 @@
     {
       "rust": "ActuatorBatteryVoltage",
       "name": "BATTERY_VOLTAGE",
-      "doc": "Battery Voltage: 1 × float32 element.",
+      "doc": "Battery Voltage: 1 \u00d7 float32 element.",
       "class": "Data",
       "element": {
         "kind": "Static",
@@ -134,7 +134,7 @@
     {
       "rust": "ActuatorBatteryCurrent",
       "name": "BATTERY_CURRENT",
-      "doc": "Battery Current: 1 × float32 element.",
+      "doc": "Battery Current: 1 \u00d7 float32 element.",
       "class": "Data",
       "element": {
         "kind": "Static",
@@ -151,7 +151,7 @@
     {
       "rust": "ActuatorBarometerData",
       "name": "BAROMETER_DATA",
-      "doc": "Barometer Data: 3 × float32 elements (alt, prs, tmp). Logged only to GroundStation.",
+      "doc": "Barometer Data: 3 \u00d7 float32 elements (alt, prs, tmp). Logged only to GroundStation.",
       "class": "Data",
       "element": {
         "kind": "Static",
@@ -183,7 +183,7 @@
     {
       "rust": "ActuatorFuelFlow",
       "name": "FUEL_FLOW",
-      "doc": "Fuel Flow: 1 × float32 element.",
+      "doc": "Fuel Flow: 1 \u00d7 float32 element.",
       "class": "Data",
       "element": {
         "kind": "Static",
@@ -200,7 +200,7 @@
     {
       "rust": "ActuatorValveCommand",
       "name": "VALVE_COMMAND",
-      "doc": "Valve Command: 1 × uint8 element (command).",
+      "doc": "Valve Command: 1 \u00d7 uint8 element (command).",
       "class": "Data",
       "element": {
         "kind": "Static",
@@ -217,7 +217,7 @@
     {
       "rust": "ActuatorFlightCommand",
       "name": "FLIGHT_COMMAND",
-      "doc": "Flight Command: 1 × uint8 element (command).",
+      "doc": "Flight Command: 1 \u00d7 uint8 element (command).",
       "class": "Data",
       "element": {
         "kind": "Static",
@@ -235,7 +235,7 @@
     {
       "rust": "ActuatorFuelTankPressure",
       "name": "FUEL_TANK_PRESSURE",
-      "doc": "Fuel Tank Pressure: 1 × float32 element.",
+      "doc": "Fuel Tank Pressure: 1 \u00d7 float32 element.",
       "class": "Data",
       "element": {
         "kind": "Static",
@@ -483,7 +483,7 @@
     {
       "rust": "ActuatorGyroLocal",
       "name": "GYRO_LOCAL",
-      "doc": "Gyro Data: 3 × float32 elements (x, y, z). Logged only to SD.",
+      "doc": "Gyro Data: 3 \u00d7 float32 elements (x, y, z). Logged only to SD.",
       "reliable": "Off",
       "priority": 0,
       "class": "Data",
@@ -499,7 +499,7 @@
     {
       "rust": "ActuatorAccelLocal",
       "name": "ACCEL_LOCAL",
-      "doc": "Accel Data: 3 × float32 elements (x, y, z). Logged only to SD.",
+      "doc": "Accel Data: 3 \u00d7 float32 elements (x, y, z). Logged only to SD.",
       "reliable": "Off",
       "priority": 0,
       "class": "Data",
@@ -515,7 +515,7 @@
     {
       "rust": "ActuatorIMUData",
       "name": "IMU_DATA",
-      "doc": "Accel and Gyro Data: 6 × float32 elements (ax, ay, az, gx, gy, gz). Logged only to GroundStation.",
+      "doc": "Accel and Gyro Data: 6 \u00d7 float32 elements (ax, ay, az, gx, gy, gz). Logged only to GroundStation.",
       "reliable": "Off",
       "priority": 0,
       "class": "Data",
@@ -531,7 +531,7 @@
     {
       "rust": "ActuatorIMULocal",
       "name": "IMU_LOCAL",
-      "doc": "Accel and Gyro Data: 6 × float32 elements (ax, ay, az, gx, gy, gz). Logged only to SD.",
+      "doc": "Accel and Gyro Data: 6 \u00d7 float32 elements (ax, ay, az, gx, gy, gz). Logged only to SD.",
       "reliable": "Off",
       "priority": 0,
       "class": "Data",
@@ -547,7 +547,7 @@
     {
       "rust": "ActuatorBarometerLocal",
       "name": "BAROMETER_LOCAL",
-      "doc": "Barometer Data: 3 × float32 elements (alt, prs, tmp). Logged only to SD.",
+      "doc": "Barometer Data: 3 \u00d7 float32 elements (alt, prs, tmp). Logged only to SD.",
       "reliable": "Off",
       "priority": 0,
       "class": "Data",
@@ -625,19 +625,64 @@
       ]
     },
     {
-      "rust": "Reserved135", "name": "RESERVED_135", "doc": "Reserved legacy rate ID; telemetry rates are compile-time board settings.",
-      "reliable": "Ordered", "priority": 16, "class": "Data",
-      "element": {"kind": "Static", "data_type": "Float32", "count": 1}, "endpoints": []
+      "rust": "Reserved135",
+      "name": "RESERVED_135",
+      "doc": "Reserved legacy rate ID; telemetry rates are compile-time board settings.",
+      "reliable": "Ordered",
+      "priority": 16,
+      "class": "Data",
+      "element": {
+        "kind": "Static",
+        "data_type": "Float32",
+        "count": 1
+      },
+      "endpoints": []
     },
     {
-      "rust": "Reserved136", "name": "RESERVED_136", "doc": "Reserved legacy rate ID; telemetry rates are compile-time board settings.",
-      "reliable": "Ordered", "priority": 16, "class": "Data",
-      "element": {"kind": "Static", "data_type": "Float32", "count": 1}, "endpoints": []
+      "rust": "Reserved136",
+      "name": "RESERVED_136",
+      "doc": "Reserved legacy rate ID; telemetry rates are compile-time board settings.",
+      "reliable": "Ordered",
+      "priority": 16,
+      "class": "Data",
+      "element": {
+        "kind": "Static",
+        "data_type": "Float32",
+        "count": 1
+      },
+      "endpoints": []
     },
     {
-      "rust": "DaqLoadcellCalibration", "name": "DAQ_LOADCELL_CALIBRATION", "doc": "DAQ calibration [KG1000 slope, KG1000 intercept, IADC slope, IADC intercept].",
-      "reliable": "Ordered", "priority": 16, "class": "Data",
-      "element": {"kind": "Static", "data_type": "Float32", "count": 4}, "endpoints": ["FillSdCard"]
+      "rust": "DaqLoadcellCalibration",
+      "name": "DAQ_LOADCELL_CALIBRATION",
+      "doc": "DAQ calibration [KG1000 slope, KG1000 intercept, IADC slope, IADC intercept].",
+      "reliable": "Ordered",
+      "priority": 16,
+      "class": "Data",
+      "element": {
+        "kind": "Static",
+        "data_type": "Float32",
+        "count": 4
+      },
+      "endpoints": [
+        "FillSdCard"
+      ]
+    },
+    {
+      "rust": "BoardHealth",
+      "name": "BOARD_HEALTH",
+      "doc": "Version 1: 24 uint32 board diagnostic words. Optional capabilities; nominal uptime ticks/hz, reset, allocation, transport and SD counters.",
+      "class": "Data",
+      "element": {
+        "kind": "Static",
+        "data_type": "UInt32",
+        "count": 24
+      },
+      "endpoints": [
+        "ActuatorGroundStation"
+      ],
+      "reliable": "Off",
+      "priority": 0
     }
   ]
 }

@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class NetworkRestartScenarioTests(unittest.TestCase):
     def capture(self, ultra_soak):
         captured = []
-        layout = {"execution": {"memory_probes": [], "sample_count": 6,
+        layout = {"execution": {"memory_probes": [{"name": "can_tx_expired", "maximum": 0}], "sample_count": 6,
                                 "memory_probe_warmup_samples": 0, "virtual_time_ms": 16000}}
         with tempfile.TemporaryDirectory() as tmp:
             for repository in REPOSITORIES:

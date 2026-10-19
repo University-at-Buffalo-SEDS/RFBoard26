@@ -163,16 +163,22 @@ static uint8_t g_frame_buf[RADIO_UART_FRAME_BUF_SIZE];
 #define RADIO_PARTIAL_FRAME_TIMEOUT_MS 2000U
 static uint32_t g_partial_frame_started_ms;
 static uint8_t g_partial_frame_waiting;
-static size_t g_frame_len = 0U;
+static uint16_t g_frame_len = 0U; /* Frame capacity is fixed at 1028 bytes. */
 static uint8_t g_current_rx_is_command_frame = 0U;
 
 /* ISR -> thread ring buffer */
-static volatile uint32_t g_rx_head = 0; /* pop index */
-static volatile uint32_t g_rx_tail = 0; /* push index */
-static volatile uint32_t g_rx_count = 0;
+#define RADIO_UART_RX_RING_BYTES (RADIO_UART_RX_RING_DEPTH * RADIO_UART_RX_BUF_SIZE)
+#if RADIO_UART_RX_RING_BYTES <= UINT16_MAX
+typedef uint16_t radio_rx_index_t;
+#else
+typedef uint32_t radio_rx_index_t;
+#endif
+static volatile radio_rx_index_t g_rx_head = 0; /* pop index */
+static volatile radio_rx_index_t g_rx_tail = 0; /* push index */
+static volatile radio_rx_index_t g_rx_count = 0;
 /* Short IDLE callbacks must consume only their bytes, not a full DMA slot.
  * This retains the existing capacity and saves the old per-slot lengths. */
-#define RADIO_UART_RX_RING_BYTES (RADIO_UART_RX_RING_DEPTH * RADIO_UART_RX_BUF_SIZE)
+
 static uint8_t g_rx_ring[RADIO_UART_RX_RING_BYTES];
 static volatile uint32_t g_rx_isr_chunks = 0;
 static volatile uint32_t g_rx_isr_bytes = 0;
@@ -203,8 +209,18 @@ static uint8_t g_radio_tx_queue_mutex_ready = 0U;
  * cannot fragment networking memory needed by the next large packet. */
 static radio_tx_queue_item_t g_tx_queue[RADIO_UART_TX_QUEUE_SLOTS];
 static uint8_t g_tx_queue_bytes[RADIO_UART_TX_QUEUE_BYTE_CAPACITY];
+/* Narrow only private bounded indices. Larger configured capacities retain
+ * 32-bit metadata; queue slots, payload bytes and allocator pools are unchanged. */
+#if RADIO_UART_TX_QUEUE_BYTE_CAPACITY <= UINT16_MAX
+static uint16_t g_tx_queue_bytes_used = 0U;
+#else
 static uint32_t g_tx_queue_bytes_used = 0U;
+#endif
+#if RADIO_UART_TX_QUEUE_SLOTS <= UINT8_MAX
+static uint8_t g_tx_count = 0U;
+#else
 static uint32_t g_tx_count = 0U;
+#endif
 volatile uint32_t g_tx_drops = 0U;
 volatile uint32_t g_tx_drop_oldest = 0U;
 volatile uint32_t g_tx_drop_same_flow = 0U;
@@ -231,7 +247,7 @@ static volatile uint32_t g_tx_dma_complete = 0U;
 volatile uint32_t g_tx_dma_recoveries = 0U;
 static volatile uint32_t g_tx_dma_started_at_ms = 0U;
 static volatile uint32_t g_tx_quiet_until_ms = 0U;
-static uint32_t g_tx_air_budget_active;
+static uint8_t g_tx_air_budget_active;
 static volatile uint32_t g_aux_busy_count = 0U;
 static volatile uint32_t g_e22_mode0_set_at_ms = 0U;
 
@@ -714,7 +730,7 @@ static uint8_t radio_uart_independent_control(const uint8_t *data, uint16_t len,
                                              uint8_t priority) {
   if (!data || priority < 200U || len < RADIO_UART_FRAME_HEADER_SIZE + 3U ||
       data[0] != RADIO_UART_FRAME_SYNC_0 || data[1] != RADIO_UART_FRAME_SYNC_1 ||
-      ((uint16_t)data[2] | ((uint16_t)data[3] << 8U)) !=
+      ((uint32_t)data[2] | ((uint32_t)data[3] << 8U)) !=
           len - RADIO_UART_FRAME_HEADER_SIZE) return 0U;
   const uint8_t *payload = data + RADIO_UART_FRAME_HEADER_SIZE;
   if (memcmp(payload, "SDT", 3U) == 0) return 0U;
@@ -1477,3 +1493,5 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     g_rx_restart_errors++;
   }
 }
+
+uint32_t board_health_uart_rx_drops(void) { return g_rx_isr_drops; }

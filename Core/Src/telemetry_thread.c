@@ -172,12 +172,10 @@ void telemetry_thread_entry(ULONG initial_input)
         /* Poll hardware FIFO and then process reassembly + router queues. */
         radio_uart_process_rx();
         can_bus_process_rx();
-        telemetry_retry_pending_can_commands();
         /* SEDSNet owns discovery cadence.  Forcing an additional full snapshot
          * here creates a burst larger than the constrained radio queue and
          * bypasses its adaptive fast/slow discovery behavior. */
         (void)telemetry_poll_discovery();
-        telemetry_retry_pending_can_commands();
         /* RF is a relay between avionics CAN and the ground radio. Draining
          * only TX leaves every packet received from either side stranded in
          * the router RX queue, eventually exhausting the fixed allocator and

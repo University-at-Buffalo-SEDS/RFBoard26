@@ -9,3 +9,7 @@ compile_commands.json
 .DS_Store
 *.pyc
 venv/
+
+# Generated artifacts from the vendored CRC library
+third_party/embedded-crc32fast/target/
+third_party/embedded-crc32fast/Cargo.lock

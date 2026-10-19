@@ -403,6 +403,45 @@ void *telemetryMalloc(size_t xSize)
 #endif
 }
 
+/* CAN's async queue uses fallible foreground allocations, never ISR heap
+ * work. Leave at least 4 KiB available for router dispatch/control traffic. */
+void *telemetry_can_tx_allocate(size_t bytes)
+{
+#ifdef TELEMETRY_USE_TLSF
+    if (!telemetry_tlsf_admit(bytes + 512U, bytes)) return NULL;
+#else
+    ULONG available = 0U;
+    if (!rust_byte_pool_external ||
+        tx_byte_pool_info_get(rust_byte_pool_external, TX_NULL, &available,
+                             TX_NULL, TX_NULL, TX_NULL, TX_NULL) != TX_SUCCESS)
+        return NULL;
+    if (bytes > (size_t)available || (size_t)available - bytes < 4096U)
+        return NULL;
+#endif
+    return telemetryMalloc(bytes);
+}
+
+/* Only bounded priority CAN packets may borrow control headroom. Bulk queue
+ * copies and diagnostic exports retain the ordinary 4 KiB reserve. */
+void *telemetry_can_tx_allocate_priority(size_t bytes, uint8_t protected_control)
+{
+    if (!protected_control || bytes == 0U || bytes > 160U)
+        return telemetry_can_tx_allocate(bytes);
+#ifdef TELEMETRY_USE_TLSF
+    if (!telemetry_tlsf_admit_can_control(bytes)) return NULL;
+#else
+    ULONG available = 0U;
+    if (!rust_byte_pool_external ||
+        tx_byte_pool_info_get(rust_byte_pool_external, TX_NULL, &available,
+                             TX_NULL, TX_NULL, TX_NULL, TX_NULL) != TX_SUCCESS)
+        return NULL;
+    const size_t free_bytes = (size_t)available;
+    const size_t working = bytes + 512U;
+    if (working > free_bytes || free_bytes - working < 512U) return NULL;
+#endif
+    return telemetryMalloc(bytes);
+}
+
 void telemetryFree(void *pv)
 {
 #ifdef TELEMETRY_USE_TLSF

@@ -1,0 +1,56 @@
+{
+  "date": "2026-10-18",
+  "status": "native_pass_simulator_qualification_in_progress",
+  "radio": {
+    "uart_baud": 115200,
+    "air_bit_rate_bps": 64000,
+    "share_percent": 40,
+    "uart_frame_header_bytes": 4,
+    "modelled_radio_overhead_bytes": 16,
+    "old_max_frame_bytes": 256,
+    "old_max_nonpreemptible_ms": 87,
+    "new_max_frame_bytes": 192,
+    "new_max_nonpreemptible_ms": 67,
+    "tradeoff": "More chunks/header overhead for large transfers; small telemetry and control packets unchanged",
+    "receive_limits": "unchanged"
+  },
+  "validation": {
+    "rf_unit_tests": 159,
+    "rf_macos_factory": "PASS",
+    "backend_normal": {
+      "passed": 313,
+      "ignored": 1
+    },
+    "backend_hitl": {
+      "passed": 306,
+      "ignored": 1
+    },
+    "backend_testfire": {
+      "passed": 314,
+      "ignored": 1
+    },
+    "warnings": "none in checked macOS RF factory and normal backend logs"
+  },
+  "qualification": {
+    "pipeline": "radio-control-headroom",
+    "startup_gates_required": 3,
+    "restart_required": true,
+    "long_soak_ms": 600000,
+    "sd_reconciliation": [
+      "DAQ",
+      "FC"
+    ],
+    "status": "manual Jupiter builds/startup/restart/soak pipeline running; no completion claimed"
+  },
+  "source_sha256": {
+    "SEDSnet/src/discovery.rs": "b34f2b797a65367cf99286aefe693c1bcfd6a62b379f151edc67e122cffdf48f",
+    "SEDSnet/src/router.rs": "993f916ffe64575415b309c85e2b3ca64d8df1b8c157bfcec16bf9f09baa594f",
+    "SEDSnet/src/relay.rs": "0822205b4f3e837b14f4dd9a7a9301a162389a889f6d84651fe4a75febc6bec6",
+    "SEDSnet/src/wire_format.rs": "cf953d9cf1531366d90d798003ec83e5693271d4e98c69e548775f2069f749d7",
+    "SEDSnet/src/memory_admission.rs": "963740f5cb578ffd8eb8226f334f027f4fb514288469450976e6514a9b19b6fe",
+    "SEDSnet/src/c_api.rs": "f6fee85880f47c301028015fba7c483f5e0c55cec6f45688b81f8fd38c5ef392",
+    "RFBoard26/Core/Src/telemetry.c": "d0c659e4a1ec35ec792f819aca84cc5228beb0533324eb482e4f074e3dddb1e2",
+    "GroundStation26/backend/src/main.rs": "ea0feac7b893d6a7702616ae292fb69927ef32212c38f15f354f12ee778a4fad",
+    "GroundStation26/backend/src/telemetry_task/radio_io.rs": "4f3cab89d23504daf49bc49f4d53085e9f134e5e481a70b0285682528ed4846c"
+  }
+}

@@ -105,7 +105,7 @@ class QualificationContractTests(unittest.TestCase):
         root = Path(build.__file__).resolve().parent
         telemetry = (root / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
         prime = telemetry.index("/* Prime the first source announcement")
-        end = telemetry.index("g_router_retry_after_ms = 0ULL", prime)
+        end = telemetry.index("g_router_retry_after_ms = 0U", prime)
         startup_prime = telemetry[prime:end]
 
         self.assertIn("seds_router_poll_timesync(r, &did_queue)", startup_prime)
@@ -163,21 +163,16 @@ class QualificationContractTests(unittest.TestCase):
             "seds_router_add_side_packed_profile_with_priority(",
             telemetry,
         )
-        self.assertIn("RF_RADIO_MAX_FRAME_BYTES 256U", telemetry)
-        self.assertIn("RF_CAN_MAX_FRAME_BYTES 128U", telemetry)
+        self.assertIn("RF_RADIO_MAX_FRAME_BYTES 192U", telemetry)
+        self.assertIn("RF_CAN_MAX_FRAME_BYTES CAN_TX_ALIGNED_FRAME_BYTES", telemetry)
         self.assertIn("SEDS_SIDE_TRANSPORT_PROFILE_IPV6_LIKE", telemetry)
         self.assertIn("RF_CAN_SIDE_TRANSPORT_TEMPLATES 16U", telemetry)
         self.assertIn("RF_RADIO_SIDE_TRANSPORT_TEMPLATES 16U", telemetry)
         self.assertIn("RF_CAN_MAX_FRAME_BYTES, 0U,\n      RF_CAN_SIDE_TRANSPORT_TEMPLATES", telemetry)
         self.assertIn("RF_RADIO_MAX_FRAME_BYTES, 0U,\n      RF_RADIO_SIDE_TRANSPORT_TEMPLATES", telemetry)
         can_bus = (root / "Core" / "Src" / "can_bus.c").read_text(encoding="utf-8")
-        self.assertIn("CAN_BUS_TX_ENQUEUE_TIMEOUT_MS 5U", can_bus)
-        self.assertNotIn("HAL_FDCAN_AbortTxRequest", can_bus)
+        self.assertNotIn("HAL_FDCAN_AbortTxRequest", can_bus.split("HAL_StatusTypeDef can_bus_send_bytes(", 1)[1].split("HAL_StatusTypeDef can_bus_send_large", 1)[0])
         self.assertNotIn("< (uint32_t)frag_cnt", can_bus)
-        enqueue = can_bus.split("static HAL_StatusTypeDef can_bus_enqueue_tx_frame", 1)[1]
-        enqueue = enqueue.split("static inline void can_bus_notify_rx", 1)[0]
-        self.assertNotIn("for (;;)", enqueue)
-        self.assertIn("HAL_GetTick()", enqueue)
         self.assertNotIn(
             "seds_router_set_route(r, g_can_side_id, g_radio_side_id, true)",
             telemetry,
@@ -186,6 +181,7 @@ class QualificationContractTests(unittest.TestCase):
         self.assertNotIn("g_bootstrap_fanout_active", telemetry)
         self.assertNotIn("seds_router_set_typed_route", telemetry)
         self.assertIn("#define RADIO_UART_MAX_PAYLOAD_SIZE    1024U", radio)
+        self.assertIn("return can_tx_queue_submit(bytes, len, std_id);", can_bus)
 
     def test_radio_hop_uses_rfd900x_link_reliability_without_nested_acks(self):
         root = Path(__file__).resolve().parents[1]

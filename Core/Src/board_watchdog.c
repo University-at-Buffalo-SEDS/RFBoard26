@@ -1,4 +1,5 @@
 #include "board_watchdog.h"
+#include "board_uptime.h"
 #include "main.h"
 #include "tx_api.h"
 
@@ -63,6 +64,7 @@ void board_watchdog_start(void)
 
 void board_watchdog_progress(uint32_t task)
 {
+    (void)board_uptime_ticks(); /* Extend HAL uptime even while network is unavailable. */
 #if BOARD_WATCHDOG_ENABLE
     if (g_watchdog_started == 0U) return;
     const uint32_t saved = __get_PRIMASK();
@@ -84,4 +86,14 @@ void board_watchdog_progress(uint32_t task)
 #else
     (void)task;
 #endif
+}
+
+uint64_t board_uptime_ticks(void)
+{
+    static board_uptime_state state;
+    const uint32_t saved = __get_PRIMASK();
+    __disable_irq();
+    const uint64_t value = board_uptime_extend(&state, HAL_GetTick());
+    __set_PRIMASK(saved);
+    return value;
 }

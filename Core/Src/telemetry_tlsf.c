@@ -21,10 +21,12 @@ static uint16_t live_allocations;
  * slots are carved from the existing pool, not additional static RAM. */
 #define LARGE_SLOT_BYTES 4096U
 #define LARGE_SLOT_COUNT 2U
-#define RESERVE_BLOCK_BYTES 256U
-#define RESERVE_BLOCK_COUNT 32U
+#define RESERVE_BLOCK_BYTES 128U
+#define RESERVE_BLOCK_COUNT 64U
+_Static_assert(RESERVE_BLOCK_BYTES * RESERVE_BLOCK_COUNT == LARGE_SLOT_BYTES * LARGE_SLOT_COUNT,
+               "Reserve tuning must preserve total allocator capacity");
 static uint8_t *large_slots;
-static uint32_t reserve_used;
+static uint64_t reserve_used;
 static uint8_t reserve_lengths[RESERVE_BLOCK_COUNT];
 /* Fixed reserve capacity is 8192 bytes. */
 static uint16_t reserve_live_bytes;
@@ -32,14 +34,15 @@ volatile uint32_t g_rf_large_slot_live;
 volatile uint32_t g_rf_large_slot_peak;
 volatile uint32_t g_rf_admission_last_additional;
 volatile uint32_t g_rf_admission_last_largest;
+volatile uint32_t g_rf_admission_last_free;
 
-/* A fixed bitmap avoids heap headers and bounds each search to 32 blocks.
+/* A fixed bitmap avoids heap headers and bounds each search to 64 blocks.
  * Only the allocation start records its length; pointers never move. */
-static int reserve_find_in(size_t size, uint32_t used)
+static int reserve_find_in(size_t size, uint64_t used)
 {
     if (!large_slots || size == 0U || size > RESERVE_BLOCK_BYTES * RESERVE_BLOCK_COUNT) return -1;
     const unsigned blocks = (size + RESERVE_BLOCK_BYTES - 1U) / RESERVE_BLOCK_BYTES;
-    const uint32_t bits = UINT32_MAX >> (RESERVE_BLOCK_COUNT - blocks);
+    const uint64_t bits = UINT64_MAX >> (RESERVE_BLOCK_COUNT - blocks);
     for (unsigned i = 0; i + blocks <= RESERVE_BLOCK_COUNT; ++i)
         if ((used & (bits << i)) == 0U) return (int)i;
     return -1;
@@ -53,7 +56,7 @@ static void *large_slot_allocate(size_t size)
     const int index = reserve_find(size);
     if (index < 0) return NULL;
     const unsigned blocks = (size + RESERVE_BLOCK_BYTES - 1U) / RESERVE_BLOCK_BYTES;
-    reserve_used |= (UINT32_MAX >> (RESERVE_BLOCK_COUNT - blocks)) << (unsigned)index;
+    reserve_used |= (UINT64_MAX >> (RESERVE_BLOCK_COUNT - blocks)) << (unsigned)index;
     reserve_lengths[index] = blocks;
     reserve_live_bytes += blocks * RESERVE_BLOCK_BYTES;
     ++g_rf_large_slot_live;
@@ -111,7 +114,7 @@ static void snapshot(void)
         g_telemetry_tlsf_free_bytes += LARGE_SLOT_COUNT * LARGE_SLOT_BYTES - reserve_live_bytes;
         unsigned run = 0;
         for (unsigned i = 0; i < RESERVE_BLOCK_COUNT; ++i) {
-            if (reserve_used & (1UL << i)) run = 0;
+            if (reserve_used & (UINT64_C(1) << i)) run = 0;
             else {
                 if (run == 0U) ++g_telemetry_tlsf_free_blocks;
                 ++run;
@@ -200,7 +203,7 @@ void telemetry_tlsf_free(void *ptr)
     const int slot = large_slot_index(ptr);
     if (slot >= 0) {
         const unsigned blocks = reserve_lengths[slot];
-        reserve_used &= ~((UINT32_MAX >> (RESERVE_BLOCK_COUNT - blocks)) << (unsigned)slot);
+        reserve_used &= ~((UINT64_MAX >> (RESERVE_BLOCK_COUNT - blocks)) << (unsigned)slot);
         reserve_lengths[slot] = 0U;
         --g_rf_large_slot_live;
         reserve_live_bytes -= blocks * RESERVE_BLOCK_BYTES;
@@ -262,15 +265,15 @@ static bool admit_impl(size_t additional, size_t largest, bool protected_control
                  * storage, then verify the full safety reserve remains free.
                  * No real reserve bitmap or allocation counters are changed. */
                 void *head = NULL;
-                uint32_t trial_used = reserve_used;
+                uint64_t trial_used = reserve_used;
                 const int index = reserve_find(largest);
                 if (allowed) {
                     const unsigned blocks = (largest + RESERVE_BLOCK_BYTES - 1U) / RESERVE_BLOCK_BYTES;
-                    trial_used |= (UINT32_MAX >> (RESERVE_BLOCK_COUNT - blocks)) << (unsigned)index;
+                    trial_used |= (UINT64_MAX >> (RESERVE_BLOCK_COUNT - blocks)) << (unsigned)index;
                 }
-                /* Probe actual work only. The safety reserve must remain free;
-                 * materializing it as 128-byte objects rounds every 128 bytes
-                 * to a 256-byte fallback slot and double-charges headroom. */
+                /* Probe actual work only. Materializing the safety reserve
+                 * as scratch and then requiring it free again would charge
+                 * that headroom twice. */
                 size_t remaining = additional > largest ? additional - largest : 0U;
                 unsigned probes = 0U;
                 while (allowed && remaining != 0U && probes++ < 128U) {
@@ -289,14 +292,14 @@ static bool admit_impl(size_t additional, size_t largest, bool protected_control
                         if (small < 0) {
                             allowed = false; break;
                         }
-                        trial_used |= UINT32_C(1) << (unsigned)small;
+                        trial_used |= UINT64_C(1) << (unsigned)small;
                     }
                     remaining -= chunk;
                 }
                 if (remaining != 0U) allowed = false;
                 if (allowed) {
                     const size_t trial_free = tlsf_free_size(allocator) +
-                        (RESERVE_BLOCK_COUNT - (unsigned)__builtin_popcount(trial_used)) *
+                        (RESERVE_BLOCK_COUNT - (unsigned)__builtin_popcountll(trial_used)) *
                             RESERVE_BLOCK_BYTES;
                     if (trial_free < reserve) {
                         allowed = false;
@@ -314,6 +317,7 @@ static bool admit_impl(size_t additional, size_t largest, bool protected_control
         ++g_rf_memory_admission_drops;
         g_rf_admission_last_additional = additional;
         g_rf_admission_last_largest = largest;
+        g_rf_admission_last_free = (uint32_t)available;
     }
     __set_PRIMASK(saved);
     return allowed;
@@ -332,4 +336,10 @@ bool telemetry_tlsf_admit_small_protected(size_t additional, size_t largest)
     if (additional < 2048U || additional > 2432U || largest == 0U || largest > 160U)
         return admit_impl(additional, largest, false);
     return admit_impl(additional, largest, true);
+}
+
+bool telemetry_tlsf_admit_can_control(size_t bytes)
+{
+    return bytes != 0U && bytes <= 160U &&
+        admit_impl(bytes + 512U, bytes, true);
 }

@@ -66,6 +66,38 @@ int main(int argc,char**argv){
  if(argc>1 && strcmp(argv[1],"init-failure")==0){fail_init=1;assert(!telemetry_tlsf_malloc(32));assert(g_telemetry_tlsf_init_failed);assert(!g_telemetry_tlsf_active);assert(mock_irq==0);return 0;}
  void *first=telemetry_tlsf_malloc(0);assert(first&&g_telemetry_tlsf_active);telemetry_tlsf_free(first);
  assert(!telemetry_tlsf_malloc(SIZE_MAX));
+ if(argc>1 && strcmp(argv[1],"captured-rf-control")==0){
+  // bay-1792367136419247305: all ten/19 ordinary free blocks were <=120 B.
+  // The live fallback requests below charged5120 B for3776 B of objects.
+  void *held[1024]={0};unsigned count=0;
+  while(count<1024&&(held[count]=ordinary_only(112)))count++;
+  assert(count>20 && count<1024 && !tlsf_can_memalign(allocator,tlsf_align_size(),128));
+  const size_t requests[]={112,112,112,112,112,112,392,140,2572};
+  void *reserved[sizeof(requests)/sizeof(requests[0])];
+  for(unsigned i=0;i<sizeof(requests)/sizeof(requests[0]);i++){
+   reserved[i]=large_slot_allocate(requests[i]);assert(reserved[i]);
+   live_allocations++;g_telemetry_tlsf_live_bytes+=reserve_lengths[large_slot_index(reserved[i])]*RESERVE_BLOCK_BYTES;
+   memset(reserved[i],i+1,requests[i]);
+  }
+  for(unsigned i=0;i<6;i++){telemetry_tlsf_free(held[i*2]);held[i*2]=0;}
+  assert(tlsf_free_size(allocator)>=600 && !tlsf_can_memalign(allocator,tlsf_align_size(),128));
+  const uint64_t before=reserve_used;const uint32_t live=g_telemetry_tlsf_live_bytes;
+  // Preserve the exact2177-byte working estimate,1024-byte contiguous floor
+  // and512-byte control reserve. Admission must not alter live allocation state.
+  assert(telemetry_tlsf_admit_small_protected(2177,75));
+  assert(reserve_used==before && g_telemetry_tlsf_live_bytes==live);
+  void *decode=telemetry_tlsf_malloc(1024),*pieces[10];assert(decode);
+  for(unsigned i=0;i<10;i++){pieces[i]=telemetry_tlsf_malloc(i<9?128:1);assert(pieces[i]);}
+  assert(tlsf_free_size(allocator)+RESERVE_BLOCK_COUNT*RESERVE_BLOCK_BYTES-reserve_live_bytes>=512);
+  for(unsigned i=0;i<10;i++)telemetry_tlsf_free(pieces[i]);telemetry_tlsf_free(decode);
+  for(unsigned i=0;i<sizeof(requests)/sizeof(requests[0]);i++){
+   for(unsigned j=0;j<requests[i];j++)assert(((unsigned char*)reserved[i])[j]==i+1);
+   telemetry_tlsf_free(reserved[i]);
+  }
+  for(unsigned i=0;i<count;i++)telemetry_tlsf_free(held[i]);
+  assert(!g_telemetry_tlsf_live_bytes && !reserve_used && !reserve_live_bytes);
+  return 0;
+ }
  if(argc>1 && strcmp(argv[1],"protected-control")==0){
   void *held[512];unsigned count=0;
   while(telemetry_tlsf_admit(2201,83)){
@@ -105,7 +137,7 @@ int main(int argc,char**argv){
   // The ordinary fragmented heap cannot satisfy even the captured 676-byte request.
   void *ordinary=tlsf_memalign(allocator,8,676);assert(!ordinary);
   // Discovery must use fragmented small blocks plus its large fallback buffer.
-  const uint32_t before_bitmap=reserve_used, before_live=g_telemetry_tlsf_live_bytes;
+  const uint64_t before_bitmap=reserve_used; const uint32_t before_live=g_telemetry_tlsf_live_bytes;
   assert(telemetry_tlsf_admit(8192,2048));
   assert(reserve_used==before_bitmap&&g_telemetry_tlsf_live_bytes==before_live);
   assert(telemetry_tlsf_admit(4096,2048));
@@ -131,7 +163,7 @@ int main(int argc,char**argv){
   for(unsigned j=0;j<4096;j++)assert(((unsigned char*)nested)[j]==0x7c);
   telemetry_tlsf_free(decode);telemetry_tlsf_free(nested);
   void *whole=telemetry_tlsf_malloc(8192);
-  assert(whole&&large_slot_index(whole)==0&&reserve_lengths[0]==32);
+  assert(whole&&large_slot_index(whole)==0&&reserve_lengths[0]==RESERVE_BLOCK_COUNT);
   memset(whole,0x3e,8192);telemetry_tlsf_free(whole);
   assert(!reserve_used&&!reserve_live_bytes);
   for(unsigned i=0;i<count;i++){
@@ -193,3 +225,4 @@ int main(int argc,char**argv){
             subprocess.run([exe,'init-failure'],check=True)
             subprocess.run([exe,'fragmentation'],check=True)
             subprocess.run([exe,'protected-control'],check=True)
+            subprocess.run([exe,'captured-rf-control'],check=True)

@@ -45,11 +45,6 @@ class SedsnetMemoryTests(unittest.TestCase):
             can_bus,
         )
 
-    def test_pending_can_retry_dequeues_each_packet_exactly_once(self):
-        source = (ROOT / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
-        retry = source.split("void telemetry_retry_pending_can_commands(void)", 1)[1]
-        retry = retry.split("static bool telemetry_unix_ms_to_utc", 1)[0]
-        self.assertEqual(retry.count("g_pending_can_count--;"), 1)
 
     def test_threadx_byte_pool_increase_matches_cubemx(self):
         config = (ROOT / "AZURE_RTOS" / "App" / "app_azure_rtos_config.h").read_text(
@@ -230,8 +225,8 @@ class SedsnetMemoryTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("#define RF_SEDSNET_QUEUE_BUDGET 9984U", telemetry)
-        self.assertIn("#define TELEMETRY_PENDING_CAN_DEPTH 3U", telemetry)
-        self.assertIn("#define TELEMETRY_PENDING_CAN_MAX_LEN 128U", telemetry)
+        self.assertNotIn("TELEMETRY_PENDING_CAN_DEPTH", telemetry)
+        self.assertIn("CAN_TX_MAX_PACKET 128U", (ROOT / "Core/Src/can_tx_queue.c").read_text())
         init = radio.split("UINT radio_uart_init_tx_queue", 1)[1]
         init = init.split("/* Arm RX-to-idle", 1)[0]
         self.assertNotIn("tx_byte_allocate", init)
@@ -361,9 +356,9 @@ class SedsnetMemoryTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("TELEMETRY_ROUTER_RETRY_MS", source)
-        self.assertIn("init_now_ms < g_router_retry_after_ms", source)
+        self.assertIn("(int32_t)((uint32_t)init_now_ms - g_router_retry_after_ms) < 0", source)
         self.assertGreaterEqual(
-            source.count("g_router_retry_after_ms = init_now_ms +"), 3
+            source.count("g_router_retry_after_ms = (uint32_t)(init_now_ms +"), 3
         )
 
     def test_receive_callbacks_dispatch_without_a_scheduler_queue(self):

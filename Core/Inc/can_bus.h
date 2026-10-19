@@ -27,9 +27,8 @@ void can_bus_init(FDCAN_HandleTypeDef *hfdcan);
  */
 HAL_StatusTypeDef can_bus_send_bytes(const uint8_t *bytes, size_t len, uint32_t std_id);
 
-/*
- * Send arbitrarily large buffer via CAN FD fragmentation.
- */
+/* Own a complete 1..128-byte side frame. HAL_OK means retained/queued;
+ * wire completion and protocol acknowledgement are asynchronous. */
 HAL_StatusTypeDef can_bus_send_large(const uint8_t *bytes, size_t len, uint32_t std_id);
 
 /*

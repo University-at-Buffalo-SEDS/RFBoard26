@@ -12,7 +12,7 @@ import time
 SIMULATOR_REPOSITORY = (
     "https://github.com/University-at-Buffalo-SEDS/FirmwareSimulator.git"
 )
-SIMULATOR_INTERFACE_VERSION = "0.4.13"
+SIMULATOR_INTERFACE_VERSION = "0.4.14"
 FIRMWARE_BRANCH = "migration/sedlaunch-sedsnet-mainline"
 FIRMWARE_ORGANIZATION = "University-at-Buffalo-SEDS"
 SIMULATOR_DOCKER_PLATFORM = os.environ.get(
@@ -184,7 +184,7 @@ def _build_simulator_image(ui, docker: str, source: Path, image: str) -> None:
 def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str) -> str:
     requested = os.environ.get(
         "SEDS_FIRMWARE_SIM_IMAGE",
-        "ghcr.io/university-at-buffalo-seds/firmwaresimulator:v0.4.13",
+        "ghcr.io/university-at-buffalo-seds/firmwaresimulator:v0.4.14",
     )
     local = f"seds-firmware-simulator:local-v{SIMULATOR_INTERFACE_VERSION}"
     configured_source = os.environ.get("SEDS_FIRMWARE_SIM_SOURCE")
@@ -231,7 +231,7 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str
         try:
             subprocess.run(
                 [
-                    git, "clone", "--depth", "1", "--branch", "v0.4.13",
+                    git, "clone", "--depth", "1", "--branch", "v0.4.14",
                     SIMULATOR_REPOSITORY, str(source),
                 ],
                 check=True,
@@ -342,6 +342,11 @@ def run_unacknowledged_can_simulation(
     # not retain an unbounded instruction trace in the simulator process.
     layout["execution"]["trace"] = False
     for probe in layout["execution"]["memory_probes"]:
+        if probe.get("name") == "can_tx_expired":
+            # Explicitly disconnected CAN may shed accepted work by deadline.
+            # Keep queue bounds and fatal-fault checks; linked tests still
+            # require zero expiration with a healthy physical path.
+            probe.pop("maximum", None)
         if probe.get("name") == "fdcan_tx_fail":
             probe.pop("maximum", None)
             probe.pop("minimum", None)
@@ -440,6 +445,60 @@ def network_firmware_build_command(root: Path, repository: str, release: bool) -
         # Qualification uses the deployed Pico1M pair, not the RFD radio baud.
         command += ["--pico-baud", str(simulated_pico_uart_baud())]
     return command
+
+
+def scope_can_ack_fault_expiry(topology: dict, layouts: dict) -> None:
+    """Keep zero expiry on connected intervals; account for injected ACK loss.
+
+    Events run after N completed samples. Off after3/on after4 affects sample3;
+    sample4 is the first recovery/drain observation. Every later interval must
+    have zero new expiry, and each subsequent boot must start at zero.
+    """
+    events = topology.get("can_ack_events", [])
+    if not events:
+        return
+    count = topology["sample_count"]
+    faults = {}
+    active = {}
+    for event in sorted(events, key=lambda event: event["after_sample"]):
+        key = (event["node"], event["peripheral"])
+        sample = event["after_sample"]
+        if not 0 < sample < count:
+            raise ValueError("CAN ACK fault sample is outside the observed run")
+        if not event["acknowledged"]:
+            if key in active:
+                raise ValueError("CAN ACK fault disabled twice without recovery")
+            active[key] = sample
+        else:
+            start = active.pop(key, None)
+            if start is None or start >= sample:
+                raise ValueError("CAN ACK recovery has no preceding outage")
+            faults.setdefault(key[0], set()).update(range(start, sample + 1))
+    if active:
+        raise ValueError("Linked CAN ACK fault must include recovery")
+    # Validate every target before changing any layout or assertion.
+    for node in faults:
+        probes = layouts[node]["execution"]["memory_probes"]
+        probe = next((p for p in probes if p["name"] == "can_tx_expired"), None)
+        if probe is None:
+            raise ValueError(f"CAN expiry probe missing on ACK-fault target {node}")
+        if probe.get("maximum") != 0:
+            raise ValueError("Linked CAN expiry probe must have its normal zero bound")
+    assertions = topology.setdefault("assertions", [])
+    for node, allowed in faults.items():
+        probes = layouts[node]["execution"]["memory_probes"]
+        next(p for p in probes if p["name"] == "can_tx_expired").pop("maximum")
+        boots = {0, *(r["after_sample"] for r in topology.get("reboots", []) if r["node"] == node)}
+        for sample in range(count):
+            if sample in allowed:
+                continue
+            check = dict(name=f"{node} no CAN expiry outside injected ACK loss at sample {sample}",
+                         node=node, probe="can_tx_expired")
+            if sample in boots:
+                check.update(sample=sample, maximum=0)
+            else:
+                check.update(from_sample=sample-1, to_sample=sample, maximum_gain=0)
+            assertions.append(check)
 
 
 def run_network_simulation(
@@ -989,6 +1048,8 @@ def run_network_simulation(
              "contains": "full-bay DAQ raw loadcell 250 Hz stream reached GroundStation"},
         ],
     }
+
+    scope_can_ack_fault_expiry(topology, layouts)
 
     if not perform_reboots:
         # The 16-second gate covers boot and connected routing. Retained-flash
