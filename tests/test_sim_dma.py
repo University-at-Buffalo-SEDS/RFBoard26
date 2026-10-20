@@ -10,7 +10,7 @@ class RadioDmaParityTests(unittest.TestCase):
     def test_real_dma_start_and_hal_backpressure_in_both_builds(self):
         source = (ROOT / 'Core/Src/radio.c').read_text()
         start = source.index('HAL_StatusTypeDef radio_uart_start_rx(void) {')
-        end = source.index('\nHAL_StatusTypeDef radio_uart_send_bytes', start)
+        end = source.index('\n}', start) + len('\n}')
         code = r'''
 #include <stdint.h>
 #include <stddef.h>

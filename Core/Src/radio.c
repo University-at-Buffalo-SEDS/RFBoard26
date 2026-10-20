@@ -189,6 +189,10 @@ static volatile uint32_t g_rx_bad_len = 0;
 static volatile uint32_t g_rx_irq_events = 0;
 static volatile uint32_t g_rx_errors = 0;
 static volatile uint32_t g_rx_restart_errors = 0;
+static volatile uint8_t g_rx_restart_pending = 0U;
+static uint8_t g_rx_recovery_waiting = 0U;
+static uint32_t g_rx_recovery_due_ms = 0U;
+volatile uint32_t g_radio_rx_recoveries = 0U;
 volatile uint32_t g_radio_rx_service_passes __attribute__((used, externally_visible)) = 0U;
 volatile uint32_t g_radio_rx_service_budget_hits __attribute__((used, externally_visible)) = 0U;
 static volatile uint16_t g_last_rx_len = 0U;
@@ -992,6 +996,40 @@ HAL_StatusTypeDef radio_uart_start_rx(void) {
 
 }
 
+/* A failed ISR/startup rearm must not leave a running board deaf forever.
+ * Retry in thread context, without aborting the independent TX DMA channel.
+ * A quiet but correctly armed receiver is healthy and is never restarted. */
+static void radio_uart_recover_rx_if_needed(void)
+{
+  if (!g_huart) return;
+  if (g_tx_dma_busy && !g_tx_dma_preserves_rx) return;
+  if (!g_rx_restart_pending && g_huart->RxState == HAL_UART_STATE_BUSY_RX &&
+      (g_huart->Instance->CR3 & USART_CR3_DMAR) != 0U) return;
+  const uint32_t now = radio_now_ms();
+  if (g_rx_recovery_waiting && (int32_t)(now - g_rx_recovery_due_ms) < 0) return;
+  g_rx_recovery_due_ms = now + 10U;
+  g_rx_recovery_waiting = 1U;
+  /* Clear before attempting recovery: a new error during rearm must retain
+   * its own pending flag, even if this attempt reports HAL_OK. */
+  g_rx_restart_pending = 0U;
+  HAL_StatusTypeDef aborted = HAL_UART_AbortReceive(g_huart);
+  /* HAL skips DMA abort when DMAR is already clear. A prior error can leave
+   * that request bit off while the RX DMA handle/channel is still busy.
+   * Explicitly release that RX handle; TX uses a different DMA channel. */
+  if (g_huart->hdmarx &&
+      HAL_DMA_GetState(g_huart->hdmarx) == HAL_DMA_STATE_BUSY) {
+    const HAL_StatusTypeDef dma_status = HAL_DMA_Abort(g_huart->hdmarx);
+    if (dma_status != HAL_OK) aborted = dma_status;
+  }
+  if (aborted != HAL_OK || radio_uart_start_rx() != HAL_OK) {
+    g_rx_restart_pending = 1U;
+    ++g_rx_restart_errors;
+    return;
+  }
+  g_rx_recovery_waiting = 0U;
+  ++g_radio_rx_recoveries;
+}
+
 HAL_StatusTypeDef radio_uart_send_bytes(const uint8_t *bytes, size_t len) {
   if (!g_huart) return HAL_ERROR;
   if (!bytes || len == 0U || len > RADIO_UART_MAX_PAYLOAD_SIZE) return HAL_ERROR;
@@ -1422,6 +1460,7 @@ void radio_uart_process_rx(void)
 {
   uint32_t processed = 0U;
   radio_uart_sample_rx_pin();
+  radio_uart_recover_rx_if_needed();
 
 
 
@@ -1481,17 +1520,11 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
-  if (!g_huart) return;
-  if (huart->Instance != g_huart->Instance) return;
-
-  g_rx_errors++;
-  /* RX noise/overrun is independent of full-duplex TX. Aborting an active TX
-   * here used to discard a compact transport frame and poison the return
-   * stream. The service-loop watchdog owns TX recovery if completion stalls. */
-  (void)HAL_UART_AbortReceive(huart);
-  if (radio_uart_start_rx() != HAL_OK) {
-    g_rx_restart_errors++;
-  }
+  if (!g_huart || huart->Instance != g_huart->Instance) return;
+  ++g_rx_errors;
+  /* HAL has completed its error callback before the service loop rearms RX.
+   * A one-shot rearm here can fail while the UART/DMA lock is still busy. */
+  g_rx_restart_pending = 1U;
 }
 
 uint32_t board_health_uart_rx_drops(void) { return g_rx_isr_drops; }
