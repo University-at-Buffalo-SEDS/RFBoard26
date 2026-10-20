@@ -34,3 +34,30 @@ UART configuration remains 115200 baud.
 Build/flash with:
 
     python3 build.py --build-subdir RFReceiveRecovery flash --release --allocator tlsf --packet-store heap --method dfu
+
+## Extended and matching-main qualification
+
+The original receive-recovery image also completed 600,000 ms of virtual ARM
+execution on Jupiter. Network-loop completions advanced from 29,384 to 598,912,
+telemetry stack remaining stayed at 8,104 bytes, and all eight injected recovery
+checks passed afterward. No watchdog reset was observed. This was a standalone
+RF run; the simulator's traffic-pool counters are behavioral and do not establish
+over-air throughput or a full mixed-board network soak.
+
+A second candidate, built in `RFDeliveryMain20261020`, uses SEDSnet main
+`13c74abf7f8194299cb60b4b31f994b2eaadd5ef`. It includes the reliable-delivery
+history fix and borrowed embedded metadata. Actual ARM and factory boot passed,
+as did all eight injected receive-recovery checks (`renode-1ahF9g.log`).
+Observed stack remaining reached 8,228 bytes; static RAM use is 114,304 bytes.
+Factory SHA256:
+`cdf89b73b1d4b895c05a4240568b1c798c3447a1b6b380a705cd457cc0d9d42b`.
+
+This candidate still requires physical radio validation. GroundStation has
+observed transport CRC failures and users report delayed controls; the checks
+above do not demonstrate that those link symptoms are resolved. Read the actual
+modem firmware and settings before applying register changes, because async and
+peer-to-peer RFD firmware use different register maps.
+
+Build/flash the matching-main candidate with:
+
+    python3 build.py --build-subdir RFDeliveryMain20261020 flash --release --allocator tlsf --packet-store heap --method dfu
