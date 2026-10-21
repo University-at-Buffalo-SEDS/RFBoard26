@@ -12,7 +12,7 @@ import time
 SIMULATOR_REPOSITORY = (
     "https://github.com/University-at-Buffalo-SEDS/FirmwareSimulator.git"
 )
-SIMULATOR_INTERFACE_VERSION = "0.4.14"
+SIMULATOR_INTERFACE_VERSION = "0.4.15"
 FIRMWARE_BRANCH = "migration/sedlaunch-sedsnet-mainline"
 FIRMWARE_ORGANIZATION = "University-at-Buffalo-SEDS"
 SIMULATOR_DOCKER_PLATFORM = os.environ.get(
@@ -184,7 +184,7 @@ def _build_simulator_image(ui, docker: str, source: Path, image: str) -> None:
 def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str) -> str:
     requested = os.environ.get(
         "SEDS_FIRMWARE_SIM_IMAGE",
-        "ghcr.io/university-at-buffalo-seds/firmwaresimulator:v0.4.14",
+        "ghcr.io/university-at-buffalo-seds/firmwaresimulator:v0.4.15",
     )
     local = f"seds-firmware-simulator:local-v{SIMULATOR_INTERFACE_VERSION}"
     configured_source = os.environ.get("SEDS_FIRMWARE_SIM_SOURCE")
@@ -231,7 +231,7 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str
         try:
             subprocess.run(
                 [
-                    git, "clone", "--depth", "1", "--branch", "v0.4.14",
+                    git, "clone", "--depth", "1", "--branch", "v0.4.15",
                     SIMULATOR_REPOSITORY, str(source),
                 ],
                 check=True,
