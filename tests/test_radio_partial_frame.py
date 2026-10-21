@@ -22,7 +22,7 @@ int main(void){
  assert(delivered==1&&g_rx_bad_len==1);
 }
 """
-        stub = f'#include "{ROOT / "Core/Inc/recovery_mesh.h"}"\n' + stub
+        stub = f'#include "{ROOT / "Core/Inc/recovery_mesh.h"}"\n#include "{ROOT / "tests/radio_crc_reference.h"}"\n' + stub
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp);(p/'test.c').write_text(stub+s[a:b]+main)
             subprocess.run(['cc','-std=c11','-fsanitize=address,undefined',str(p/'test.c'),'-o',str(p/'test')],check=True)

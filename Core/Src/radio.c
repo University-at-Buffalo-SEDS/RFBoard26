@@ -1,4 +1,5 @@
 #include "radio.h"
+#include "launchcore/image.h"
 #include "uart_dma_rx.h"
 #include "recovery_mesh.h"
 #include "main.h"
@@ -186,6 +187,7 @@ static volatile uint32_t g_rx_isr_drops = 0;
 volatile uint32_t g_radio_rx_frames_ok = 0;
 static volatile uint32_t g_rx_sync_loss = 0;
 static volatile uint32_t g_rx_bad_len = 0;
+static volatile uint32_t g_rx_crc_errors = 0;
 static volatile uint32_t g_rx_irq_events = 0;
 static volatile uint32_t g_rx_errors = 0;
 static volatile uint32_t g_rx_restart_errors = 0;
@@ -1369,6 +1371,24 @@ static void radio_process_buffered_frames(void)
         continue;
       }
       return;
+    }
+
+    const uint8_t *body = &g_frame_buf[RADIO_UART_FRAME_HEADER_SIZE];
+    if (!is_command_frame && !is_ascii_frame && payload_len >= 3U &&
+        memcmp(body, "SDT", 3U) == 0) {
+      uint32_t expected = 0U;
+      if (payload_len >= 8U) {
+        const uint8_t *crc = &body[payload_len - 4U];
+        expected = (uint32_t)crc[0] | ((uint32_t)crc[1] << 8U) |
+                   ((uint32_t)crc[2] << 16U) | ((uint32_t)crc[3] << 24U);
+      }
+      if (payload_len < 8U || launchcore_crc32(body, payload_len - 4U) != expected) {
+        /* A truncated frame can absorb the next frame's sync. Check integrity
+         * before consuming the claimed length, then retain bytes for resync. */
+        ++g_rx_crc_errors;
+        radio_frame_buf_consume(1U);
+        continue;
+      }
     }
 
     g_current_rx_is_command_frame = is_command_frame;
