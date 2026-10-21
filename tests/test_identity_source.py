@@ -13,6 +13,7 @@ class IdentitySourceTests(unittest.TestCase):
             (source / "C-Headers").mkdir(parents=True)
             (source / "C-Headers/sedsnet.h").write_text(header)
             (source / "Cargo.toml").write_text(
+                '[dependencies]\ncrc32fast = { version = "1.5.2", default-features = false }\n'
                 '[features]\nembedded = ["compression", "timesync", "discovery", '
                 '"cryptography", "serde", "serde_json", "serde_json/alloc"]\n')
             result = subprocess.run(["cmake", f"-DSEDSNET_SOURCE_DIR={source}",

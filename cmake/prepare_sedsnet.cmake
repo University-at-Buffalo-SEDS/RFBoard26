@@ -43,6 +43,22 @@ endif()
 # crc32fast's default slicing-by-16 table consumes 16 KiB of flash. Use the
 # board-owned, wire-compatible bitwise implementation on constrained targets.
 file(TO_CMAKE_PATH "${SEDSNET_CRC32_DIR}" _crc32_path)
+
+# A patch is only a version candidate: Cargo can prefer a newer registry CRC
+# and silently bypass this board's small/hardware-backed implementation. Bind
+# the SDK's direct dependency to the board path while preserving its version
+# requirement. An incompatible SDK must fail rather than select another CRC.
+string(REGEX MATCH "crc32fast = \\{ version = \"[^\"]+\", default-features = false(, path = \"[^\"]+\")? \\}" _crc32_dependency "${_cargo}")
+if(NOT _crc32_dependency)
+    message(FATAL_ERROR "SEDSnet crc32fast dependency changed; review the embedded CRC preparation")
+endif()
+string(REGEX REPLACE ", path = \"[^\"]+\"" "" _crc32_direct "${_crc32_dependency}")
+string(REPLACE " }" ", path = \"${_crc32_path}\" }" _crc32_direct "${_crc32_direct}")
+string(REPLACE "${_crc32_dependency}" "${_crc32_direct}" _cargo "${_cargo}")
+# Repair an already prepared/moved checkout's old patch path as well.
+string(REGEX REPLACE "crc32fast = \\{ path = \"[^\"]+\" \\}"
+    "crc32fast = { path = \"${_crc32_path}\" }" _cargo "${_cargo}")
+file(WRITE "${_cargo_toml}" "${_cargo}")
 set(_crc32_patch
     "[patch.crates-io]\ncrc32fast = { path = \"${_crc32_path}\" }\n")
 string(FIND "${_cargo}" "[patch.crates-io]" _crc32_already_patched)
