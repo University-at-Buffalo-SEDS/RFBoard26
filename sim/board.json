@@ -173,6 +173,11 @@
       "name": "neo_m9n",
       "model": "neo_m9n",
       "bus": "spi1",
+      "position": {
+        "latitude": 31.758,
+        "longitude": -102.046,
+        "altitude_m": 890.016
+      },
       "failure_every": 997
     }
   ]
