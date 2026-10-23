@@ -22,15 +22,20 @@ volatile uint32_t g_flight_state_cache_errors __attribute__((used, externally_vi
 static bool g_restore_attempted;
 static bool g_persist_ready;
 static bool g_has_value;
+#ifdef TELEMETRY_ENABLED
 static bool g_network_value_seen;
 static uint32_t g_last_refresh_ms;
+#endif
 
+#ifdef TELEMETRY_ENABLED
 __attribute__((weak)) SedsResult
 flight_state_cache_apply_network_update(const SedsPacketView *packet)
 {
     (void)packet;
     return SEDS_OK;
 }
+
+#endif
 
 void flight_state_cache_restore(void)
 {
@@ -71,6 +76,7 @@ uint8_t flight_state_cache_value(void)
     return (uint8_t)g_flight_state_cache_value;
 }
 
+#ifdef TELEMETRY_ENABLED
 static SedsResult persist_update(const SedsPacketView *packet, void *user)
 {
     (void)user;
@@ -129,3 +135,5 @@ SedsResult flight_state_cache_poll(SedsRouter *router)
     g_last_refresh_ms = now_ms;
     return seds_router_request_managed_variable(router, SEDS_DT_FLIGHT_STATE);
 }
+
+#endif /* TELEMETRY_ENABLED */

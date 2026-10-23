@@ -1,3 +1,4 @@
+#ifdef TELEMETRY_ENABLED
 #pragma once
 #include "sedsnet_config.h"
 #include <stddef.h>
@@ -61,4 +62,6 @@ void die(const char *fmt, ...);
 
 #ifdef __cplusplus
 }
+#endif
+
 #endif

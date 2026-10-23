@@ -66,7 +66,11 @@
 #endif
 
 /* -- PRODUCTION MODE ------------------------------- */
+#ifdef TELEMETRY_ENABLED
 #define PRODUCTION_MODE ((!TELEMETRY_TEST_MODE) && (!GPS_TEST_MODE))
+#else
+#define PRODUCTION_MODE 0
+#endif
 
 
 /* -- External SPI handle --------------------------- */
@@ -126,6 +130,7 @@ static void neom9n_update_stack_profile(void)
     }
 }
 
+#if PRODUCTION_MODE
 static uint8_t gps_satellite_count_or_zero(const NEOM9N_t *packet) {
     if (packet == NULL || packet->last_satellite_update_tick == 0U) {
         return 0U;
@@ -138,6 +143,8 @@ static uint8_t gps_satellite_count_or_zero(const NEOM9N_t *packet) {
 
     return packet->num_satellites;
 }
+
+#endif
 
 static void gps_emit_satellite_count_if_due(const NEOM9N_t *packet,
                                             uint64_t now_ms,
@@ -215,6 +222,7 @@ static size_t gps_error_index(NEOM9N_status_t status) {
     }
 }
 
+#if PRODUCTION_MODE || GPS_TEST_MODE
 static const char *gps_error_text(NEOM9N_status_t status) {
     switch (status)
     {
@@ -228,6 +236,8 @@ static const char *gps_error_text(NEOM9N_status_t status) {
         return "GPS ERROR: Undefined";
     }
 }
+
+#endif
 
 static bool gps_recover_spi(NEOM9N_t *packet) {
     if (packet == NULL || packet->hspi == NULL) {
@@ -261,7 +271,9 @@ void neom9n_thread_entry(ULONG initial_input)
 
     /* RAM only config - Needs to be set each time but is safer */
     if (gps_config(&hspi1, 3000)) {
+#if PRODUCTION_MODE || GPS_TEST_MODE
         const char flashed_txt[] = "GPS configured: GGA+RMC enabled -> others disabled";
+#endif
         #if GPS_TEST_MODE
             printf("%s\r\n", flashed_txt);
         #endif
@@ -283,7 +295,9 @@ void neom9n_thread_entry(ULONG initial_input)
     gps_init(&gps_packet, &hspi1);
 
     // Binary buffers for telemetry
+#if PRODUCTION_MODE || GPS_TEST_MODE
     float gps_data_buffer[3]; // 3 floats (lat, lon, alt)
+#endif
 
     // GPS time in milliseconds since UNIX epoch
     uint64_t gps_epoch_ms = 0;
@@ -295,7 +309,9 @@ void neom9n_thread_entry(ULONG initial_input)
     bool gps_initial_link_warning_sent = false;
     bool gps_no_fix_warning_sent = false;
     uint64_t next_initial_link_warning_ms = tx_now_ms() + GPS_LINK_WARNING_INTERVAL_MS;
+#if defined(TELEMETRY_ENABLED) || GPS_TEST_MODE
     uint64_t next_gps_data_log_ms = 0ULL;
+#endif
     uint64_t next_gps_satellite_log_ms = 0ULL;
     uint64_t next_gps_error_log_ms[4] = {0ULL, 0ULL, 0ULL, 0ULL};
     uint64_t next_gps_spi_recover_ms = 0ULL;
@@ -320,6 +336,7 @@ void neom9n_thread_entry(ULONG initial_input)
             const int64_t measured_offset = (int64_t)gps_tod - (int64_t)local_tod;
             gps_offset_update_ms(measured_offset);
 
+#ifdef TELEMETRY_ENABLED
             // Feed the telemetry library's network clock directly from GPS epoch time.
             telemetry_set_unix_time_ms(gps_epoch_ms);
 
@@ -331,6 +348,7 @@ void neom9n_thread_entry(ULONG initial_input)
                 }
                 printf("GPS TEST MODE: emitted fake GPS data\r\n");
             }
+#endif
             tx_thread_sleep(50);
 
             continue;
@@ -386,8 +404,10 @@ void neom9n_thread_entry(ULONG initial_input)
                 }
 
                 /* Pack and send GPS position data (lat, lon, alt) */
+#if PRODUCTION_MODE || GPS_TEST_MODE
                 pack_gps_data(&gps_packet, gps_data_buffer);
                 const bool gps_data_log_due = (local_ms >= next_gps_data_log_ms);
+#endif
 #if PRODUCTION_MODE
                 if (gps_data_log_due) {
                     if (log_telemetry_asynchronous(SEDS_DT_GPS_DATA,
@@ -501,7 +521,9 @@ void neom9n_thread_entry(ULONG initial_input)
                 }
             }
             else if (consecutive_errors >= GPS_CONSECUTIVE_ERROR_THRESHOLD) {
+#if PRODUCTION_MODE || GPS_TEST_MODE
                 const char *error_type = gps_error_text(status);
+#endif
                 const size_t error_index = gps_error_index(status);
 
                 if (now_ms >= next_gps_error_log_ms[error_index]) {

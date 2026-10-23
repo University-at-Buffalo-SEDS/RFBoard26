@@ -21,8 +21,10 @@ volatile uint32_t g_av_bay_underglow_persist_errors = 0U;
 static bool g_persist_ready = false;
 static bool g_persist_has_value = false;
 static bool g_restore_attempted = false;
+#ifdef TELEMETRY_ENABLED
 static bool g_network_value_seen = false;
 static uint32_t g_last_refresh_ms = 0U;
+#endif
 
 static void drive_underglow(bool enabled)
 {
@@ -62,6 +64,7 @@ void av_bay_underglow_restore(void)
     drive_underglow(enabled != 0U);
 }
 
+#ifdef TELEMETRY_ENABLED
 static SedsResult apply_underglow(const SedsPacketView *packet, void *user)
 {
     (void)user;
@@ -124,3 +127,5 @@ SedsResult av_bay_underglow_poll(SedsRouter *router)
     return seds_router_request_managed_variable(
         router, SEDS_DT_AV_BAY_UNDERGLOW);
 }
+
+#endif

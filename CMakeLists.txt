@@ -26,6 +26,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
 # Core project settings
 project(${CMAKE_PROJECT_NAME})
+option(ENABLE_TELEMETRY "Enable the telemetry subsystem" ON)
 message("Build type: " ${CMAKE_BUILD_TYPE})
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   # Global LTO (Release)
@@ -83,9 +84,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/can_bus.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/can_tx_queue.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/radio.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_hooks.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_thread.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry.c
+    "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_hooks.c>"
+    "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_thread.c>"
+    "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry.c>"
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_rate.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/av_bay_underglow.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/flight_state_cache.c
@@ -163,7 +164,9 @@ set(SEDSNET_ENV_RELIABLE_MAX_RETRIES "24" CACHE STRING
     "Allow bounded radio startup receipt latency" FORCE)
 set(SEDSNET_ENV_PAYLOAD_COMPRESS_THRESHOLD "30" CACHE STRING "" FORCE)
 set(SEDSNET_TARGET "thumbv7em-none-eabihf" CACHE STRING "" FORCE)
-include(cmake/sedsnet_fetch.cmake)
+if(ENABLE_TELEMETRY)
+    include(cmake/sedsnet_fetch.cmake)
+endif()
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     RF_SEDSNET_MEMORY_POOL_SIZE=${RF_SEDSNET_MEMORY_POOL_SIZE}
     RF_SEDSNET_LARGE_POOL_SIZE=${RF_SEDSNET_LARGE_POOL_SIZE}
@@ -176,7 +179,6 @@ set(TELEMETRY_TIMESYNC_SOURCE_TIMEOUT_MS "5000" CACHE STRING "Time sync source t
 set(TELEMETRY_TIMESYNC_ANNOUNCE_INTERVAL_MS "2000" CACHE STRING "Time sync announce interval in milliseconds." FORCE)
 set(TELEMETRY_TIMESYNC_REQUEST_INTERVAL_MS "2000" CACHE STRING "Time sync request interval in milliseconds." FORCE)
 # Option defaults
-option(ENABLE_TELEMETRY "Enable the telemetry subsystem" ON)
 option(ENABLE_COMMAND_TRACE_PRINTS "Print ground-station command RX and flight-computer CAN TX events" OFF)
 set(ENABLE_COMMAND_TRACE_PRINTS OFF CACHE BOOL "Print ground-station command RX and flight-computer CAN TX events" FORCE)
 
@@ -221,5 +223,5 @@ include(cmake/launchcore_stm32.cmake)
 # Board-owned progress watchdog; deliberately independent of SEDSnet.
 option(ENABLE_BOARD_WATCHDOG "Enable independent hardware watchdog with task progress gating" ON)
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/Core/Src/board_watchdog.c)
-target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/Core/Src/board_health.c)
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_SOURCE_DIR}/Core/Src/board_health.c>")
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BOARD_WATCHDOG_ENABLE=$<BOOL:${ENABLE_BOARD_WATCHDOG}>)

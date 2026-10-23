@@ -351,6 +351,7 @@ static uint32_t radio_uart_flow_id_from_payload(const uint8_t *payload, size_t l
 }
 
 static uint8_t radio_uart_user_priority(uint64_t data_type) {
+#ifdef TELEMETRY_ENABLED
   SedsDataTypeInfo info = {0};
 
   if (data_type > UINT32_MAX ||
@@ -362,6 +363,10 @@ static uint8_t radio_uart_user_priority(uint64_t data_type) {
   return (info.priority > RADIO_UART_PRIORITY_USER_MAX)
              ? RADIO_UART_PRIORITY_USER_MAX
              : info.priority;
+#else
+  (void)data_type;
+  return 0U; /* No runtime network schema in a telemetry-disabled build. */
+#endif
 }
 
 static uint8_t radio_uart_packet_priority(uint64_t data_type) {

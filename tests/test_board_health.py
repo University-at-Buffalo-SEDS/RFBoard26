@@ -84,5 +84,5 @@ int main(void){
   for byte in b'BOARD_HEALTH':hashed=((hashed ^ byte)*0x01000193)&0xffffffff
   expected=0x10000 | (hashed & 0x0fffffff)
   header=(ROOT/'Core/Inc/sedsnet_config.h').read_text()
-  actual=int(re.search(r'#define SEDS_DT_BOARD_HEALTH \(\(SedsDataType\)(\d+)U\)',header)[1])
+  actual=int(re.search(r'#define SEDS_DT_BOARD_HEALTH \(\((?:SedsDataType|uint32_t)\)(\d+)U\)',header)[1])
   self.assertEqual(actual,expected)

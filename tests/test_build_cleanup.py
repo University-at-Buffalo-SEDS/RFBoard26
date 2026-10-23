@@ -7,7 +7,7 @@ import unittest
 from unittest import mock
 
 import build
-from build_cleanup import clean_generated
+from build import clean_generated
 
 
 class BuildCleanupTests(unittest.TestCase):

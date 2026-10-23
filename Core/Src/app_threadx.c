@@ -59,10 +59,12 @@ static void busy_delay(volatile uint32_t n)
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
+#ifdef TELEMETRY_ENABLED
 static TX_BYTE_POOL sedsnet_byte_pool;
 static TX_BYTE_POOL sedsnet_large_byte_pool;
 static TX_BYTE_POOL sedsnet_emergency_byte_pool;
 static UCHAR sedsnet_emergency_pool_memory[RF_SEDSNET_EMERGENCY_POOL_SIZE];
+#endif
 volatile uint32_t g_thread_stack_error_count = 0U;
 volatile uint32_t g_thread_stack_error_thread __attribute__((used, externally_visible)) = 0U;
 volatile uint32_t g_thread_stack_error_start __attribute__((used, externally_visible)) = 0U;
@@ -106,6 +108,7 @@ UINT App_ThreadX_Init(VOID *memory_ptr)
   /* USER CODE END App_ThreadX_MEM_POOL */
 
   /* USER CODE BEGIN App_ThreadX_Init */
+#ifdef TELEMETRY_ENABLED
   VOID *sedsnet_pool_memory = TX_NULL;
   const ULONG primary_pool_size =
       RF_SEDSNET_MEMORY_POOL_SIZE - RF_SEDSNET_EMERGENCY_POOL_SIZE;
@@ -128,14 +131,17 @@ UINT App_ThreadX_Init(VOID *memory_ptr)
   telemetry_set_emergency_byte_pool(&sedsnet_emergency_byte_pool);
   /* Initialize telemetry lock used by Rust (telemetry_lock/telemetry_unlock). */
   telemetry_init_lock();
+#endif
   (void)tx_thread_stack_error_notify(thread_stack_error_handler);
 
+#ifdef TELEMETRY_ENABLED
   ret = create_telemetry_thread(byte_pool);
   if (ret != TX_SUCCESS)
   {
     Error_Handler();
   }
-  
+
+#endif
   ret = create_neom9n_thread(byte_pool);
   if (ret != TX_SUCCESS)
   {
