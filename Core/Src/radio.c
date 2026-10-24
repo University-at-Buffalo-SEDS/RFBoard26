@@ -87,6 +87,11 @@ _Static_assert(RADIO_UART_TX_QUEUE_SLOTS > RADIO_UART_TX_CONTROL_RESERVE_SLOTS,
 #define RFBOARD_RADIO_LISTEN_ONLY 0
 #endif
 
+// RFD firmware arbitrates its own radio. LoRa airtime/AUX gating is opt-in.
+#ifndef RFBOARD_LORA_SCHEDULER
+#define RFBOARD_LORA_SCHEDULER 0
+#endif
+
 #ifndef RADIO_AIR_BIT_RATE_BPS
 #define RADIO_AIR_BIT_RATE_BPS 64000U
 #endif
@@ -95,7 +100,7 @@ _Static_assert(RADIO_UART_TX_QUEUE_SLOTS > RADIO_UART_TX_CONTROL_RESERVE_SLOTS,
 #define RADIO_AIR_SHARE_PERCENT 40U
 #endif
 
-#if RADIO_AIR_SHARE_PERCENT < 1 || RADIO_AIR_SHARE_PERCENT > 100
+#if RFBOARD_LORA_SCHEDULER && (RADIO_AIR_SHARE_PERCENT < 1 || RADIO_AIR_SHARE_PERCENT > 100)
 #error "Radio air share must be between 1 and 100 percent"
 #endif
 
@@ -107,14 +112,14 @@ _Static_assert(RADIO_UART_TX_QUEUE_SLOTS > RADIO_UART_TX_CONTROL_RESERVE_SLOTS,
 #define RADIO_TX_COOLDOWN_MS 0U
 #endif
 
-#if defined(RADIO_E22_M0_GPIO_Port) && defined(RADIO_E22_M0_Pin) && \
+#if RFBOARD_LORA_SCHEDULER && defined(RADIO_E22_M0_GPIO_Port) && defined(RADIO_E22_M0_Pin) && \
     defined(RADIO_E22_M1_GPIO_Port) && defined(RADIO_E22_M1_Pin)
 #define RADIO_E22_HAS_MODE_PINS 1
 #else
 #define RADIO_E22_HAS_MODE_PINS 0
 #endif
 
-#if defined(RADIO_E22_AUX_GPIO_Port) && defined(RADIO_E22_AUX_Pin)
+#if RFBOARD_LORA_SCHEDULER && defined(RADIO_E22_AUX_GPIO_Port) && defined(RADIO_E22_AUX_Pin)
 #define RADIO_E22_HAS_AUX_PIN 1
 #else
 #define RADIO_E22_HAS_AUX_PIN 0
@@ -544,6 +549,9 @@ static uint8_t radio_e22_aux_high(void)
 
 static uint8_t radio_e22_ready_for_uart(void)
 {
+#if !RFBOARD_LORA_SCHEDULER
+  return 1U;
+#else
   const uint32_t now_ms = HAL_GetTick();
 
   if ((uint32_t)(now_ms - g_e22_mode0_set_at_ms) < RADIO_E22_MODE_SETTLE_MS) {
@@ -557,6 +565,7 @@ static uint8_t radio_e22_ready_for_uart(void)
   }
 
   return 1U;
+#endif
 }
 
 static void radio_uart_remove_queue_index(uint32_t index) {
@@ -861,6 +870,10 @@ static uint32_t radio_now_ms(void)
 
 static uint32_t radio_uart_air_ms(uint16_t len)
 {
+#if !RFBOARD_LORA_SCHEDULER
+  (void)len;
+  return 0U;
+#else
   uint32_t air_bps = (uint32_t)(((uint64_t)RADIO_AIR_BIT_RATE_BPS *
                                RADIO_AIR_SHARE_PERCENT) / 100U);
   if (air_bps == 0U) {
@@ -869,19 +882,28 @@ static uint32_t radio_uart_air_ms(uint16_t len)
   const uint64_t bytes = (uint64_t)len + (uint64_t)RADIO_AIR_FRAME_OVERHEAD_BYTES;
   return (uint32_t)(((bytes * 8ULL * 1000ULL) + (uint64_t)air_bps - 1ULL) /
                     (uint64_t)air_bps);
+#endif
 }
 
 static void radio_uart_mark_tx_quiet(uint16_t len)
 {
+#if !RFBOARD_LORA_SCHEDULER
+  (void)len;
+  g_tx_quiet_until_ms = 0U;
+  g_tx_air_budget_active = 0U;
+#else
   const uint32_t quiet_ms = radio_uart_air_ms(len) + RADIO_TX_COOLDOWN_MS;
   g_tx_quiet_until_ms = radio_now_ms() + quiet_ms;
   g_tx_air_budget_active = 1U;
+#endif
 }
 
 uint8_t radio_uart_air_busy(void)
 {
+#if RFBOARD_LORA_SCHEDULER
   if (g_tx_air_budget_active &&
       (int32_t)(radio_now_ms() - g_tx_quiet_until_ms) < 0) return 1U;
+#endif
   g_tx_air_budget_active = 0U;
   return 0U;
 }
@@ -1192,10 +1214,8 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
     return 0U;
   }
 
-  /* DMA completion only drains the UART, not the modem's over-air FIFO.
-   * Reserve 40% of the shared 64 kbit/s link per peer, leaving room for radio
-   * overhead/retries. Return immediately while waiting so CAN and RX progress.
-   * Priority is chosen after this gate, so a new command can precede telemetry. */
+  /* RFD owns channel arbitration: only UART DMA readiness gates its TX.
+   * The legacy LoRa build additionally enforces its airtime quiet period. */
   if (radio_uart_air_busy()) return 0U;
   while (sent < RADIO_UART_TX_FRAMES_PER_SERVICE &&
          radio_uart_dequeue_frame_with_budget(&item, budget_ms)) {

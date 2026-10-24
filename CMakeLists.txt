@@ -27,6 +27,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 # Core project settings
 project(${CMAKE_PROJECT_NAME})
 option(ENABLE_TELEMETRY "Enable the telemetry subsystem" ON)
+option(RFBOARD_LORA_SCHEDULER "Enable legacy LoRa airtime windows and AUX gating (off for RFD)" OFF)
 message("Build type: " ${CMAKE_BUILD_TYPE})
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   # Global LTO (Release)
@@ -48,6 +49,7 @@ add_executable(${CMAKE_PROJECT_NAME})
 include(cmake/packet_store.cmake)
 include(cmake/tlsf_allocator.cmake)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
+    RFBOARD_LORA_SCHEDULER=$<BOOL:${RFBOARD_LORA_SCHEDULER}>
     USER_VECT_TAB_ADDRESS VECT_TAB_OFFSET=0x00004200U)
 option(SEDS_FIRMWARE_SIM_TEST
     "Seed deterministic external time for linked firmware qualification" OFF)

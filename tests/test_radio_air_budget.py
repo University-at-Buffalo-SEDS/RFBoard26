@@ -7,11 +7,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 class RadioAirBudgetTests(unittest.TestCase):
-    def test_pacing_and_tick_wrap(self):
+    def test_legacy_lora_pacing_and_tick_wrap(self):
         source = (ROOT / "Core/Src/radio.c").read_text()
         funcs = source[source.index("static uint32_t radio_uart_air_ms(uint16_t len)\n{"):source.index("uint8_t radio_uart_tx_ready(")]
         preamble = """#include <stdint.h>
 #include <assert.h>
+#define RFBOARD_LORA_SCHEDULER 1
 #define RADIO_AIR_BIT_RATE_BPS 64000U
 #define RADIO_AIR_SHARE_PERCENT 40U
 #define RADIO_AIR_FRAME_OVERHEAD_BYTES 16U
