@@ -97,6 +97,7 @@ SECTIONS
   .rodata :
   {
     . = ALIGN(4);
+    KEEP(*(.rodata.telemetry_probes)) /* Read-only debugger probes under LTO/GC. */
     *(.rodata)         /* .rodata sections (constants, strings, etc.) */
     *(.rodata*)        /* .rodata* sections (constants, strings, etc.) */
     . = ALIGN(4);
