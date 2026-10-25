@@ -7,7 +7,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 class ModemSchedulingTests(unittest.TestCase):
-    def test_rfd_is_immediately_ready_and_lora_retains_its_gates(self):
+    def test_rfd_capacity_is_bounded_without_lora_aux_or_turn_gates(self):
         source = (ROOT / 'Core/Src/radio.c').read_text()
         ready_start = source.index('static uint8_t radio_e22_ready_for_uart(void)\n{')
         ready_end = source.index('\n}\n', ready_start) + 3
@@ -39,11 +39,16 @@ int main(void) {
   assert(radio_uart_air_busy()); clock_ms+=delay; assert(!radio_uart_air_busy());
 #else
   assert(radio_e22_ready_for_uart()); assert(!g_aux_busy_count && !aux_reads);
-  assert(radio_uart_air_ms(196)==0);
-  g_tx_quiet_until_ms=5000; g_tx_air_budget_active=1;
-  assert(!radio_uart_air_busy());
-  radio_uart_mark_tx_quiet(196); assert(!g_tx_quiet_until_ms);
-  assert(!g_tx_air_budget_active && !radio_uart_air_busy());
+  uint32_t delay=radio_uart_air_ms(196);
+  assert(delay==67); radio_uart_mark_tx_quiet(196);
+  assert(radio_uart_air_busy());
+  clock_ms+=delay-1; assert(radio_uart_air_busy());
+  ++clock_ms; assert(!radio_uart_air_busy());
+  clock_ms=100000; radio_uart_mark_tx_quiet(196);
+  assert(radio_uart_air_busy()); /* no idle credit */
+  clock_ms+=delay; assert(!radio_uart_air_busy());
+  clock_ms=UINT32_MAX-10U; radio_uart_mark_tx_quiet(196);
+  assert(radio_uart_air_busy()); clock_ms+=delay; assert(!radio_uart_air_busy());
   clock_ms=UINT32_MAX; assert(radio_e22_ready_for_uart());
   clock_ms=0; assert(radio_e22_ready_for_uart());
 #endif

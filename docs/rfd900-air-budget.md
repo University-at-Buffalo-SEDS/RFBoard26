@@ -18,6 +18,18 @@ GS_RADIO_AIR_FRAME_OVERHEAD_BYTES=16. The fill-system link uses the Pi's main Et
 definitions RADIO_AIR_BIT_RATE_BPS, RADIO_AIR_SHARE_PERCENT and
 RADIO_AIR_FRAME_OVERHEAD_BYTES override the matching firmware values.
 
+When GroundStation or RRLS is configured with `GS_RRLS_ROLE=primary` or
+`GS_RRLS_ROLE=rrls`, the host default share is 25%, reserving room for the third
+radio. `GS_RRLS_VOICE=1` selects the same default. An explicit share override
+still applies. Generic router traffic and RRLS forwarding share the same
+physical UART capacity state; reconnecting does not create a second allowance.
+
+This backpressure is active with `RFBOARD_LORA_SCHEDULER=OFF`. It keeps traffic
+in the priority queue until the previous reservation has drained. It does not
+enable LoRa turn scheduling, AUX/GRANT handshakes or receive windows. Idle time
+does not accumulate credit for a later burst. A completed UART DMA transfer
+alone does not grant the next radio transmission.
+
 Read `ATI` and `ATI5` before applying a profile. Parameter numbers differ
 between SiK/peer-to-peer and ASYNC firmware revisions; use the names printed
 by the installed modem. The captured **RFD ASYNC 4.03 / RFD900X2** reports:
