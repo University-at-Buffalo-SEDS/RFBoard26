@@ -1349,10 +1349,15 @@ static void radio_process_buffered_frames(void)
     }
 
     if (!found_sync) {
-      g_rx_sync_loss++;
-      if (g_frame_buf[g_frame_len - 1U] == RADIO_UART_FRAME_SYNC_0 ||
-          g_frame_buf[g_frame_len - 1U] == RADIO_UART_COMMAND_SYNC_0 ||
-          g_frame_buf[g_frame_len - 1U] == RADIO_UART_ASCII_SYNC_0) {
+      const uint8_t keep_sync_prefix =
+          (g_frame_buf[g_frame_len - 1U] == RADIO_UART_FRAME_SYNC_0 ||
+           g_frame_buf[g_frame_len - 1U] == RADIO_UART_COMMAND_SYNC_0 ||
+           g_frame_buf[g_frame_len - 1U] == RADIO_UART_ASCII_SYNC_0) ? 1U : 0U;
+      /* A retained single prefix is normal UART fragmentation, not lost sync. */
+      if (g_frame_len > (size_t)keep_sync_prefix) {
+        g_rx_sync_loss++;
+      }
+      if (keep_sync_prefix) {
         g_frame_buf[0] = g_frame_buf[g_frame_len - 1U];
         g_frame_len = 1U;
       } else {
