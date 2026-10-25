@@ -162,7 +162,8 @@ static uint8_t telemetry_timesync_is_source(void) {
 }
 
 static uint64_t telemetry_timesync_priority(void) {
-  return telemetry_timesync_is_source() ? (uint64_t)TELEMETRY_TIMESYNC_MASTER_PRIO : 0ULL;
+  // Holdover consumers must yield when RF (1) or GroundStation (50) returns.
+  return telemetry_timesync_is_source() ? (uint64_t)TELEMETRY_TIMESYNC_MASTER_PRIO : 100ULL;
 }
 
 static uint32_t telemetry_timesync_role(void) {
