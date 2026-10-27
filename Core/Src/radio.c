@@ -28,6 +28,7 @@
 #define RADIO_UART_FRAME_HEADER_SIZE   4U
 #define RADIO_UART_MAX_PAYLOAD_SIZE    1024U
 #define RADIO_UART_FRAME_BUF_SIZE      (RADIO_UART_FRAME_HEADER_SIZE + RADIO_UART_MAX_PAYLOAD_SIZE)
+#define RADIO_PACKET_SERVICE_CREDIT_CAP_MS (2U * 55U)
 #define RADIO_UART_SCHED_FALLBACK_FLOW 0U
 #define RADIO_UART_SCHED_CONTROL_FLOW  0xFFFFFFFFUL
 #define RADIO_UART_PRIORITY_DISCOVERY       255U
@@ -997,7 +998,7 @@ static void radio_uart_close_packet_batch(const radio_tx_item_t *item)
           RADIO_PACKET_BURST_MS + RADIO_PACKET_GAP_MS) {
     if (!ack || slot < g_tx_closed_ack_count || RADIO_PACKET_GAP_MS == 0U ||
         RADIO_PACKET_GAP_MS > 55U || g_tx_completed_service_credit_ms < RADIO_PACKET_GAP_MS) return;
-    g_tx_completed_service_credit_ms = 0U;
+    g_tx_completed_service_credit_ms -= RADIO_PACKET_GAP_MS;
   }
   if (ack && slot == g_tx_closed_ack_count) {
     g_tx_closed_ack_ids[g_tx_closed_ack_cursor] = id;
@@ -1370,7 +1371,7 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
         !radio_uart_independent_control(g_tx_dma_item.data, g_tx_dma_item.len,
                                         g_tx_dma_item.priority)) {
       const uint32_t cost = radio_uart_air_ms(g_tx_dma_item.len);
-      g_tx_pending_service_ms = (uint8_t)(cost > 55U ? 55U : cost);
+      g_tx_pending_service_ms = (uint8_t)(cost > RADIO_PACKET_SERVICE_CREDIT_CAP_MS ? RADIO_PACKET_SERVICE_CREDIT_CAP_MS : cost);
     }
 #endif
     status = HAL_UART_Transmit_DMA(g_huart, g_tx_dma_item.data, g_tx_dma_item.len);
@@ -1722,7 +1723,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 #if !RFBOARD_LORA_SCHEDULER
   if (g_tx_dma_busy && preserves_rx) {
     const uint32_t credit = (uint32_t)g_tx_completed_service_credit_ms + g_tx_pending_service_ms;
-    g_tx_completed_service_credit_ms = (uint8_t)(credit > 55U ? 55U : credit);
+    g_tx_completed_service_credit_ms = (uint8_t)(credit > RADIO_PACKET_SERVICE_CREDIT_CAP_MS ? RADIO_PACKET_SERVICE_CREDIT_CAP_MS : credit);
   }
   g_tx_pending_service_ms = 0U;
   radio_uart_mark_tx_drained();

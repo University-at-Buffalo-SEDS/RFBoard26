@@ -93,21 +93,21 @@ int main(void){
  reset();uint64_t id;queue(fc,sizeof(fc),255);assert(radio_uart_ack_contract(&candidate,&id)&&id==UINT64_C(17267761553259278303));
  /* Real completed124B BOARD_HEALTH frames fund44+44 capped55, never at launch. */
  normal(124);start(30085);assert(g_tx_completed_service_credit_ms==0&&g_tx_pending_service_ms==44);done(30096);assert(g_tx_completed_service_credit_ms==44);
- normal(124);start(30151);assert(g_tx_completed_service_credit_ms==44);done(30162);assert(g_tx_completed_service_credit_ms==55);
- queue(und,sizeof(und),255);start(30195);assert(g_tx_last_forced_boundary_ms==30195&&g_tx_completed_service_credit_ms==55);done(30200);
- queue(fc,sizeof(fc),255);start(30255);unsigned debt=g_tx_quiet_until_ms;assert(g_tx_last_forced_boundary_ms==30255&&g_tx_completed_service_credit_ms==0);done(30260);
+ normal(124);start(30151);assert(g_tx_completed_service_credit_ms==44);done(30162);assert(g_tx_completed_service_credit_ms==88);
+ queue(und,sizeof(und),255);start(30195);assert(g_tx_last_forced_boundary_ms==30195&&g_tx_completed_service_credit_ms==88);done(30200);
+ queue(fc,sizeof(fc),255);start(30255);unsigned debt=g_tx_quiet_until_ms;assert(g_tx_last_forced_boundary_ms==30255&&g_tx_completed_service_credit_ms==33);done(30260);
  assert(g_tx_quiet_until_ms==debt);clock_ms=30281;assert(radio_uart_air_busy());clock_ms=30314;assert(radio_uart_air_busy());clock_ms=30315;assert(!radio_uart_air_busy());
  /* Renew funding through actual completions, but retry of samelogicalFCACK
   * still cannot spend it. Owner/timestamp are not the acknowledged ID. */
- normal(40);start(30315);done(30319);normal(124);start(30334);done(30345);assert(g_tx_completed_service_credit_ms==55);
- queue(fc,sizeof(fc),255);start(30378);assert(g_tx_last_forced_boundary_ms==30255&&g_tx_completed_service_credit_ms==55);done(30383);
+ normal(40);start(30315);done(30319);normal(124);start(30334);done(30345);assert(g_tx_completed_service_credit_ms==95);
+ queue(fc,sizeof(fc),255);start(30378);assert(g_tx_last_forced_boundary_ms==30255&&g_tx_completed_service_credit_ms==95);done(30383);
 
  /* A different owner's new ACK packet still names the same logical contract. */
  queue(fc,sizeof(fc),255);size_t header=6;uint64_t field;
  radio_read_uleb128(candidate.data,candidate.len,&header,&field);radio_read_uleb128(candidate.data,candidate.len,&header,&field);radio_read_uleb128(candidate.data,candidate.len,&header,&field);
  if(candidate.data[4]&8)radio_read_uleb128(candidate.data,candidate.len,&header,&field);
  candidate.data[header]^=1;unsigned ownercrc=launchcore_crc32(candidate.data+4,candidate.len-8);for(unsigned i=0;i<4;++i)candidate.data[candidate.len-4+i]=(ownercrc>>(8*i))&255;
- assert(radio_uart_ack_contract(&candidate,&id)&&id==UINT64_C(17267761553259278303));clock_ms=30384;radio_uart_close_packet_batch(&candidate);assert(g_tx_last_forced_boundary_ms==30255&&g_tx_completed_service_credit_ms==55);
+ assert(radio_uart_ack_contract(&candidate,&id)&&id==UINT64_C(17267761553259278303));clock_ms=30384;radio_uart_close_packet_batch(&candidate);assert(g_tx_last_forced_boundary_ms==30255&&g_tx_completed_service_credit_ms==95);
  /* Critical-only traffic and failed HAL admission/lateIRQ earn no service. */
  reset();queue(und,sizeof(und),255);start(1000);done(1005);queue(fc,sizeof(fc),255);start(1060);assert(g_tx_last_forced_boundary_ms==1000&&g_tx_completed_service_credit_ms==0);done(1065);
  reset();normal(124);clock_ms=2000;hal_status=HAL_BUSY;assert(!radio_uart_process_tx_with_budget(2000));assert(g_tx_pending_service_ms==0&&g_tx_completed_service_credit_ms==0);done(2010);assert(g_tx_completed_service_credit_ms==0);
@@ -163,5 +163,5 @@ class FundedAckBoundaryTests(unittest.TestCase):
         crc = function((ROOT / 'tests/radio_crc_reference.h').read_text(), 'uint32_t launchcore_crc32(')
         with tempfile.TemporaryDirectory() as directory:
             exe = str(Path(directory) / 'funded-ack')
-            subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-fsanitize=address,undefined', '-x', 'c', '-', '-o', exe], input=PREAMBLE + crc + code + ACK_FIXTURES + CHECKS, text=True, check=True)
+            subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-fsanitize=address,undefined', '-x', 'c', '-', '-o', exe], input=PREAMBLE + next(line for line in source.splitlines() if line.startswith("#define RADIO_PACKET_SERVICE_CREDIT_CAP_MS ")) + "\n" + crc + code + ACK_FIXTURES + CHECKS, text=True, check=True)
             subprocess.run([exe], check=True)

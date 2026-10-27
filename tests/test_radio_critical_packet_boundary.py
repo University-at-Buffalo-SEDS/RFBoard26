@@ -76,6 +76,7 @@ static uint64_t g_tx_closed_ack_ids[4];
 static uint8_t g_tx_closed_ack_count, g_tx_closed_ack_cursor;
 """
         preamble += function((ROOT / 'tests/radio_crc_reference.h').read_text(), 'uint32_t launchcore_crc32(')
+        preamble += "\n" + next(line for line in source.splitlines() if line.startswith("#define RADIO_PACKET_SERVICE_CREDIT_CAP_MS ")) + "\n"
         test = r'''
 static void setup(unsigned priority, int sdt, unsigned len){
  memset(&candidate,0,sizeof(candidate));candidate.len=len;candidate.priority=priority;

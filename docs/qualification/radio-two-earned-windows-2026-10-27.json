@@ -1,0 +1,83 @@
+{
+  "result": "PASS_NATIVE_TWO_EARNED_WINDOWS; SHORT16_AND_FULL60_PENDING",
+  "base_RF_commit": "77e3e826c01387d4056e7ee80707ac31cbef2304",
+  "sdk_commit": "d82b5526c56a20f65f6257478ae32f3ff9af5674",
+  "problem": "Frozen77 full60 passes9commands264\u2013473ms,149sources726ms and14canonical915ms, but independent defaultshort16 cold secondBuzzer14330616640466780065 misses506ms. RFStateACK uses normal155ms close; UNDACK spends only pre-earned55bank; thirdBuzzerACK has0bank and receives85.067ms of laterUARTdata before modemidle. This is exhaustion of a threeACK burst, not missing bootstrapclassification.",
+  "actual_funding_lower_bound": {
+    "initial_credit_assumed_ms": 0,
+    "selected_eligible_completed_work": [
+      {
+        "type": "ORDERED_MESSAGE",
+        "frame_bytes": 70,
+        "priority": 0,
+        "cost_ms": 27
+      },
+      {
+        "type": "SDT HEARTBEAT",
+        "frame_bytes": 50,
+        "priority": 253,
+        "cost_ms": 21
+      },
+      {
+        "type": "SDT HEARTBEAT",
+        "frame_bytes": 50,
+        "priority": 253,
+        "cost_ms": 21
+      },
+      {
+        "type": "SDT IMU_DATA",
+        "frame_bytes": 66,
+        "priority": 0,
+        "cost_ms": 26
+      },
+      {
+        "type": "WARNING",
+        "frame_bytes": 82,
+        "priority": 0,
+        "cost_ms": 31
+      }
+    ],
+    "total_charged_service_ms": 126,
+    "scope": "Actual captured5normalframes complete3386\u20133812ms; no eligiblecriticalclose after previouscluster2883 andbefore3837StateACK. Conservative reducednative replay excludes nonfundingbootstrap/earlierACKphase; lastIMU/WARNING set preACKphase. No inventedseed."
+  },
+  "change": "Keep actual completed-service credit in sameu8, cap110ms(two55ms windows). Spend one whole55ms gap by subtraction. Both pending per-frame cost and completed bank cap110. Ordinary eligibility, dedup, initial0,155normalpermit, source rates, airquota/readiness,55quiet,100burst,FIFO/queues, LoRa andIRQ/error ownership stay unchanged. No new fields/storage.",
+  "cold_native": {
+    "before55": "State preserves55,UND spends55\u21920,Buzzer denied:lastforced3897.",
+    "candidate110": "State preserves110,UND spends55\u219255,Buzzer spends55\u21920:lastforced3959; fourthnewACK without newservice denied.",
+    "evidence": [
+      "cap55-cold.log",
+      "cap110-cold.log",
+      "cold-frame-inventory.json"
+    ],
+    "scope": "Actual8capturedframes +actualRFservice/IRQ/gates, integer-ms reducedcausal test. Downstreammedium responses not recomputed; only integratedrun qualifieslatency."
+  },
+  "native_validation": {
+    "configured_suite": {
+      "passed": 177,
+      "failed": 0,
+      "skipped": 0,
+      "log": "rf-two-window-close-prototype/configured177.log",
+      "sha256": "e580f4e56deecb66d312da68e1817380a6e616ea1ef7cc3ffec6ec2905507ef5"
+    },
+    "sanitizers": "CAddress+undefined passed, leak sanitizer disabled only for hostptrace limitation.",
+    "retained_guards": "Actualcompletiononly;HAL_BUSY/timeout/Error\u2192lateIRQ0funding;0coldcredit; CRC/plaintext/sourcebounds; sameack_fordifferentowner/retry cannotspend95bank; whole-gap cost/no airforgiveness; timerwrap/LoRa/metadataFIFO/queue12 retained.",
+    "qualified_three_lane": "ActualSDKd82generatedincompressible160Bpayload/frame>=176B,metadata196B,10uniqueACK/s; cold0andactuallypre-earned110 phases:41/41ordinary,81/81ACK,9/9metadata, max128/80/202ms,peak3, spent<=actualcompletedordinarycharge.",
+    "existing_two_lane_tradeoff": "20ACK/s+124Bnormal/200ms preserves41/41+161/161, candidate maxnormal488/control138ms vs55cap224/122, original1500/500gates unchanged.",
+    "negative_three_lane": "20ACK/s+largeordinary+metadata overloads BOTH policies and physicalqueue: candidate source3287/3503ms, baseline3215/3282ms,peak22\u201324>12. Preserved verbatim in stress-comparison.log, not qualified or used to relax a gate.",
+    "positive_three_lane_tradeoff": "Cold/warm10ACK/s candidate ordinary97/128vsbaseline97/97; ACK75/80vs75/69;metadata202both.",
+    "large_fixture_generator": {
+      "path": "fixture-generator/src/main.rs",
+      "sha256": "791620fd1514f4ae7fb293e852b9bc65e4f775bd5b8c1621b552967cc6d6c8b8",
+      "result": "ActualfrozenSDKd82pack+unpack roundtrip andpriority0 asserted; synthetic stress datatype only, no production schema additions."
+    }
+  },
+  "conservation": "Initial0; each extra gap subtracts55 from only completedordinaryaircharge, bankcaps110. Thus addedquiet<=actualcompletedordinaryservice, with atmosttwo pre-earned55windows before laterordinary work; no idlecredit or bytecredit creation. This is not unconditional liveness under arbitrary offeredoverload.",
+  "limits": "Parent must linkRF-only+unchangedSDKd82, prove unchangedRAM/queues and allfaultgates, then defaultshort16 first and unchangedfull60 with500/1500/3000ms gates. Old77full60pass/shortfailure preserved. No new simulation/hardware/policy-rate changes by this agent.",
+  "source_sha256": {
+    "Core/Src/radio.c": "9b8992b41206667ffe6dd8f6b28968d8f1b012ca59717aa32a94b009a8519b50",
+    "tests/test_radio_critical_packet_boundary.py": "edc8ca472ffe50c398e3f2406181a70f9dfb4d9be4163fd7726632838bb7b2f9",
+    "tests/test_radio_funded_packet_boundary.py": "92b61d4d733d403ffa22cd15b8d81f6808572b031cce77fe575003b715fb328e",
+    "tests/test_radio_two_earned_windows.py": "21de98c9676b5724663655241138dc2423333cc1b0e23c9f5e37ac87c85328fb"
+  },
+  "release": "Local source commit only; no push, flashing, SDK or otherboard edits."
+}
