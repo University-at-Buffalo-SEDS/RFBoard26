@@ -55,3 +55,38 @@ a 120 ms window on this ASYNC firmware.
 Pacing is an application budget, not a measured RF capacity guarantee. Check
 both directions and discovery after restarting RF; real antenna loss, modem
 retries and contention require field validation beyond the UART simulator.
+
+## Bound packetization delay as well as average airtime
+
+A small, continuous stream can stay below the byte budget while never leaving
+an idle boundary for a transparent modem's packetizer. The production host
+capacity gate produced 42-byte writes every 49 ms in the fallback share. With
+a 50 ms serial-idle envelope and MAX_DATA 3968, the actual simulator modem
+model held that stream for up to 5.11 seconds. The older 2 ms / 256-byte test
+profile delivered the same writes in 17.2 ms and concealed this failure mode.
+The active modems' packetization settings have not yet been read back; this is
+a reproduced failure mechanism, not confirmation of their complete firmware
+algorithm or configuration.
+
+RF and the GS/RRLS UART now retain the original shared-air reservation and also
+bound a batch of writes to 100 ms. Once that interval has elapsed, they leave
+55 ms of serial silence after the last UART stop bit before admitting another
+batch. Keeping a short batch preserves throughput for telemetry and discovery;
+adding a gap after every frame failed an existing reliable-delivery test. RX
+continues running throughout. This adds no AUX, radio turn, GRANT or receive
+window, and does not extend recovery leases.
+
+The host uses the configured UART baud and anchors the gap to actual drain
+completion. RF anchors it to its DMA completion callback. Both retain existing
+frame ownership, queue priority, airtime debt, and tick-wrap handling. Defaults
+are `GS_RADIO_PACKET_BURST_MS=100` and `GS_RADIO_PACKET_GAP_MS=55` on GS/RRLS,
+and compile definitions `RADIO_PACKET_BURST_MS=100` and
+`RADIO_PACKET_GAP_MS=55` on RF. Match any explicit override to verified modem
+settings; zero gap is retained for controlled negative tests or a modem whose
+packetization has independently been verified not to need it.
+
+The same long-packet fixture now measures 173.7 ms with all 192 transport probes
+delivered in order and no FIFO loss. A permanent negative control disables only
+the boundary and reproduces 5.11 seconds. The fixture also runs against Renode's
+actual virtual clock. These raw transport checks complement the real Mesh/SDK
+reliable-command campaign; they do not replace physical command/receipt tests.

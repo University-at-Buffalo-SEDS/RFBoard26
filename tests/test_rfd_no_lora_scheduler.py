@@ -17,11 +17,17 @@ class ModemSchedulingTests(unittest.TestCase):
 #include <stdint.h>
 #include <assert.h>
 #define RADIO_AIR_BIT_RATE_BPS 64000U
+#define RADIO_BAUD_RATE 115200U
+#define RADIO_PACKET_GAP_MS 55U
+#define RADIO_PACKET_BURST_MS 100U
 #define RADIO_AIR_SHARE_PERCENT 40U
 #define RADIO_AIR_FRAME_OVERHEAD_BYTES 16U
 #define RADIO_TX_COOLDOWN_MS 25U
 #define RADIO_E22_MODE_SETTLE_MS 1000U
 static uint32_t clock_ms, g_tx_quiet_until_ms, g_tx_air_budget_active;
+#if !RFBOARD_LORA_SCHEDULER
+static uint32_t g_tx_packet_started_ms, g_tx_packet_until_ms, g_tx_packet_active;
+#endif
 static uint32_t g_e22_mode0_set_at_ms, g_aux_busy_count, aux_reads;
 uint32_t radio_now_ms(void) { return clock_ms; }
 uint32_t HAL_GetTick(void) { return clock_ms; }
@@ -39,16 +45,32 @@ int main(void) {
   assert(radio_uart_air_busy()); clock_ms+=delay; assert(!radio_uart_air_busy());
 #else
   assert(radio_e22_ready_for_uart()); assert(!g_aux_busy_count && !aux_reads);
-  uint32_t delay=radio_uart_air_ms(196);
-  assert(delay==67); radio_uart_mark_tx_quiet(196);
+  assert(radio_uart_air_ms(196)==67);
+  uint32_t delay=67; /*Airtime remains authoritative within a bounded batch.*/ radio_uart_mark_tx_quiet(196);
   assert(radio_uart_air_busy());
   clock_ms+=delay-1; assert(radio_uart_air_busy());
   ++clock_ms; assert(!radio_uart_air_busy());
   clock_ms=100000; radio_uart_mark_tx_quiet(196);
   assert(radio_uart_air_busy()); /* no idle credit */
   clock_ms+=delay; assert(!radio_uart_air_busy());
+  clock_ms+=100; assert(!radio_uart_air_busy()); /* idle service retires the batch */
   clock_ms=UINT32_MAX-10U; radio_uart_mark_tx_quiet(196);
   assert(radio_uart_air_busy()); clock_ms+=delay; assert(!radio_uart_air_busy());
+  g_tx_packet_active=0; g_tx_air_budget_active=0;
+  clock_ms=1000;
+  for (unsigned i=0;i<6;i++) {
+    assert(!radio_uart_air_busy()); radio_uart_mark_tx_quiet(42);
+    clock_ms+=4; radio_uart_mark_tx_drained(); clock_ms+=15;
+  }
+  /* Six short frames fit before 100ms, then the full serial gap is required. */
+  assert(clock_ms==1114); assert(radio_uart_air_busy());
+  clock_ms=1153; assert(radio_uart_air_busy());
+  clock_ms=1154; assert(!radio_uart_air_busy());
+  /* A late completion and timer wrap preserve the actual packet boundary. */
+  g_tx_packet_active=1; g_tx_packet_started_ms=UINT32_MAX-200U;
+  clock_ms=UINT32_MAX-20U; radio_uart_mark_tx_drained();
+  clock_ms+=54; assert(radio_uart_air_busy());
+  ++clock_ms; assert(!radio_uart_air_busy());
   clock_ms=UINT32_MAX; assert(radio_e22_ready_for_uart());
   clock_ms=0; assert(radio_e22_ready_for_uart());
 #endif

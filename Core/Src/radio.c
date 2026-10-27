@@ -93,6 +93,18 @@ _Static_assert(RADIO_UART_TX_QUEUE_SLOTS > RADIO_UART_TX_CONTROL_RESERVE_SLOTS,
 #define RFBOARD_LORA_SCHEDULER 0
 #endif
 
+/* Async transparent modems may wait for a serial idle boundary before
+ * emitting a short packet. This is independent of LoRa MAC/AUX gating. */
+#ifndef RADIO_PACKET_GAP_MS
+#define RADIO_PACKET_GAP_MS 55U
+#endif
+#ifndef RADIO_PACKET_BURST_MS
+#define RADIO_PACKET_BURST_MS 100U
+#endif
+#if RADIO_PACKET_GAP_MS > 1000U || RADIO_PACKET_BURST_MS > 500U
+#error "RFD packet gap/burst bounds exceed supported ranges"
+#endif
+
 #ifndef RADIO_AIR_BIT_RATE_BPS
 #define RADIO_AIR_BIT_RATE_BPS 64000U
 #endif
@@ -266,7 +278,12 @@ static volatile uint32_t g_tx_dma_complete = 0U;
 volatile uint32_t g_tx_dma_recoveries = 0U;
 static volatile uint32_t g_tx_dma_started_at_ms = 0U;
 static volatile uint32_t g_tx_quiet_until_ms = 0U;
-static uint8_t g_tx_air_budget_active;
+static volatile uint8_t g_tx_air_budget_active;
+#if !RFBOARD_LORA_SCHEDULER
+static volatile uint32_t g_tx_packet_started_ms;
+static volatile uint32_t g_tx_packet_until_ms;
+static volatile uint8_t g_tx_packet_active;
+#endif
 static volatile uint32_t g_aux_busy_count = 0U;
 static volatile uint32_t g_e22_mode0_set_at_ms = 0U;
 
@@ -895,15 +912,55 @@ static void radio_uart_mark_tx_quiet(uint16_t len)
   uint32_t quiet_ms = radio_uart_air_ms(len);
 #if RFBOARD_LORA_SCHEDULER
   quiet_ms += RADIO_TX_COOLDOWN_MS;
+#else
+  const uint32_t now = radio_now_ms();
+  if (!g_tx_packet_active || (int32_t)(now - g_tx_packet_until_ms) >= 0) {
+    g_tx_packet_started_ms = now;
+  }
+  g_tx_packet_active = 1U;
+  const uint32_t wire_ms = (uint32_t)(((uint64_t)len * 10000ULL +
+      RADIO_BAUD_RATE - 1U) / RADIO_BAUD_RATE);
+  g_tx_packet_until_ms = now + wire_ms + RADIO_PACKET_GAP_MS;
 #endif
   g_tx_quiet_until_ms = radio_now_ms() + quiet_ms;
   g_tx_air_budget_active = 1U;
 }
 
+#if !RFBOARD_LORA_SCHEDULER
+static void radio_uart_mark_tx_drained(void)
+{
+  const uint32_t now = radio_now_ms();
+  /* Anchor the packet idle boundary to the actual last UART stop bit. */
+  if (!g_tx_packet_active) g_tx_packet_started_ms = now;
+  g_tx_packet_active = 1U;
+  g_tx_packet_until_ms = now + RADIO_PACKET_GAP_MS;
+}
+#endif
+
+static uint32_t radio_uart_quiet_remaining_ms(void)
+{
+  const uint32_t now = radio_now_ms();
+  uint32_t remaining = 0U;
+  if (g_tx_air_budget_active && (int32_t)(g_tx_quiet_until_ms - now) > 0) {
+    remaining = g_tx_quiet_until_ms - now;
+  }
+#if !RFBOARD_LORA_SCHEDULER
+  if (g_tx_packet_active &&
+      (uint32_t)(now - g_tx_packet_started_ms) >= RADIO_PACKET_BURST_MS) {
+    if ((int32_t)(g_tx_packet_until_ms - now) > 0) {
+      const uint32_t packet_remaining = g_tx_packet_until_ms - now;
+      if (remaining < packet_remaining) remaining = packet_remaining;
+    } else {
+      g_tx_packet_active = 0U;
+    }
+  }
+#endif
+  return remaining;
+}
+
 uint8_t radio_uart_air_busy(void)
 {
-  if (g_tx_air_budget_active &&
-      (int32_t)(radio_now_ms() - g_tx_quiet_until_ms) < 0) return 1U;
+  if (radio_uart_quiet_remaining_ms() != 0U) return 1U;
   g_tx_air_budget_active = 0U;
   return 0U;
 }
@@ -971,9 +1028,7 @@ radio_uart_stats_t radio_uart_stats_snapshot(void)
     stats.usart_cr3 = 0U;
     stats.dma_rx_remaining = 0U;
   }
-  const uint32_t now_ms = radio_now_ms();
-  stats.tx_quiet_remaining_ms =
-      radio_uart_air_busy() ? (g_tx_quiet_until_ms - now_ms) : 0U;
+  stats.tx_quiet_remaining_ms = radio_uart_quiet_remaining_ms();
   stats.aux_high = radio_e22_aux_high();
   stats.e22_mode0_pins_configured = RADIO_E22_HAS_MODE_PINS ? 1U : 0U;
   stats.rx_pin_samples_high = g_rx_pin_samples_high;
@@ -1560,6 +1615,9 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
   if (huart->Instance != g_huart->Instance) return;
 
   const uint8_t preserves_rx = g_tx_dma_preserves_rx;
+#if !RFBOARD_LORA_SCHEDULER
+  radio_uart_mark_tx_drained();
+#endif
   g_tx_dma_busy = 0U;
   g_tx_dma_preserves_rx = 0U;
   g_radio_tx_ok++;
