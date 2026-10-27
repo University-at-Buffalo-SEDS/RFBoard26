@@ -3,7 +3,8 @@
     {
       "rust": "FillSdCard",
       "name": "SD_CARD",
-      "doc": "Fill-system SD-card logging on DAQ; not storage on the Actuator board."
+      "doc": "Fill-system SD-card logging on DAQ; not storage on the Actuator board.",
+      "id": 100
     },
     {
       "rust": "ActuatorGroundStation",
@@ -80,7 +81,8 @@
         "ActuatorFlightController"
       ],
       "reliable": "Off",
-      "priority": 255
+      "priority": 255,
+      "id": 100
     },
     {
       "rust": "ActuatorGyroData",
@@ -162,7 +164,8 @@
         "ActuatorGroundStation"
       ],
       "reliable": "Off",
-      "priority": 0
+      "priority": 0,
+      "id": 104
     },
     {
       "rust": "ActuatorAbort",
@@ -283,7 +286,8 @@
         "ActuatorFlightController"
       ],
       "reliable": "Off",
-      "priority": 255
+      "priority": 255,
+      "id": 106
     },
     {
       "rust": "ActuatorWarning",
@@ -314,7 +318,8 @@
         "ActuatorGroundStation"
       ],
       "reliable": "Off",
-      "priority": 0
+      "priority": 0,
+      "id": 105
     },
     {
       "rust": "ActuatorActuatorCommand",
@@ -526,7 +531,8 @@
       },
       "endpoints": [
         "ActuatorGroundStation"
-      ]
+      ],
+      "id": 101
     },
     {
       "rust": "ActuatorIMULocal",

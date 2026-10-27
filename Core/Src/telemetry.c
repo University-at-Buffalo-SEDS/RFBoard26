@@ -118,7 +118,6 @@ static uint8_t g_radio_link_seen = 0U;
 extern void telemetry_memory_profile_mark(uint32_t stage);
 
 static uint8_t g_discovery_schema_announced = 0U;
-static uint8_t g_discovery_schema_requested = 0U;
 static uint32_t g_discovery_schema_retry_ms = 0U;
 
 RouterState g_router = {.r = NULL, .created = 0U, .start_time = 0ULL};
@@ -571,16 +570,6 @@ SedsResult telemetry_poll_discovery(void) {
       if (seds_router_announce_discovery(g_router.r) == SEDS_OK) {
         g_discovery_schema_announced = 1U;
       }
-    } else if (!g_discovery_schema_requested && g_telemetry_discovery_seen) {
-      /* Recover peer definitions when this board restarts after the peers'
-       * startup announcements. Wait for a peer, and separate the two bursts. */
-      static const uint8_t empty = 0U;
-      g_discovery_schema_retry_ms = (uint32_t)now + 1000U;
-      if (!g_discovery_schema_retry_ms) g_discovery_schema_retry_ms = 1U;
-      if (seds_router_log_bytes(g_router.r, SEDS_DT_DISCOVERY_SCHEMA_REQUEST,
-                                &empty, 0U) == SEDS_OK) {
-        g_discovery_schema_requested = 1U;
-      }
     }
   }
   const SedsResult result = seds_router_poll_discovery(g_router.r, &did_queue);
@@ -763,7 +752,6 @@ SedsResult init_telemetry_router(void) {
   (void)flight_state_cache_init(r);
   g_router.created = 1U;
   g_discovery_schema_announced = 0U;
-  g_discovery_schema_requested = 0U;
   g_discovery_schema_retry_ms = 0U;
   /* Prime the first source announcement after the router clock and sides are
    * fully live.  This avoids depending on a later scheduler tick to make a
