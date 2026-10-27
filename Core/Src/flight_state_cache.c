@@ -24,6 +24,8 @@ static bool g_persist_ready;
 static bool g_has_value;
 #ifdef TELEMETRY_ENABLED
 static bool g_network_value_seen;
+/* UINT8_MAX cannot be a valid state; volatile application is not flash durability. */
+static uint8_t g_persisted_state = UINT8_MAX;
 static uint32_t g_last_refresh_ms;
 #endif
 
@@ -63,6 +65,9 @@ void flight_state_cache_restore(void)
 
     g_has_value = true;
     g_flight_state_cache_value = state;
+#ifdef TELEMETRY_ENABLED
+    g_persisted_state = state;
+#endif
     g_flight_state_cache_restores++;
 }
 
@@ -91,8 +96,7 @@ static SedsResult persist_update(const SedsPacketView *packet, void *user)
     const uint8_t state = packet->payload[0];
     const SedsResult apply_result = flight_state_cache_apply_network_update(packet);
     if (apply_result != SEDS_OK) { g_flight_state_cache_errors++; return apply_result; }
-    const bool changed = !g_has_value ||
-                         state != (uint8_t)g_flight_state_cache_value;
+    const bool changed = state != g_persisted_state;
     g_has_value = true;
     g_network_value_seen = true;
     g_flight_state_cache_value = state;
@@ -106,6 +110,7 @@ static SedsResult persist_update(const SedsPacketView *packet, void *user)
         g_flight_state_cache_errors++;
         return SEDS_HANDLER_ERROR;
     }
+    g_persisted_state = state;
     g_flight_state_cache_writes++;
     return SEDS_OK;
 }
