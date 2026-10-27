@@ -792,15 +792,18 @@ static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32
 
   if (g_tx_count > 0U) {
     uint32_t selected = 0U;
-    /* Seven control turns, then a FIFO turn, using the existing completed-TX
-     * counter. No new RAM, no dropping accepted frames, and no reordering of
-     * SDT templates/chunks relative to one another. Active DMA is untouched. */
+    /* Seven control turns, then a FIFO turn. Within independent controls,
+     * honor SDK priority so older heartbeats cannot hold ACKs behind them.
+     * Equal priorities retain FIFO order; SDT history and active DMA do not
+     * move. The existing completed-TX counter bounds ordinary service. */
     if ((g_radio_tx_ok & 7U) != 7U) {
+      uint8_t found_control = 0U;
       for (uint32_t i = 0U; i < g_tx_count; ++i) {
         if (radio_uart_independent_control(&g_tx_queue_bytes[g_tx_queue[i].offset],
-                                          g_tx_queue[i].len, g_tx_queue[i].priority)) {
+                                          g_tx_queue[i].len, g_tx_queue[i].priority) &&
+            (!found_control || g_tx_queue[i].priority > g_tx_queue[selected].priority)) {
           selected = i;
-          break;
+          found_control = 1U;
         }
       }
     }

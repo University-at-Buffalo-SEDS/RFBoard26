@@ -93,6 +93,24 @@ int main(void) {
  g_radio_tx_ok=8;
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.data[6]==1);
  assert(g_tx_count==10);
+ reset();
+ frame(small,sizeof(small),60,1);
+ assert(radio_uart_enqueue_sedsnet_frame(small,sizeof(small),254)==HAL_OK);
+ frame(ack,sizeof(ack),61,0);
+ assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),253)==HAL_OK);
+ frame(ack,sizeof(ack),62,0);
+ assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),255)==HAL_OK);
+ frame(ack,sizeof(ack),63,0);
+ assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),255)==HAL_OK);
+ /* An ACK must outrank older independent routine traffic; equal priorities
+  * retain FIFO order and the encoded SDT history stays intact. */
+ for(unsigned marker=62;marker<=63;marker++){
+  assert(radio_uart_dequeue_frame_with_budget(&out,2000));
+  assert(out.data[7]==marker);g_radio_tx_ok++;
+ }
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.data[7]==61);g_radio_tx_ok++;
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.data[7]==60);g_radio_tx_ok++;
+ assert(!g_tx_count&&!g_tx_queue_bytes_used);
  reset(); clock_ms=1;
  radio_uart_drop_stale_locked(0); /* Keep legacy helper covered, with an empty queue. */
  frame(small,sizeof(small),41,1);
