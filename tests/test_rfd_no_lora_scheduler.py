@@ -27,6 +27,7 @@ class ModemSchedulingTests(unittest.TestCase):
 static uint32_t clock_ms, g_tx_quiet_until_ms, g_tx_air_budget_active;
 #if !RFBOARD_LORA_SCHEDULER
 static uint32_t g_tx_packet_started_ms, g_tx_packet_until_ms, g_tx_packet_active;
+static uint32_t g_tx_last_forced_boundary_ms;
 #endif
 static uint32_t g_e22_mode0_set_at_ms, g_aux_busy_count, aux_reads;
 uint32_t radio_now_ms(void) { return clock_ms; }
@@ -73,6 +74,7 @@ int main(void) {
   ++clock_ms; assert(!radio_uart_air_busy());
   clock_ms=UINT32_MAX; assert(radio_e22_ready_for_uart());
   clock_ms=0; assert(radio_e22_ready_for_uart());
+  (void)radio_uart_close_packet_batch;
 #endif
   (void)g_e22_mode0_set_at_ms; (void)g_aux_busy_count; (void)aux_reads;
 }

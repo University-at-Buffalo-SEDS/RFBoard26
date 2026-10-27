@@ -1,0 +1,62 @@
+{
+  "date": "2026-10-27",
+  "status": "native, isolated transport and additive firmware checks passed; linked comparison pending",
+  "problem": "The priority255 RF receipt was admitted immediately but its modem packet remained open while another92.063ms of ordinary bytes followed. The declared50ms idle envelope therefore held the receipt inside a344-byte packet before air service.",
+  "change": "After successful UART DMA admission, one trusted canonical independent frame at priority>=254 may close its current batch per normal100+55ms cycle. Dependent SDT and routine frames retain existing batching.",
+  "bounds_preserved": [
+    "Existing100ms ordinary batches,55ms actual UART-drain quiet, airtime-share deadline and byte charge",
+    "At most one forced boundary in155ms; repeated ACKs cannot turn all ordinary traffic into single-frame packets",
+    "Canonical dependency guard; SDT cannot force close even when given priority255",
+    "Existing queues, allocation pools, seven-control/one-FIFO service and serial byte order",
+    "Explicit legacy LoRa mode unchanged; bounded close compiled only for RFD mode"
+  ],
+  "native": {
+    "red": "/tmp/rf-critical-close-red-20261027.log: original DMA service incorrectly permits following work at9280ms after the captured critical receipt",
+    "green": "/tmp/rf-critical-close-green-20261027.log: actual RF DMA service and packet gates pass ASan/UBSan",
+    "full_suite": "/tmp/rf-critical-close-all-tests-20261027.log:174 tests passed, including sanitizer and both RFD/legacy-LoRa gates",
+    "cases": [
+      "Captured ACK sequence retains airtime deadline9279ms and honors actual drain9262+55ms",
+      "Repeated priority255 retries preserve ordinary progress and cannot force another close before155ms",
+      "Priority255 SDT does not force close",
+      "Failed DMA neither consumes close opportunity nor loses owned frame",
+      "Late DMA,32-bit tick wrap and327ms longer airtime debt retain deadlines"
+    ]
+  },
+  "isolated_transport": {
+    "scope": "Three exact captured RF frames, original order, conservative fixed release times from original UART starts. Actual production C DMA service/gates generate schedules. Unchanged production C# medium uses64k,3968-byte burst,50ms idle,160-bit overhead and2ms turn. No linked or hardware qualification claimed.",
+    "log": "/tmp/rf-critical-native-medium-20261027.log",
+    "provenance": "FirmwareSimulator/build/schema-admission-rf-critical-close-20261027/native-medium/provenance.json",
+    "before_ack_us": 197200,
+    "after_ack_us": 69000,
+    "improvement_us": 128200,
+    "all344_bytes_retained_in_order": true,
+    "hidden_admission_losses": 0
+  },
+  "firmware": {
+    "sdk_commit": "7ea5a3003f8a3d85423a0e8e1d484306ef48082a",
+    "sdk_version": "4.2.7 unpublished Git source; no release",
+    "source_base": "1ba7048e9a042a45ffaa66a184f7ff8a74a5abaa",
+    "source_overlay_sha256": "784dcdcb860043c283bc713957429936a551c974fe7dd92631d7d4e441ebeac1",
+    "elf_sha256": "fbe37cc5ee7b0174a1ec275a6cce2a6754ad8d04debb7c268b5660eaeee4804c",
+    "warnings": 0,
+    "ram_bytes": 114424,
+    "ram_capacity_bytes": 114688,
+    "flash_bytes": 418008,
+    "flash_capacity_bytes": 474624,
+    "footprint": "One4-byte timestamp and existing1-byte packet flags. Linked BSS114128 and data296 unchanged; timestamp fits prior link padding. Flash+108bytes relative to critical-reserve variant.",
+    "timestamp_symbol": "g_tx_last_forced_boundary_ms at0x2001b138 size4",
+    "provenance": "FirmwareSimulator/build/schema-admission-rf-critical-close-20261027/progress.json",
+    "wrapper": "FirmwareSimulator/build/schema-admission-rf-critical-close-20261027/workspace; other six artifact hashes unchanged"
+  },
+  "measured_path": {
+    "artifact": "FirmwareSimulator/build/schema-admission-cohort-20261027/relay-rf-ack-hooks-closed-diagnostic/ack-declared-medium-budget.json",
+    "sha256": "451c0e77aeff908ff509be8b962ab4c2eb29b4d1c9d54c75a1a6bc5afda40401",
+    "scope": "Offline declared-medium replay matches four captured hop receive completions within15..92us; does not model proprietary hardware MAC. Initial end-to-end candidate receipt remains638.6ms before this fix.",
+    "remaining": "Four50ms modem formation waits, shared air service, RRLS batch extension and actual host parsing/dispatch still require linked qualification."
+  },
+  "limits": [
+    "Original500ms command and1500ms source gates unchanged",
+    "Temporary prior hook return PCs must be refreshed for this new ELF",
+    "No physical modem configuration, outputs or firmware changed"
+  ]
+}

@@ -283,6 +283,7 @@ static volatile uint8_t g_tx_air_budget_active;
 static volatile uint32_t g_tx_packet_started_ms;
 static volatile uint32_t g_tx_packet_until_ms;
 static volatile uint8_t g_tx_packet_active;
+static volatile uint32_t g_tx_last_forced_boundary_ms;
 #endif
 static volatile uint32_t g_aux_busy_count = 0U;
 static volatile uint32_t g_e22_mode0_set_at_ms = 0U;
@@ -911,6 +912,14 @@ static uint32_t radio_uart_air_ms(uint16_t len)
                     (uint64_t)air_bps);
 }
 
+#if !RFBOARD_LORA_SCHEDULER
+enum {
+  RADIO_PACKET_ACTIVE = 1U,
+  RADIO_PACKET_CLOSING = 2U,
+  RADIO_PACKET_FORCED_SEEN = 4U
+};
+#endif
+
 /* Budget starts at actual UART admission. Idle time cannot earn burst credit.
  * This is byte-capacity backpressure, independent of modem turn scheduling. */
 static void radio_uart_mark_tx_quiet(uint16_t len)
@@ -920,10 +929,12 @@ static void radio_uart_mark_tx_quiet(uint16_t len)
   quiet_ms += RADIO_TX_COOLDOWN_MS;
 #else
   const uint32_t now = radio_now_ms();
-  if (!g_tx_packet_active || (int32_t)(now - g_tx_packet_until_ms) >= 0) {
+  if (!(g_tx_packet_active & RADIO_PACKET_ACTIVE) ||
+      (int32_t)(now - g_tx_packet_until_ms) >= 0) {
     g_tx_packet_started_ms = now;
+    g_tx_packet_active &= (uint8_t)~RADIO_PACKET_CLOSING;
   }
-  g_tx_packet_active = 1U;
+  g_tx_packet_active |= RADIO_PACKET_ACTIVE;
   const uint32_t wire_ms = (uint32_t)(((uint64_t)len * 10000ULL +
       RADIO_BAUD_RATE - 1U) / RADIO_BAUD_RATE);
   g_tx_packet_until_ms = now + wire_ms + RADIO_PACKET_GAP_MS;
@@ -933,12 +944,25 @@ static void radio_uart_mark_tx_quiet(uint16_t len)
 }
 
 #if !RFBOARD_LORA_SCHEDULER
+/* One critical completion per normal batch cycle may expose a modem idle
+ * boundary early. Retries keep normal batching until that cycle has elapsed;
+ * neither airtime debt nor the actual UART-drain quiet deadline is released. */
+static void radio_uart_close_packet_batch(void)
+{
+  const uint32_t now = radio_now_ms();
+  if ((g_tx_packet_active & RADIO_PACKET_FORCED_SEEN) &&
+      (uint32_t)(now - g_tx_last_forced_boundary_ms) <
+          RADIO_PACKET_BURST_MS + RADIO_PACKET_GAP_MS) return;
+  g_tx_last_forced_boundary_ms = now;
+  g_tx_packet_active |= RADIO_PACKET_CLOSING | RADIO_PACKET_FORCED_SEEN;
+}
+
 static void radio_uart_mark_tx_drained(void)
 {
   const uint32_t now = radio_now_ms();
   /* Anchor the packet idle boundary to the actual last UART stop bit. */
-  if (!g_tx_packet_active) g_tx_packet_started_ms = now;
-  g_tx_packet_active = 1U;
+  if (!(g_tx_packet_active & RADIO_PACKET_ACTIVE)) g_tx_packet_started_ms = now;
+  g_tx_packet_active |= RADIO_PACKET_ACTIVE;
   g_tx_packet_until_ms = now + RADIO_PACKET_GAP_MS;
 }
 #endif
@@ -951,13 +975,14 @@ static uint32_t radio_uart_quiet_remaining_ms(void)
     remaining = g_tx_quiet_until_ms - now;
   }
 #if !RFBOARD_LORA_SCHEDULER
-  if (g_tx_packet_active &&
-      (uint32_t)(now - g_tx_packet_started_ms) >= RADIO_PACKET_BURST_MS) {
+  if ((g_tx_packet_active & RADIO_PACKET_ACTIVE) &&
+      ((g_tx_packet_active & RADIO_PACKET_CLOSING) ||
+       (uint32_t)(now - g_tx_packet_started_ms) >= RADIO_PACKET_BURST_MS)) {
     if ((int32_t)(g_tx_packet_until_ms - now) > 0) {
       const uint32_t packet_remaining = g_tx_packet_until_ms - now;
       if (remaining < packet_remaining) remaining = packet_remaining;
     } else {
-      g_tx_packet_active = 0U;
+      g_tx_packet_active &= (uint8_t)~(RADIO_PACKET_ACTIVE | RADIO_PACKET_CLOSING);
     }
   }
 #endif
@@ -1306,6 +1331,13 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
 
     HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
     radio_uart_mark_tx_quiet(g_tx_dma_item.len);
+#if !RFBOARD_LORA_SCHEDULER
+    if (g_tx_dma_item.priority >= RADIO_UART_PRIORITY_NETWORK_CONTROL &&
+        radio_uart_independent_control(g_tx_dma_item.data, g_tx_dma_item.len,
+                                       g_tx_dma_item.priority)) {
+      radio_uart_close_packet_batch();
+    }
+#endif
     g_tx_dma_started++;
     sent++;
 
