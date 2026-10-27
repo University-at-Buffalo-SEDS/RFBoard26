@@ -111,6 +111,38 @@ int main(void) {
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.data[7]==61);g_radio_tx_ok++;
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.data[7]==60);g_radio_tx_ok++;
  assert(!g_tx_count&&!g_tx_queue_bytes_used);
+ /* Routine canonical heartbeats can bypass encoded history at dequeue, but
+  * must not consume the two slots reserved for commands and ACKs. */
+ reset(); frame(small,sizeof(small),70,0); small[6]=100;
+ assert(radio_uart_independent_control(small,sizeof(small),253));
+ for(unsigned i=0;i<10;i++)assert(radio_uart_enqueue_sedsnet_frame(small,sizeof(small),253)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_frame(small,sizeof(small),253)==HAL_BUSY);
+ frame(schema,16,71,1);
+ assert(radio_uart_enqueue_sedsnet_frame(schema,16,255)==HAL_BUSY); /* SDT cannot claim reserve. */
+ frame(ack,sizeof(ack),72,0);
+ assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),255)==HAL_OK);
+ frame(ack,sizeof(ack),73,0); ack[6]=110;
+ assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),254)==HAL_OK);
+ assert(g_tx_count==12 && g_tx_queue_bytes_used==10*sizeof(small)+2*sizeof(ack));
+ assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),254)==HAL_BUSY);
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.data[7]==72);g_radio_tx_ok++;
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.data[7]==73);g_radio_tx_ok++;
+ assert(g_tx_count==10);
+ /* Byte reservation is independent of slot reservation and has the same
+  * classification. Accepted ordinary bytes and SDT order remain owned. */
+ reset(); frame(schema,1000,74,1);
+ assert(radio_uart_enqueue_sedsnet_frame(schema,1000,253)==HAL_OK);
+ frame(schema,750,75,0); schema[6]=100;
+ assert(radio_uart_enqueue_sedsnet_frame(schema,750,253)==HAL_OK);
+ frame(schema,60,76,0); schema[6]=100;
+ assert(radio_uart_enqueue_sedsnet_frame(schema,60,253)==HAL_BUSY);
+ frame(schema,60,77,1);
+ assert(radio_uart_enqueue_sedsnet_frame(schema,60,255)==HAL_BUSY);
+ frame(ack,sizeof(ack),78,0);
+ assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),255)==HAL_OK);
+ frame(ack,sizeof(ack),79,0);ack[6]=110;
+ assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),254)==HAL_OK);
+ assert(g_tx_count==4 && g_tx_queue_bytes_used==1790);
  reset(); clock_ms=1;
  radio_uart_drop_stale_locked(0); /* Keep legacy helper covered, with an empty queue. */
  frame(small,sizeof(small),41,1);

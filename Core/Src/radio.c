@@ -739,7 +739,10 @@ static HAL_StatusTypeDef radio_uart_enqueue_sedsnet_frame(
     const uint8_t *data, uint16_t len, uint8_t priority) {
   if (!data || len == 0U || len > RADIO_UART_FRAME_BUF_SIZE) return HAL_ERROR;
   if (radio_uart_lock_tx_queue() != HAL_OK) return HAL_ERROR;
-  const uint8_t control = radio_uart_independent_control(data, len, priority);
+  /* Routine canonical heartbeats may bypass dependent history at dequeue,
+   * but must leave admission space for commands and final receipts. */
+  const uint8_t control = priority >= RADIO_UART_PRIORITY_NETWORK_CONTROL &&
+      radio_uart_independent_control(data, len, priority);
   const uint32_t slot_limit = RADIO_UART_TX_QUEUE_SLOTS -
       (control ? 0U : RADIO_UART_TX_CONTROL_RESERVE_SLOTS);
   const uint32_t byte_limit = RADIO_UART_TX_QUEUE_BYTE_CAPACITY -

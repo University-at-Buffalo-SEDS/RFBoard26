@@ -1,0 +1,61 @@
+{
+  "date": "2026-10-27",
+  "status": "native and additive firmware build passed; linked end-to-end qualification pending",
+  "problem": "The owned UART queue admitted routine canonical priority-253 heartbeats into the two slots and 256 bytes reserved for commands and receipts. A priority-255 ACK could be refused before dequeue priority mattered.",
+  "change": "Only canonical independent frames with existing network-control priority >=254 may use reserved admission capacity. Routine independent frames keep their existing dequeue bypass and FIFO tie ordering.",
+  "preserved": [
+    "12 slots and 2056 owned bytes; no queue growth or extra RAM",
+    "Two reserved slots and 256 reserved bytes",
+    "Dependent SDT frames retain ordinary admission limits and FIFO history, even if passed priority255",
+    "Seven independent-control turns then one ordinary FIFO turn",
+    "Existing air share, packet batch/gap, sampling, retry and expiry limits"
+  ],
+  "regression": {
+    "red": "/tmp/rf-reserve-critical-red-20261027.log: original implementation incorrectly accepted an eleventh routine priority253 frame",
+    "green": "/tmp/rf-reserve-critical-green-20261027.log: actual queue compiled under AddressSanitizer and UndefinedBehaviorSanitizer passes",
+    "coverage": [
+      "Ten routine253 canonical frames fill ordinary slots; next routine is refused; priority255 ACK and254 command use the two reserved slots",
+      "Dequeue serves admitted255 ACK before254 command and preserves remaining routine entries",
+      "1750 ordinary bytes accept; another60 ordinary bytes refuse; ACK and command still admit",
+      "SDT with priority255 cannot use either reserved slot or byte allowance"
+    ],
+    "full_suite": "/tmp/rf-reserve-critical-all-tests-20261027.log:173 tests passed, including sanitizer harnesses"
+  },
+  "firmware": {
+    "scope": "Additive source snapshot and frozen SDK Git archive, no hardware flash",
+    "sdk_commit": "7ea5a3003f8a3d85423a0e8e1d484306ef48082a",
+    "sdk_version": "4.2.7 unpublished Git source; no package release",
+    "source_base": "0dce93053aa0e54442d345f03c2f7b131a983409",
+    "source_overlay": "Core/Src/radio.c",
+    "source_sha256": "2eee1b23f6dbf02e4847ce09a5c8acb1daf5d3b5bc72e7d251477f7419530172",
+    "elf_sha256": "5474f17d7c479ca896a4a1909beda31529310f53546c0eee1bb34441ce907f09",
+    "warnings": 0,
+    "ram_bytes": 114424,
+    "ram_capacity_bytes": 114688,
+    "flash_bytes": 417900,
+    "flash_capacity_bytes": 474624,
+    "delta": "RAM unchanged;12 additional flash bytes",
+    "provenance": "FirmwareSimulator/build/schema-admission-rf-reserve-20261027/progress.json",
+    "wrapper": "FirmwareSimulator/build/schema-admission-rf-reserve-20261027/workspace; other six artifacts unchanged"
+  },
+  "diagnostic_evidence": {
+    "scope": "Pre-fix frozen-cohort14s forced-relay diagnostic, not qualification",
+    "artifact": "FirmwareSimulator/build/schema-admission-cohort-20261027/relay-rf-ack-hooks-closed-diagnostic/exact-ack-stage-audit.json",
+    "sha256": "e1fd8720d53ff44fcafe1150cdb01f154390a9d925a1c8ba9f825e8f20bcd48a",
+    "hook_rows": 484,
+    "all_declared_lengths_and_crc32_valid": true,
+    "can_receive_results": {
+      "success": 32
+    },
+    "radio_callback_results": {
+      "success": 27,
+      "SEDS_IO": 182
+    },
+    "limitation": "Admission pressure is confirmed, but does not explain every command delay. Sixteen CAN child ACK packet IDs were accepted without a radio callback; this may be intentional SDK proxy aggregation, since RF-owned upstream ACKs are emitted inside final child receive calls. The first pending RF-owned underglow ACK was admitted immediately and still took638.6ms from GS UART transmission to GS candidate RX. Original500ms gates remain failed and unchanged."
+  },
+  "limits": [
+    "No physical modem settings or hardware latency qualified",
+    "UART traces are CRC-valid candidate scans; production parser/SDK acceptance times are not inferred",
+    "Temporary CPU hook return addresses match only the exact pre-fix diagnostic ELF; refresh for any new ELF"
+  ]
+}
