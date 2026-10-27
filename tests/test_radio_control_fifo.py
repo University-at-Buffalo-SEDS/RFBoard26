@@ -7,7 +7,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 class RadioControlFifoTests(unittest.TestCase):
-    def test_ack_bypasses_schema_without_losing_template_order_or_bounding(self):
+    def _run_case(self, test, *, real_air=False, lora=False):
         source = (ROOT/'Core/Src/radio.c').read_text()
         types = '\n'.join(re.search(r'typedef struct \{[^}]*\} '+name+';', source).group()
                           for name in ['radio_tx_item_t', 'radio_tx_queue_item_t'])
@@ -21,6 +21,8 @@ class RadioControlFifoTests(unittest.TestCase):
         stale = source[stale_start:source.index('static HAL_StatusTypeDef radio_uart_enqueue_frame(', stale_start)]
         count_start = source.index('uint32_t radio_uart_tx_queue_count(void)')
         count = source[count_start:source.index('radio_uart_stats_t radio_uart_stats_snapshot', count_start)]
+        retry_start = source.index('static HAL_StatusTypeDef __attribute__((unused))\nradio_uart_requeue_frame_front(')
+        retry = source[retry_start:source.index('static uint32_t radio_uart_tx_timeout_ms(', retry_start)]
         preamble = r'''
 #include <stdint.h>
 #include <stddef.h>
@@ -55,6 +57,21 @@ static uint32_t radio_now_ms(void){return clock_ms;}
 static uint32_t radio_uart_queue_index_at_offset(uint32_t offset){return offset;}
 static uint32_t radio_uart_air_ms(uint16_t n){return n;}
 '''
+        if real_air:
+            air_start = source.index('static uint32_t radio_uart_air_ms(uint16_t len)\n{')
+            air = source[air_start:source.index('\n#if !RFBOARD_LORA_SCHEDULER', air_start)]
+            globals_ = globals_.replace('static uint32_t radio_uart_air_ms(uint16_t n){return n;}', '')
+        else:
+            air = ''
+        preamble += '\n#define RFBOARD_LORA_SCHEDULER ' + str(int(lora)) + '\n'
+        preamble += '#define RADIO_AIR_BIT_RATE_BPS 64000U\n#define RADIO_AIR_SHARE_PERCENT 40U\n#define RADIO_AIR_FRAME_OVERHEAD_BYTES 16U\n'
+        with tempfile.TemporaryDirectory() as tmp:
+            exe=str(Path(tmp)/'queue-test')
+            subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-x','c','-','-o',exe],
+                           input=preamble+types+globals_+air+read+remove+stale+count+independent+enqueue+retry+test,text=True,check=True)
+            subprocess.run([exe],check=True)
+
+    def test_ack_bypasses_schema_without_losing_template_order_or_bounding(self):
         test = r'''
 static void frame(uint8_t *p,unsigned n,unsigned marker,int sdt) {
  memset(p,0,n);p[0]=0xa5;p[1]=0x5a;p[2]=(n-4)&255;p[3]=(n-4)>>8;
@@ -152,14 +169,94 @@ int main(void) {
  clock_ms=2000;
  assert(radio_uart_tx_queue_count()==2); /* Observation cannot discard accepted SDT. */
  assert(g_tx_drops==0 && g_tx_drop_stale==0);
- for(unsigned marker=41;marker<=42;marker++){
-  assert(radio_uart_dequeue_frame_with_budget(&out,2000));assert(out.data[7]==marker);g_radio_tx_ok++;
- }
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000));
+ assert(out.len==2*sizeof(small) && out.data[7]==41 && out.data[sizeof(small)+7]==42);
+ g_radio_tx_ok++;
  assert(radio_uart_tx_queue_count()==0);
 }
 '''
-        with tempfile.TemporaryDirectory() as tmp:
-            exe=str(Path(tmp)/'queue-test')
-            subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-x','c','-','-o',exe],
-                           input=preamble+types+globals_+read+remove+stale+count+independent+enqueue+test,text=True,check=True)
-            subprocess.run([exe],check=True)
+        self._run_case(test)
+
+    def test_ordinary_batch_preserves_bytes_budget_priority_and_retry(self):
+        self._run_case(r'''
+static void frame(uint8_t *p,unsigned n,unsigned marker,int sdt) {
+ memset(p,0,n);p[0]=0xa5;p[1]=0x5a;p[2]=(n-4)&255;p[3]=(n-4)>>8;
+ if(sdt){memcpy(p+4,"SDT",3);p[7]=marker;}
+ else {p[4]=0xca;p[5]=1;p[6]=1;p[7]=marker;}
+}
+static void reset(void){g_tx_count=0;g_tx_queue_bytes_used=0;g_radio_tx_ok=0;}
+int main(void) {
+ uint8_t a[40],b[60],c[120],ack[20],large[300];radio_tx_item_t out;
+ radio_uart_drop_stale_locked(0);
+ frame(a,sizeof(a),10,1);frame(b,sizeof(b),11,1);frame(c,sizeof(c),12,1);frame(ack,sizeof(ack),13,0);
+ assert(radio_uart_enqueue_sedsnet_frame(a,sizeof(a),16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_frame(b,sizeof(b),16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_frame(c,sizeof(c),16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),255)==HAL_OK);
+ /* An independent ACK keeps its own immediate DMA turn. */
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(ack));
+ assert(!memcmp(out.data,ack,sizeof(ack)));g_radio_tx_ok++;
+ /* Only already-owned adjacent ordinary frames fit within one196-byte burst. */
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(a)+sizeof(b));
+ assert(!memcmp(out.data,a,sizeof(a))&&!memcmp(out.data+sizeof(a),b,sizeof(b)));
+ assert(g_tx_count==1&&g_tx_queue_bytes_used==sizeof(c));
+ /* A transient HAL failure requeues every byte as one owned item, ahead of c. */
+ assert(radio_uart_requeue_frame_front(&out)==HAL_OK);
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(a)+sizeof(b));
+ assert(!memcmp(out.data,a,sizeof(a))&&!memcmp(out.data+sizeof(a),b,sizeof(b)));
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(c));
+ assert(!memcmp(out.data,c,sizeof(c))&&!g_tx_count&&!g_tx_queue_bytes_used);
+ reset();
+ assert(radio_uart_enqueue_sedsnet_frame(a,sizeof(a),16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_frame(b,sizeof(b),16)==HAL_OK);
+ /* The actual aggregate air cost must fit the caller's unchanged budget. */
+ assert(radio_uart_dequeue_frame_with_budget(&out,90)&&out.len==sizeof(a));
+ assert(radio_uart_dequeue_frame_with_budget(&out,90)&&out.len==sizeof(b));
+ reset();
+ assert(radio_uart_enqueue_sedsnet_frame(a,sizeof(a),16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_frame(b,sizeof(b),17)==HAL_OK);
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(a));
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(b));
+ reset();
+ /* Dependent high-priority discovery and independent routine controls stay separate. */
+ assert(radio_uart_enqueue_sedsnet_frame(a,sizeof(a),254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_frame(b,sizeof(b),254)==HAL_OK);
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(a));
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(b));
+ reset();frame(large,sizeof(large),20,1);
+ assert(radio_uart_enqueue_sedsnet_frame(large,sizeof(large),16)==HAL_OK);
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(large));
+ assert(!memcmp(out.data,large,sizeof(large))); /* Existing legal single-frame capacity unchanged. */
+}
+''')
+
+    def test_batch_uses_real_air_budget_and_keeps_storage_sizes(self):
+        self._run_case(r"""
+_Static_assert(sizeof(radio_tx_item_t)==1044, "DMA storage unchanged");
+_Static_assert(sizeof(radio_tx_queue_item_t)==16, "queue storage unchanged");
+int main(void) {
+ uint8_t a[40]={0},b[60]={0};radio_tx_item_t out;
+ radio_uart_drop_stale_locked(0);
+ assert(radio_uart_enqueue_sedsnet_frame(a,sizeof(a),16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_frame(b,sizeof(b),16)==HAL_OK);
+ assert(radio_uart_air_ms(40)==18 && radio_uart_air_ms(60)==24);
+ assert(radio_uart_air_ms(100)==37 && radio_uart_air_ms(196)==67);
+ assert(radio_uart_dequeue_frame_with_budget(&out,31)&&out.len==40);
+ assert(radio_uart_requeue_frame_front(&out)==HAL_OK);
+ assert(radio_uart_dequeue_frame_with_budget(&out,37)&&out.len==100);
+ assert(!g_tx_count && !g_tx_queue_bytes_used);
+}
+""", real_air=True)
+
+    def test_lora_path_keeps_single_frame_service(self):
+        self._run_case(r"""
+int main(void) {
+ uint8_t a[40]={0},b[60]={0};radio_tx_item_t out;
+ radio_uart_drop_stale_locked(0);
+ assert(radio_uart_enqueue_sedsnet_frame(a,sizeof(a),16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_frame(b,sizeof(b),16)==HAL_OK);
+ assert(radio_uart_dequeue_frame_with_budget(&out,100)&&out.len==40);
+ assert(radio_uart_dequeue_frame_with_budget(&out,100)&&out.len==60);
+ assert(!g_tx_count && !g_tx_queue_bytes_used);
+}
+""", lora=True)

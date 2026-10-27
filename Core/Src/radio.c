@@ -827,6 +827,32 @@ static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32
       out->control_class = g_tx_queue[selected].control_class;
       memcpy(out->data, &g_tx_queue_bytes[g_tx_queue[selected].offset], out->len);
       radio_uart_remove_queue_index(selected);
+#if !RFBOARD_LORA_SCHEDULER
+      /* Amortize modem framing overhead over bytes that are already queued.
+       * Keep the burst no larger than the existing 192-byte SDK radio frame
+       * plus its four-byte UART header. Never wait for another frame, cross a
+       * priority/class boundary, or combine independent controls. Concatenate
+       * whole UART frames unchanged so SDT history and complete-DMA retries
+       * retain their original byte order and ownership. */
+      const uint32_t batch_limit = 192U + RADIO_UART_FRAME_HEADER_SIZE;
+      if (selected == 0U && out->priority < RADIO_UART_PRIORITY_NETWORK_CONTROL &&
+          !radio_uart_independent_control(out->data, out->len, out->priority)) {
+        while (g_tx_count > 0U) {
+          const radio_tx_queue_item_t *next = &g_tx_queue[0];
+          const uint32_t combined = (uint32_t)out->len + next->len;
+          if (next->priority != out->priority || next->flow_id != out->flow_id ||
+              next->control_class != out->control_class ||
+              next->is_heartbeat != out->is_heartbeat ||
+              combined > batch_limit || combined > sizeof(out->data) ||
+              radio_uart_air_ms((uint16_t)combined) > budget_ms ||
+              radio_uart_independent_control(&g_tx_queue_bytes[next->offset],
+                                             next->len, next->priority)) break;
+          memcpy(&out->data[out->len], &g_tx_queue_bytes[next->offset], next->len);
+          out->len = (uint16_t)combined;
+          radio_uart_remove_queue_index(0U);
+        }
+      }
+#endif
       g_tx_last_flow_id = out->flow_id;
       have = 1U;
     } else {
