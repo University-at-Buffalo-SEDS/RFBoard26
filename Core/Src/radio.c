@@ -284,6 +284,12 @@ static volatile uint32_t g_tx_packet_started_ms;
 static volatile uint32_t g_tx_packet_until_ms;
 static volatile uint8_t g_tx_packet_active;
 static volatile uint32_t g_tx_last_forced_boundary_ms;
+static volatile uint8_t g_tx_completed_service_credit_ms;
+static volatile uint8_t g_tx_pending_service_ms;
+static uint64_t g_tx_closed_ack_ids[4];
+static uint8_t g_tx_closed_ack_count;
+static uint8_t g_tx_closed_ack_cursor;
+
 #endif
 static volatile uint32_t g_aux_busy_count = 0U;
 static volatile uint32_t g_e22_mode0_set_at_ms = 0U;
@@ -944,15 +950,60 @@ static void radio_uart_mark_tx_quiet(uint16_t len)
 }
 
 #if !RFBOARD_LORA_SCHEDULER
-/* One critical completion per normal batch cycle may expose a modem idle
- * boundary early. Retries keep normal batching until that cycle has elapsed;
- * neither airtime debt nor the actual UART-drain quiet deadline is released. */
-static void radio_uart_close_packet_batch(void)
+/* Inspect only an owned SDK canonical plaintext ACK. Its last eight payload
+ * bytes are the stable acknowledged logical ID, independent of ACK retries
+ * and owner address. This never reconstructs SDT or allocates in the ISR. */
+static uint8_t radio_uart_ack_contract(const radio_tx_item_t *item, uint64_t *id)
+{
+  if (!item || !id || item->len > sizeof(item->data) || item->priority < RADIO_UART_PRIORITY_NETWORK_CONTROL ||
+      item->len < RADIO_UART_FRAME_HEADER_SIZE + 2U + 4U + 8U + 4U ||
+      !radio_uart_independent_control(item->data, item->len, item->priority)) return 0U;
+  const uint8_t *body = item->data + RADIO_UART_FRAME_HEADER_SIZE;
+  const size_t size = item->len - RADIO_UART_FRAME_HEADER_SIZE;
+  if ((body[0] & 0x11U) != 0U || (body[0] & 0xA0U) == 0xA0U) return 0U;
+  const size_t payload_end = size - 4U;
+  const size_t payload_start = payload_end - 8U;
+  size_t offset = 2U;
+  uint64_t type, data_size, ignored, source;
+  if (!radio_read_uleb128(body, payload_start, &offset, &type) || type != 1U ||
+      !radio_read_uleb128(body, payload_start, &offset, &data_size) || data_size != 8U ||
+      !radio_read_uleb128(body, payload_start, &offset, &ignored)) return 0U;
+  if ((body[0] & 0x08U) &&
+      !radio_read_uleb128(body, payload_start, &offset, &ignored)) return 0U;
+  if (!radio_read_uleb128(body, payload_start, &offset, &source) ||
+      source == 0U || source > UINT32_MAX) return 0U;
+  const uint32_t crc = (uint32_t)body[payload_end] |
+      ((uint32_t)body[payload_end + 1U] << 8U) |
+      ((uint32_t)body[payload_end + 2U] << 16U) |
+      ((uint32_t)body[payload_end + 3U] << 24U);
+  if (launchcore_crc32(body, payload_end) != crc) return 0U;
+  uint64_t value = 0U;
+  for (uint32_t i = 0U; i < 8U; ++i) value |= (uint64_t)body[payload_start + i] << (8U * i);
+  *id = value;
+  return 1U;
+}
+
+/* The normal155ms permit remains unchanged. Only a new logical ACK can spend
+ * a whole extra idle gap funded by completed ordinary DMA airtime. */
+static void radio_uart_close_packet_batch(const radio_tx_item_t *item)
 {
   const uint32_t now = radio_now_ms();
+  uint64_t id = 0U;
+  const uint8_t ack = radio_uart_ack_contract(item, &id);
+  uint8_t slot = 0U;
+  while (slot < g_tx_closed_ack_count && g_tx_closed_ack_ids[slot] != id) ++slot;
   if ((g_tx_packet_active & RADIO_PACKET_FORCED_SEEN) &&
       (uint32_t)(now - g_tx_last_forced_boundary_ms) <
-          RADIO_PACKET_BURST_MS + RADIO_PACKET_GAP_MS) return;
+          RADIO_PACKET_BURST_MS + RADIO_PACKET_GAP_MS) {
+    if (!ack || slot < g_tx_closed_ack_count || RADIO_PACKET_GAP_MS == 0U ||
+        RADIO_PACKET_GAP_MS > 55U || g_tx_completed_service_credit_ms < RADIO_PACKET_GAP_MS) return;
+    g_tx_completed_service_credit_ms = 0U;
+  }
+  if (ack && slot == g_tx_closed_ack_count) {
+    g_tx_closed_ack_ids[g_tx_closed_ack_cursor] = id;
+    g_tx_closed_ack_cursor = (uint8_t)((g_tx_closed_ack_cursor + 1U) % 4U);
+    if (g_tx_closed_ack_count < 4U) ++g_tx_closed_ack_count;
+  }
   g_tx_last_forced_boundary_ms = now;
   g_tx_packet_active |= RADIO_PACKET_CLOSING | RADIO_PACKET_FORCED_SEEN;
 }
@@ -1283,6 +1334,9 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
         radio_uart_tx_timeout_ms(g_tx_dma_item.len) + 50U;
     if (elapsed >= deadline) {
       (void)HAL_UART_AbortTransmit(g_huart);
+#if !RFBOARD_LORA_SCHEDULER
+      g_tx_pending_service_ms = 0U;
+#endif
       g_tx_dma_busy = 0U;
       g_tx_dma_preserves_rx = 0U;
       g_tx_dma_recoveries++;
@@ -1310,8 +1364,20 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
     g_tx_dma_busy = 1U;
     g_tx_dma_preserves_rx = 1U;
     g_tx_dma_started_at_ms = radio_now_ms();
+#if !RFBOARD_LORA_SCHEDULER
+    g_tx_pending_service_ms = 0U;
+    if (g_tx_dma_item.priority < RADIO_UART_PRIORITY_NETWORK_CONTROL &&
+        !radio_uart_independent_control(g_tx_dma_item.data, g_tx_dma_item.len,
+                                        g_tx_dma_item.priority)) {
+      const uint32_t cost = radio_uart_air_ms(g_tx_dma_item.len);
+      g_tx_pending_service_ms = (uint8_t)(cost > 55U ? 55U : cost);
+    }
+#endif
     status = HAL_UART_Transmit_DMA(g_huart, g_tx_dma_item.data, g_tx_dma_item.len);
     if (status != HAL_OK) {
+#if !RFBOARD_LORA_SCHEDULER
+      g_tx_pending_service_ms = 0U;
+#endif
       g_tx_dma_busy = 0U;
       g_tx_dma_preserves_rx = 0U;
       g_tx_errors++;
@@ -1335,7 +1401,7 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
     if (g_tx_dma_item.priority >= RADIO_UART_PRIORITY_NETWORK_CONTROL &&
         radio_uart_independent_control(g_tx_dma_item.data, g_tx_dma_item.len,
                                        g_tx_dma_item.priority)) {
-      radio_uart_close_packet_batch();
+      radio_uart_close_packet_batch(&g_tx_dma_item);
     }
 #endif
     g_tx_dma_started++;
@@ -1654,6 +1720,11 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 
   const uint8_t preserves_rx = g_tx_dma_preserves_rx;
 #if !RFBOARD_LORA_SCHEDULER
+  if (g_tx_dma_busy && preserves_rx) {
+    const uint32_t credit = (uint32_t)g_tx_completed_service_credit_ms + g_tx_pending_service_ms;
+    g_tx_completed_service_credit_ms = (uint8_t)(credit > 55U ? 55U : credit);
+  }
+  g_tx_pending_service_ms = 0U;
   radio_uart_mark_tx_drained();
 #endif
   g_tx_dma_busy = 0U;
@@ -1668,6 +1739,11 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
   if (!g_huart || huart->Instance != g_huart->Instance) return;
+#if !RFBOARD_LORA_SCHEDULER
+  /* An RX error may conservatively discard pending service credit too.
+   * Never fund an errored TX from a later or spurious completion callback. */
+  g_tx_pending_service_ms = 0U;
+#endif
   ++g_rx_errors;
   /* HAL has completed its error callback before the service loop rearms RX.
    * A one-shot rearm here can fail while the UART/DMA lock is still busy. */

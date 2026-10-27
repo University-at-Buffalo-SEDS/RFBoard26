@@ -70,6 +70,12 @@ static void HAL_UART_AbortTransmit(void *uart){(void)uart;}
 static unsigned HAL_UART_Transmit_DMA(void *uart,uint8_t *data,unsigned n){(void)uart;(void)data;(void)n;++sends;return hal_status;}
 static void HAL_GPIO_TogglePin(unsigned port,unsigned pin){(void)port;(void)pin;}
 '''
+        preamble += """
+static volatile uint8_t g_tx_completed_service_credit_ms, g_tx_pending_service_ms;
+static uint64_t g_tx_closed_ack_ids[4];
+static uint8_t g_tx_closed_ack_count, g_tx_closed_ack_cursor;
+"""
+        preamble += function((ROOT / 'tests/radio_crc_reference.h').read_text(), 'uint32_t launchcore_crc32(')
         test = r'''
 static void setup(unsigned priority, int sdt, unsigned len){
  memset(&candidate,0,sizeof(candidate));candidate.len=len;candidate.priority=priority;

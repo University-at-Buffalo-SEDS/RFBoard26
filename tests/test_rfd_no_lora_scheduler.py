@@ -6,6 +6,15 @@ import tempfile
 import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
+def function(source, signature):
+    start = source.index(signature)
+    brace = source.index('{', start)
+    depth, end = 1, brace + 1
+    while depth:
+        depth += (source[end] == '{') - (source[end] == '}')
+        end += 1
+    return source[start:end]
+
 class ModemSchedulingTests(unittest.TestCase):
     def test_rfd_capacity_is_bounded_without_lora_aux_or_turn_gates(self):
         source = (ROOT / 'Core/Src/radio.c').read_text()
@@ -13,6 +22,23 @@ class ModemSchedulingTests(unittest.TestCase):
         ready_end = source.index('\n}\n', ready_start) + 3
         gates_start = source.index('static uint32_t radio_uart_air_ms(uint16_t len)\n{')
         gates_end = source.index('uint8_t radio_uart_tx_ready(void)', gates_start)
+        support = """
+#if !RFBOARD_LORA_SCHEDULER
+#include <stddef.h>
+#include <string.h>
+#define RADIO_UART_FRAME_HEADER_SIZE 4U
+#define RADIO_UART_FRAME_SYNC_0 0xa5
+#define RADIO_UART_FRAME_SYNC_1 0x5a
+#define RADIO_UART_PRIORITY_NETWORK_CONTROL 254U
+typedef struct { uint16_t len; uint8_t priority; uint8_t data[1028]; } radio_tx_item_t;
+static uint8_t g_tx_completed_service_credit_ms;
+static uint64_t g_tx_closed_ack_ids[4];
+static uint8_t g_tx_closed_ack_count, g_tx_closed_ack_cursor;
+"""
+        support += function(source, 'static uint8_t radio_read_uleb128(')
+        support += function(source[source.index('/* Only canonical packets are independent'):], 'static uint8_t radio_uart_independent_control(')
+        support += function((ROOT / 'tests/radio_crc_reference.h').read_text(), 'uint32_t launchcore_crc32(')
+        support += "\n#endif\n"
         program = r'''
 #include <stdint.h>
 #include <assert.h>
@@ -33,7 +59,7 @@ static uint32_t g_e22_mode0_set_at_ms, g_aux_busy_count, aux_reads;
 uint32_t radio_now_ms(void) { return clock_ms; }
 uint32_t HAL_GetTick(void) { return clock_ms; }
 uint8_t radio_e22_aux_high(void) { ++aux_reads; return 0; }
-''' + source[ready_start:ready_end] + source[gates_start:gates_end] + r'''
+''' + support + source[ready_start:ready_end] + source[gates_start:gates_end] + r'''
 int main(void) {
   clock_ms=100; g_e22_mode0_set_at_ms=0;
 #if RFBOARD_LORA_SCHEDULER
