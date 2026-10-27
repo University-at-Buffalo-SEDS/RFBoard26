@@ -984,7 +984,7 @@ uint32_t radio_uart_tx_queue_count(void)
     return g_tx_count;
   }
 
-  radio_uart_drop_stale_locked(radio_now_ms());
+  /* Reading queue depth must not invalidate already accepted SDT history. */
   count = g_tx_count;
   radio_uart_unlock_tx_queue();
   return count;
@@ -992,7 +992,7 @@ uint32_t radio_uart_tx_queue_count(void)
 
 radio_uart_stats_t radio_uart_stats_snapshot(void)
 {
-  radio_uart_stats_t stats;
+  radio_uart_stats_t stats = {0};
   stats.rx_irq_events = g_rx_irq_events;
   stats.rx_isr_chunks = g_rx_isr_chunks;
   stats.rx_isr_bytes = g_rx_isr_bytes;
@@ -1006,7 +1006,7 @@ radio_uart_stats_t radio_uart_stats_snapshot(void)
   stats.tx_errors = g_tx_errors;
   stats.tx_busy = g_tx_busy;
   stats.tx_enqueued = g_tx_enqueued;
-  stats.tx_queue_count = g_tx_count;
+  stats.tx_queue_count = radio_uart_tx_queue_count();
   stats.tx_drops = g_tx_drops;
   stats.tx_drop_oldest = g_tx_drop_oldest;
   stats.tx_drop_same_flow = g_tx_drop_same_flow;

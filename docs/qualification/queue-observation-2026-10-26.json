@@ -1,0 +1,17 @@
+{
+  "status": "native_regression_and_matched_firmware_build_passed",
+  "problem": "Querying radio UART queue depth dropped accepted SDT history older than1500ms.",
+  "change": "Queue observation reads depth without changing queue membership. Statistics use this non-destructive queue-depth accessor.",
+  "unchanged": [
+    "enqueue admission and stale policy",
+    "SDT FIFO ordering",
+    "airtime and modem packetization bounds",
+    "queue capacity"
+  ],
+  "regression": "Accept two SDT frames, advance clock past1500ms, observe queue depth, then dequeue both byte-identical frames in order with zero drops.",
+  "verification": {
+    "native_suite": "172 tests passed including ASan/UBSan",
+    "firmware": "build/RadioFreshness-20261026 using the matched4.2.7 simulator cohort"
+  },
+  "limit": "This reproduces a destructive diagnostic query, not a confirmed cause of the physical FC/PB outage. No physical firmware was flashed."
+}
