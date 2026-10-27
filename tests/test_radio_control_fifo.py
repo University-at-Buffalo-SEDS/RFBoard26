@@ -15,6 +15,12 @@ class RadioControlFifoTests(unittest.TestCase):
         remove = source[source.index('static void radio_uart_remove_queue_index('):source.index('static void radio_uart_drop_stale_locked(')]
         start = source.index('static uint8_t radio_uart_independent_control(', source.index('static HAL_StatusTypeDef radio_uart_enqueue_sedsnet_frame('))
         independent = source[start:source.index('/* Put an item removed for transmission', start)]
+        split = independent.index('#if !RFBOARD_LORA_SCHEDULER')
+        dequeue = independent[split:]
+        independent = independent[:split]
+        from test_radio_funded_packet_boundary import function
+        crc = function((ROOT/'tests/radio_crc_reference.h').read_text(), 'uint32_t launchcore_crc32(')
+        ack = function(source, 'static uint8_t radio_uart_ack_contract(') + function(source, 'static uint8_t radio_uart_ack_contracts(')
         start = source.index('static HAL_StatusTypeDef radio_uart_enqueue_sedsnet_frame(')
         enqueue = source[start:source.index('/* Only canonical packets', start)]
         stale_start = source.index('static void radio_uart_drop_stale_locked(')
@@ -63,12 +69,13 @@ static uint32_t radio_uart_air_ms(uint16_t n){return n;}
             globals_ = globals_.replace('static uint32_t radio_uart_air_ms(uint16_t n){return n;}', '')
         else:
             air = ''
+        if lora: crc = ack = ''
         preamble += '\n#define RFBOARD_LORA_SCHEDULER ' + str(int(lora)) + '\n'
         preamble += '#define RADIO_AIR_BIT_RATE_BPS 64000U\n#define RADIO_AIR_SHARE_PERCENT 40U\n#define RADIO_AIR_FRAME_OVERHEAD_BYTES 16U\n'
         with tempfile.TemporaryDirectory() as tmp:
             exe=str(Path(tmp)/'queue-test')
             subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-x','c','-','-o',exe],
-                           input=preamble+types+globals_+air+read+remove+stale+count+independent+enqueue+retry+test,text=True,check=True)
+                           input=preamble+types+globals_+air+read+remove+stale+count+independent+crc+ack+'\n'+dequeue+enqueue+retry+test,text=True,check=True)
             subprocess.run([exe],check=True)
 
     def test_ack_bypasses_schema_without_losing_template_order_or_bounding(self):
@@ -260,3 +267,42 @@ int main(void) {
  assert(!g_tx_count && !g_tx_queue_bytes_used);
 }
 """, lora=True)
+
+    def test_receipts_share_one_burst_without_skipping_ordinary_turn(self):
+        from test_radio_receipt_promotion_dedup import ACK_AND_NORMAL_FIXTURES
+        fixtures='\n'.join(re.search(r'static const uint8_t '+name+r'\[\]=\{[^}]*\};', ACK_AND_NORMAL_FIXTURES).group() for name in ['d1','d7','d8'])
+        self._run_case(fixtures+r"""
+int main(void) {
+ uint8_t ordinary[40]={0};radio_tx_item_t out;
+ radio_uart_drop_stale_locked(0);
+ assert(radio_uart_enqueue_sedsnet_frame(ordinary,sizeof(ordinary),16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_frame(d1,sizeof(d1),255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_frame(d7,sizeof(d7),255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_frame(d8,sizeof(d8),255)==HAL_OK);
+ g_radio_tx_ok=5;
+ /* Only two control frames remain before the original owed FIFO turn. */
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000));
+ assert(out.len==sizeof(d1)+sizeof(d7));
+ assert(!memcmp(out.data,d1,sizeof(d1))&&!memcmp(out.data+sizeof(d1),d7,sizeof(d7)));
+ assert(out.uart_frames==2);g_radio_tx_ok+=out.uart_frames;
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(ordinary));
+ ++g_radio_tx_ok;
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(d8));
+ assert(!memcmp(out.data,d8,sizeof(d8))&&!g_tx_count&&!g_tx_queue_bytes_used);
+}
+""")
+
+    def test_requeued_batch_keeps_original_logical_slot_budget(self):
+        self._run_case(r"""
+int main(void) {
+ uint8_t a[40]={0},b[60]={0},small[16]={0};radio_tx_item_t out;
+ radio_uart_drop_stale_locked(0);
+ assert(radio_uart_enqueue_sedsnet_frame(a,sizeof(a),16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_frame(b,sizeof(b),16)==HAL_OK);
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==100&&out.uart_frames==2);
+ assert(radio_uart_requeue_frame_front(&out)==HAL_OK);
+ for(unsigned i=0;i<8;++i)assert(radio_uart_enqueue_sedsnet_frame(small,sizeof(small),16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_frame(small,sizeof(small),16)==HAL_BUSY);
+ assert(g_tx_count==9); /* Two owned UARTframes share one descriptor, not an extra admission slot. */
+}
+""")

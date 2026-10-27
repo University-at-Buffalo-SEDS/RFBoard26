@@ -28,6 +28,7 @@ PREAMBLE = r'''
 #define RADIO_PACKET_GAP_MS 55U
 #define RADIO_PACKET_BURST_MS 100U
 #define RADIO_UART_FRAME_HEADER_SIZE 4U
+#define RADIO_UART_FRAME_BUF_SIZE 1028U
 #define RADIO_UART_FRAME_SYNC_0 0xa5
 #define RADIO_UART_FRAME_SYNC_1 0x5a
 #define RADIO_UART_PRIORITY_NETWORK_CONTROL 254U
@@ -38,7 +39,7 @@ PREAMBLE = r'''
 #define HAL_OK 0U
 #define HAL_BUSY 2U
 typedef unsigned HAL_StatusTypeDef;
-typedef struct { uint16_t len; uint8_t priority; uint8_t is_heartbeat; uint8_t control_class; uint8_t data[1028]; } radio_tx_item_t;
+typedef struct { uint16_t len; uint8_t priority; uint8_t is_heartbeat; uint8_t control_class; uint8_t data[1028]; uint8_t uart_frames; } radio_tx_item_t;
 static radio_tx_item_t g_tx_dma_item, candidate;
 static unsigned clock_ms, g_tx_quiet_until_ms, g_tx_air_budget_active;
 static unsigned g_tx_packet_started_ms, g_tx_packet_until_ms, g_tx_packet_active;
@@ -90,7 +91,7 @@ static void normal(unsigned len){memset(&candidate,0,sizeof(candidate));candidat
 static void done(unsigned now){clock_ms=now;HAL_UART_TxCpltCallback(g_huart);}
 static void start(unsigned now){clock_ms=now;unsigned n=radio_uart_process_tx_with_budget(2000);if(n!=1)fprintf(stderr,"start_failed now=%u quiet=%u packetuntil=%u active=%u busy=%u\n",now,g_tx_quiet_until_ms,g_tx_packet_until_ms,g_tx_packet_active,g_tx_dma_busy);assert(n==1);}
 int main(void){
- reset();uint64_t id;queue(fc,sizeof(fc),255);assert(radio_uart_ack_contract(&candidate,&id)&&id==UINT64_C(17267761553259278303));
+ reset();uint64_t id;queue(fc,sizeof(fc),255);assert(radio_uart_ack_contract(candidate.data,candidate.len,candidate.priority,&id)&&id==UINT64_C(17267761553259278303));
  /* Real completed124B BOARD_HEALTH frames fund44+44 capped55, never at launch. */
  normal(124);start(30085);assert(g_tx_completed_service_credit_ms==0&&g_tx_pending_service_ms==44);done(30096);assert(g_tx_completed_service_credit_ms==44);
  normal(124);start(30151);assert(g_tx_completed_service_credit_ms==44);done(30162);assert(g_tx_completed_service_credit_ms==88);
@@ -107,19 +108,19 @@ int main(void){
  radio_read_uleb128(candidate.data,candidate.len,&header,&field);radio_read_uleb128(candidate.data,candidate.len,&header,&field);radio_read_uleb128(candidate.data,candidate.len,&header,&field);
  if(candidate.data[4]&8)radio_read_uleb128(candidate.data,candidate.len,&header,&field);
  candidate.data[header]^=1;unsigned ownercrc=launchcore_crc32(candidate.data+4,candidate.len-8);for(unsigned i=0;i<4;++i)candidate.data[candidate.len-4+i]=(ownercrc>>(8*i))&255;
- assert(radio_uart_ack_contract(&candidate,&id)&&id==UINT64_C(17267761553259278303));clock_ms=30384;radio_uart_close_packet_batch(&candidate);assert(g_tx_last_forced_boundary_ms==30255&&g_tx_completed_service_credit_ms==95);
+ assert(radio_uart_ack_contract(candidate.data,candidate.len,candidate.priority,&id)&&id==UINT64_C(17267761553259278303));clock_ms=30384;radio_uart_close_packet_batch(&candidate);assert(g_tx_last_forced_boundary_ms==30255&&g_tx_completed_service_credit_ms==95);
  /* Critical-only traffic and failed HAL admission/lateIRQ earn no service. */
  reset();queue(und,sizeof(und),255);start(1000);done(1005);queue(fc,sizeof(fc),255);start(1060);assert(g_tx_last_forced_boundary_ms==1000&&g_tx_completed_service_credit_ms==0);done(1065);
  reset();normal(124);clock_ms=2000;hal_status=HAL_BUSY;assert(!radio_uart_process_tx_with_budget(2000));assert(g_tx_pending_service_ms==0&&g_tx_completed_service_credit_ms==0);done(2010);assert(g_tx_completed_service_credit_ms==0);
  reset();normal(124);start(3000);clock_ms=4000;offered=0;radio_uart_process_tx_with_budget(2000);assert(!g_tx_dma_busy&&g_tx_pending_service_ms==0&&g_tx_completed_service_credit_ms==0);done(4001);assert(g_tx_completed_service_credit_ms==0);
  reset();normal(124);start(5000);HAL_UART_ErrorCallback(g_huart);assert(g_tx_pending_service_ms==0);done(5012);assert(g_tx_completed_service_credit_ms==0);
  /* CRC, encrypted/compressed, SDT and incompletebounds never grant a key. */
- queue(fc,sizeof(fc),255);candidate.data[candidate.len-1]^=1;assert(!radio_uart_ack_contract(&candidate,&id));
- for(unsigned flag=1;flag<=16;flag*=16){queue(fc,sizeof(fc),255);candidate.data[4]|=flag;assert(!radio_uart_ack_contract(&candidate,&id));}
- normal(124);candidate.priority=255;assert(!radio_uart_ack_contract(&candidate,&id));
- queue(fc,sizeof(fc),255);candidate.len=8;assert(!radio_uart_ack_contract(&candidate,&id));
- queue(fc,sizeof(fc),255);candidate.len=UINT16_MAX;assert(!radio_uart_ack_contract(&candidate,&id));
- queue(fc,sizeof(fc),255);memset(candidate.data+6,0x80,candidate.len-6-12);unsigned crc=launchcore_crc32(candidate.data+4,candidate.len-8);for(unsigned i=0;i<4;++i)candidate.data[candidate.len-4+i]=(crc>>(8*i))&255;assert(!radio_uart_ack_contract(&candidate,&id));
+ queue(fc,sizeof(fc),255);candidate.data[candidate.len-1]^=1;assert(!radio_uart_ack_contract(candidate.data,candidate.len,candidate.priority,&id));
+ for(unsigned flag=1;flag<=16;flag*=16){queue(fc,sizeof(fc),255);candidate.data[4]|=flag;assert(!radio_uart_ack_contract(candidate.data,candidate.len,candidate.priority,&id));}
+ normal(124);candidate.priority=255;assert(!radio_uart_ack_contract(candidate.data,candidate.len,candidate.priority,&id));
+ queue(fc,sizeof(fc),255);candidate.len=8;assert(!radio_uart_ack_contract(candidate.data,candidate.len,candidate.priority,&id));
+ queue(fc,sizeof(fc),255);candidate.len=UINT16_MAX;assert(!radio_uart_ack_contract(candidate.data,candidate.len,candidate.priority,&id));
+ queue(fc,sizeof(fc),255);memset(candidate.data+6,0x80,candidate.len-6-12);unsigned crc=launchcore_crc32(candidate.data+4,candidate.len-8);for(unsigned i=0;i<4;++i)candidate.data[candidate.len-4+i]=(crc>>(8*i))&255;assert(!radio_uart_ack_contract(candidate.data,candidate.len,candidate.priority,&id));
  /* Tick wrap keeps the old elapsed/stopbit gate semantics. */
  reset();g_tx_completed_service_credit_ms=55;queue(und,sizeof(und),255);start(UINT32_MAX-70);done(UINT32_MAX-65);
  queue(fc,sizeof(fc),255);start(UINT32_MAX-10);assert(g_tx_completed_service_credit_ms==0);done(UINT32_MAX-5);clock_ms=48;assert(radio_uart_air_busy());clock_ms=49;assert(!radio_uart_air_busy());

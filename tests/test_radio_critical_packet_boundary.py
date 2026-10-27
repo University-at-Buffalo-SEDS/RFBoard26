@@ -40,6 +40,7 @@ class CriticalPacketBoundaryTests(unittest.TestCase):
 #define RADIO_PACKET_GAP_MS 55U
 #define RADIO_PACKET_BURST_MS 100U
 #define RADIO_UART_FRAME_HEADER_SIZE 4U
+#define RADIO_UART_FRAME_BUF_SIZE 1028U
 #define RADIO_UART_FRAME_SYNC_0 0xa5
 #define RADIO_UART_FRAME_SYNC_1 0x5a
 #define RADIO_UART_PRIORITY_NETWORK_CONTROL 254U
@@ -50,7 +51,7 @@ class CriticalPacketBoundaryTests(unittest.TestCase):
 #define HAL_OK 0U
 #define HAL_BUSY 2U
 typedef unsigned HAL_StatusTypeDef;
-typedef struct { uint16_t len; uint8_t priority; uint8_t is_heartbeat; uint8_t control_class; uint8_t data[1028]; } radio_tx_item_t;
+typedef struct { uint16_t len; uint8_t priority; uint8_t is_heartbeat; uint8_t control_class; uint8_t data[1028]; uint8_t uart_frames; } radio_tx_item_t;
 static radio_tx_item_t g_tx_dma_item, candidate;
 static unsigned clock_ms, g_tx_quiet_until_ms, g_tx_air_budget_active;
 static unsigned g_tx_packet_started_ms, g_tx_packet_until_ms, g_tx_packet_active;

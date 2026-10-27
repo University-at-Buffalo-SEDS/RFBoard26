@@ -58,6 +58,22 @@ reset_all();offer(d1,sizeof(d1),255);begin(2000);done(2005);offer(d1,sizeof(d1),
 reset_all();for(unsigned i=0;i<5;++i){offer(d1,sizeof(d1),255);uint64_t key=100+i;for(unsigned j=0;j<8;++j)candidate.data[candidate.len-12+j]=(key>>(8*j))&255;fix_crc();begin(3000+i*200);done(3005+i*200);assert(g_tx_last_forced_boundary_ms==3000+i*200);}assert(g_tx_closed_ack_count==4);offer(d1,sizeof(d1),255);uint64_t key=100;for(unsigned j=0;j<8;++j)candidate.data[candidate.len-12+j]=(key>>(8*j))&255;fix_crc();begin(4000);assert(g_tx_last_forced_boundary_ms==4000);done(4005);
 
 reset_all();offer(d1,sizeof(d1),255);begin(5000);unsigned recoveries=g_tx_dma_recoveries;offer(d1,sizeof(d1),255);begin(5260);assert(g_tx_dma_recoveries==recoveries+1&&g_tx_last_forced_boundary_ms==5000&&g_tx_completed_service_credit_ms==0);assert(memcmp(g_tx_dma_item.data,d1,sizeof(d1))==0);done(5265);
+
+/* One physical ACK burst serves both contracts, remembers each only after
+ * a real close, and a same-ID retry never earns another promotion. */
+reset_all();offer(d1,sizeof(d1),255);memcpy(candidate.data+candidate.len,d7,sizeof(d7));candidate.len+=sizeof(d7);candidate.uart_frames=2;begin(6000);assert(g_tx_closed_ack_count==2&&g_tx_last_forced_boundary_ms==6000);done(6010);assert(g_radio_tx_ok==2&&g_tx_dma_complete==1);
+offer(d1,sizeof(d1),255);begin(6260);assert(g_tx_last_forced_boundary_ms==6000);done(6265);
+offer(d7,sizeof(d7),255);begin(6520);assert(g_tx_last_forced_boundary_ms==6000);done(6525);
+/* A remembered first receipt cannot hide a fresh second contract. */
+offer(d1,sizeof(d1),255);memcpy(candidate.data+candidate.len,d8,sizeof(d8));candidate.len+=sizeof(d8);begin(6780);assert(g_tx_closed_ack_count==3&&g_tx_last_forced_boundary_ms==6780);done(6790);
+
+/* A full recent-contract cache must retain every contract in this burst,
+ * including an older hit that would otherwise be evicted by a new suffix. */
+reset_all();for(unsigned i=0;i<4;++i){offer(d1,sizeof(d1),255);uint64_t k=100+i;for(unsigned j=0;j<8;++j)candidate.data[candidate.len-12+j]=(k>>(8*j))&255;fix_crc();begin(7000+200*i);done(7005+200*i);}
+uint8_t mixed[3*sizeof(d1)];uint64_t keys[3]={102,100,104};
+for(unsigned i=0;i<3;++i){offer(d1,sizeof(d1),255);for(unsigned j=0;j<8;++j)candidate.data[candidate.len-12+j]=(keys[i]>>(8*j))&255;fix_crc();memcpy(mixed+i*sizeof(d1),candidate.data,sizeof(d1));}
+memcpy(candidate.data,mixed,sizeof(mixed));candidate.len=sizeof(mixed);candidate.uart_frames=3;begin(7800);done(7815);assert(g_tx_closed_ack_count==4);
+for(unsigned i=0;i<3;++i){offer(d1,sizeof(d1),255);for(unsigned j=0;j<8;++j)candidate.data[candidate.len-12+j]=(keys[i]>>(8*j))&255;fix_crc();begin(8000+200*i);assert(g_tx_last_forced_boundary_ms==7800);done(8005+200*i);}
 return 0;}
 
 '''

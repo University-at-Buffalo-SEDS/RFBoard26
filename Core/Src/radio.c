@@ -168,6 +168,7 @@ typedef struct {
   uint8_t is_heartbeat;
   uint8_t control_class;
   uint8_t data[RADIO_UART_FRAME_BUF_SIZE];
+  uint8_t uart_frames; /* Uses the existing trailing alignment byte. */
 } radio_tx_item_t;
 
 typedef struct {
@@ -178,6 +179,7 @@ typedef struct {
   uint8_t priority;
   uint8_t is_heartbeat;
   uint8_t control_class;
+  uint8_t uart_frames; /* Uses the existing descriptor padding byte. */
 } radio_tx_queue_item_t;
 
 static UART_HandleTypeDef *g_huart = NULL;
@@ -628,6 +630,16 @@ static void radio_uart_remove_queue_index(uint32_t index) {
   g_tx_count--;
 }
 
+/* Called under the TX mutex. A retried DMA batch still owns every original
+ * UART-frame slot even though its bytes now share one queue descriptor. */
+static uint32_t radio_uart_owned_frame_count(void)
+{
+  uint32_t count = 0U;
+  for (uint32_t i = 0U; i < g_tx_count; ++i)
+    count += g_tx_queue[i].uart_frames ? g_tx_queue[i].uart_frames : 1U;
+  return count;
+}
+
 static void radio_uart_drop_stale_locked(uint32_t now_ms) {
   uint32_t i = 0U;
 
@@ -687,7 +699,7 @@ static HAL_StatusTypeDef radio_uart_enqueue_frame(const uint8_t *data, uint16_t 
     }
   }
 
-  while (g_tx_count >= RADIO_UART_TX_QUEUE_SLOTS ||
+  while (radio_uart_owned_frame_count() >= RADIO_UART_TX_QUEUE_SLOTS ||
          g_tx_queue_bytes_used + len > RADIO_UART_TX_QUEUE_BYTE_CAPACITY) {
     uint32_t drop = 0U;
     uint8_t lowest_priority = g_tx_queue[0].priority;
@@ -726,6 +738,7 @@ static HAL_StatusTypeDef radio_uart_enqueue_frame(const uint8_t *data, uint16_t 
 
   radio_tx_queue_item_t *queued = &g_tx_queue[g_tx_count];
   queued->len = len;
+  queued->uart_frames = 1U;
   queued->offset = (uint16_t)g_tx_queue_bytes_used;
   queued->flow_id = flow_id;
   queued->enqueued_ms = radio_now_ms();
@@ -755,7 +768,7 @@ static HAL_StatusTypeDef radio_uart_enqueue_sedsnet_frame(
       (control ? 0U : RADIO_UART_TX_CONTROL_RESERVE_SLOTS);
   const uint32_t byte_limit = RADIO_UART_TX_QUEUE_BYTE_CAPACITY -
       (control ? 0U : RADIO_UART_TX_CONTROL_RESERVE_BYTES);
-  if (g_tx_count >= slot_limit || g_tx_queue_bytes_used + len > byte_limit) {
+  if (radio_uart_owned_frame_count() >= slot_limit || g_tx_queue_bytes_used + len > byte_limit) {
     radio_uart_unlock_tx_queue();
     g_tx_busy++;
     return HAL_BUSY;
@@ -763,6 +776,7 @@ static HAL_StatusTypeDef radio_uart_enqueue_sedsnet_frame(
 
   radio_tx_queue_item_t *queued = &g_tx_queue[g_tx_count];
   queued->len = len;
+  queued->uart_frames = 1U;
   queued->offset = (uint16_t)g_tx_queue_bytes_used;
   queued->flow_id = RADIO_UART_SCHED_FALLBACK_FLOW;
   queued->enqueued_ms = radio_now_ms();
@@ -796,6 +810,11 @@ static uint8_t radio_uart_independent_control(const uint8_t *data, uint16_t len,
   return !((type >= 7U && type <= 12U) || (type >= 15U && type <= 17U));
 }
 
+#if !RFBOARD_LORA_SCHEDULER
+static uint8_t radio_uart_ack_contracts (const uint8_t *data, uint16_t len,
+                                        uint8_t priority, uint64_t ids[4]);
+#endif
+
 static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32_t budget_ms) {
   uint8_t have = 0U;
   if (!out) return 0U;
@@ -820,6 +839,7 @@ static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32
     }
     if (radio_uart_air_ms(g_tx_queue[selected].len) <= budget_ms) {
       out->len = g_tx_queue[selected].len;
+      out->uart_frames = g_tx_queue[selected].uart_frames ? g_tx_queue[selected].uart_frames : 1U;
       out->flow_id = g_tx_queue[selected].flow_id;
       out->enqueued_ms = g_tx_queue[selected].enqueued_ms;
       out->priority = g_tx_queue[selected].priority;
@@ -828,28 +848,37 @@ static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32
       memcpy(out->data, &g_tx_queue_bytes[g_tx_queue[selected].offset], out->len);
       radio_uart_remove_queue_index(selected);
 #if !RFBOARD_LORA_SCHEDULER
-      /* Amortize modem framing overhead over bytes that are already queued.
-       * Keep the burst no larger than the existing 192-byte SDK radio frame
-       * plus its four-byte UART header. Never wait for another frame, cross a
-       * priority/class boundary, or combine independent controls. Concatenate
-       * whole UART frames unchanged so SDT history and complete-DMA retries
-       * retain their original byte order and ownership. */
+      /* Batch only already-owned adjacent bytes. Receipts may share a
+       * physical burst, while each original UART frame still spends its
+       * existing fairness turn. No waiting window, extra slots, or bytes. */
       const uint32_t batch_limit = 192U + RADIO_UART_FRAME_HEADER_SIZE;
-      if (selected == 0U && out->priority < RADIO_UART_PRIORITY_NETWORK_CONTROL &&
-          !radio_uart_independent_control(out->data, out->len, out->priority)) {
-        while (g_tx_count > 0U) {
-          const radio_tx_queue_item_t *next = &g_tx_queue[0];
+      uint64_t ack_ids[4];
+      const uint8_t ack_batch = out->priority >= RADIO_UART_PRIORITY_NETWORK_CONTROL &&
+          radio_uart_ack_contracts(out->data, out->len, out->priority, ack_ids);
+      const uint8_t ordinary_batch = selected == 0U && !out->is_heartbeat &&
+          out->priority < RADIO_UART_PRIORITY_NETWORK_CONTROL &&
+          !radio_uart_independent_control(out->data, out->len, out->priority);
+      if (ordinary_batch || ack_batch) {
+        while (selected < g_tx_count) {
+          const radio_tx_queue_item_t *next = &g_tx_queue[selected];
+          const uint8_t next_frames = next->uart_frames ? next->uart_frames : 1U;
           const uint32_t combined = (uint32_t)out->len + next->len;
           if (next->priority != out->priority || next->flow_id != out->flow_id ||
               next->control_class != out->control_class ||
               next->is_heartbeat != out->is_heartbeat ||
               combined > batch_limit || combined > sizeof(out->data) ||
-              radio_uart_air_ms((uint16_t)combined) > budget_ms ||
-              radio_uart_independent_control(&g_tx_queue_bytes[next->offset],
-                                             next->len, next->priority)) break;
+              radio_uart_air_ms((uint16_t)combined) > budget_ms) break;
+          if (ack_batch) {
+            const uint32_t frames = (uint32_t)out->uart_frames + next_frames;
+            if (frames > 4U || frames > 7U - (g_radio_tx_ok & 7U) ||
+                radio_uart_ack_contracts(&g_tx_queue_bytes[next->offset],
+                    next->len, next->priority, ack_ids) != next_frames) break;
+          } else if (radio_uart_independent_control(&g_tx_queue_bytes[next->offset],
+                                                   next->len, next->priority)) break;
           memcpy(&out->data[out->len], &g_tx_queue_bytes[next->offset], next->len);
           out->len = (uint16_t)combined;
-          radio_uart_remove_queue_index(0U);
+          out->uart_frames = (uint8_t)(out->uart_frames + next_frames);
+          radio_uart_remove_queue_index(selected);
         }
       }
 #endif
@@ -872,7 +901,7 @@ radio_uart_requeue_frame_front(const radio_tx_item_t *item) {
     return HAL_ERROR;
   }
   if (radio_uart_lock_tx_queue() != HAL_OK) return HAL_ERROR;
-  if (g_tx_count >= RADIO_UART_TX_QUEUE_SLOTS ||
+  if (radio_uart_owned_frame_count() + (item->uart_frames ? item->uart_frames : 1U) > RADIO_UART_TX_QUEUE_SLOTS ||
       g_tx_queue_bytes_used + item->len > RADIO_UART_TX_QUEUE_BYTE_CAPACITY) {
     radio_uart_unlock_tx_queue();
     return HAL_BUSY;
@@ -888,6 +917,7 @@ radio_uart_requeue_frame_front(const radio_tx_item_t *item) {
             g_tx_count * sizeof(g_tx_queue[0]));
   }
   g_tx_queue[0].len = item->len;
+  g_tx_queue[0].uart_frames = item->uart_frames ? item->uart_frames : 1U;
   g_tx_queue[0].offset = 0U;
   g_tx_queue[0].flow_id = item->flow_id;
   g_tx_queue[0].enqueued_ms = item->enqueued_ms;
@@ -980,13 +1010,13 @@ static void radio_uart_mark_tx_quiet(uint16_t len)
 /* Inspect only an owned SDK canonical plaintext ACK. Its last eight payload
  * bytes are the stable acknowledged logical ID, independent of ACK retries
  * and owner address. This never reconstructs SDT or allocates in the ISR. */
-static uint8_t radio_uart_ack_contract(const radio_tx_item_t *item, uint64_t *id)
+static uint8_t radio_uart_ack_contract(const uint8_t *data, uint16_t len, uint8_t priority, uint64_t *id)
 {
-  if (!item || !id || item->len > sizeof(item->data) || item->priority < RADIO_UART_PRIORITY_NETWORK_CONTROL ||
-      item->len < RADIO_UART_FRAME_HEADER_SIZE + 2U + 4U + 8U + 4U ||
-      !radio_uart_independent_control(item->data, item->len, item->priority)) return 0U;
-  const uint8_t *body = item->data + RADIO_UART_FRAME_HEADER_SIZE;
-  const size_t size = item->len - RADIO_UART_FRAME_HEADER_SIZE;
+  if (!data || !id || len > RADIO_UART_FRAME_BUF_SIZE || priority < RADIO_UART_PRIORITY_NETWORK_CONTROL ||
+      len < RADIO_UART_FRAME_HEADER_SIZE + 2U + 4U + 8U + 4U ||
+      !radio_uart_independent_control(data, len, priority)) return 0U;
+  const uint8_t *body = data + RADIO_UART_FRAME_HEADER_SIZE;
+  const size_t size = len - RADIO_UART_FRAME_HEADER_SIZE;
   if ((body[0] & 0x11U) != 0U || (body[0] & 0xA0U) == 0xA0U) return 0U;
   const size_t payload_end = size - 4U;
   const size_t payload_start = payload_end - 8U;
@@ -1010,29 +1040,74 @@ static uint8_t radio_uart_ack_contract(const radio_tx_item_t *item, uint64_t *id
   return 1U;
 }
 
+/* Complete canonical ACK spans only: no allocation or SDT reconstruction.
+ * A malformed/non-ACK suffix cannot borrow a receipt's close permit. */
+static uint8_t radio_uart_ack_contracts(const uint8_t *data, uint16_t len,
+                                       uint8_t priority, uint64_t ids[4])
+{
+  uint32_t offset = 0U;
+  uint8_t count = 0U;
+  if (!data || !ids || len > RADIO_UART_FRAME_BUF_SIZE) return 0U;
+  while (offset < len && count < 4U) {
+    if ((uint32_t)len - offset < RADIO_UART_FRAME_HEADER_SIZE) return 0U;
+    const uint32_t span = RADIO_UART_FRAME_HEADER_SIZE + data[offset + 2U] +
+                          ((uint32_t)data[offset + 3U] << 8U);
+    if (span > (uint32_t)len - offset ||
+        !radio_uart_ack_contract(data + offset, (uint16_t)span, priority,
+                                 &ids[count])) return 0U;
+    offset += span;
+    ++count;
+  }
+  return offset == len ? count : 0U;
+}
+
 /* The normal155ms permit remains unchanged. Only a new logical ACK can spend
  * a whole extra idle gap funded by completed ordinary DMA airtime. */
 static void radio_uart_close_packet_batch(const radio_tx_item_t *item)
 {
   const uint32_t now = radio_now_ms();
-  uint64_t id = 0U;
-  const uint8_t ack = radio_uart_ack_contract(item, &id);
-  uint8_t slot = 0U;
-  while (slot < g_tx_closed_ack_count && g_tx_closed_ack_ids[slot] != id) ++slot;
-  /* Retried receipts retain their bytes and normal batching; one recent
-   * logical ACK must not repeatedly spend either kind of close opportunity. */
-  if (ack && slot < g_tx_closed_ack_count) return;
+  uint64_t ids[4];
+  const uint8_t ack_count = radio_uart_ack_contracts(item->data, item->len,
+                                                    item->priority, ids);
+  if (!ack_count && !radio_uart_independent_control(item->data, item->len,
+                                                   item->priority)) return;
+  uint8_t fresh_ack = 0U;
+  for (uint8_t n = 0U; n < ack_count; ++n) {
+    uint8_t slot = 0U;
+    while (slot < g_tx_closed_ack_count && g_tx_closed_ack_ids[slot] != ids[n]) ++slot;
+    if (slot == g_tx_closed_ack_count) fresh_ack = 1U;
+  }
+  /* Retried bytes still transmit, but remembered contracts earn no new close. */
+  if (ack_count && !fresh_ack) return;
   if ((g_tx_packet_active & RADIO_PACKET_FORCED_SEEN) &&
       (uint32_t)(now - g_tx_last_forced_boundary_ms) <
           RADIO_PACKET_BURST_MS + RADIO_PACKET_GAP_MS) {
-    if (!ack || RADIO_PACKET_GAP_MS == 0U ||
-        RADIO_PACKET_GAP_MS > 55U || g_tx_completed_service_credit_ms < RADIO_PACKET_GAP_MS) return;
+    if (!fresh_ack || RADIO_PACKET_GAP_MS == 0U || RADIO_PACKET_GAP_MS > 55U ||
+        g_tx_completed_service_credit_ms < RADIO_PACKET_GAP_MS) return;
+    /* One actual physical close consumes one already-funded idle gap. */
     g_tx_completed_service_credit_ms -= RADIO_PACKET_GAP_MS;
   }
-  if (ack && slot == g_tx_closed_ack_count) {
-    g_tx_closed_ack_ids[g_tx_closed_ack_cursor] = id;
-    g_tx_closed_ack_cursor = (uint8_t)((g_tx_closed_ack_cursor + 1U) % 4U);
-    if (g_tx_closed_ack_count < 4U) ++g_tx_closed_ack_count;
+  if (ack_count) {
+    /* Keep every contract served by this close, even if a fresh suffix would
+     * evict an older hit. Fill remaining slots with the newest prior IDs. */
+    uint64_t recent[4];
+    uint8_t count = 0U;
+    for (uint8_t n = ack_count; n > 0U; --n) {
+      uint8_t i = 0U;
+      while (i < count && recent[i] != ids[n - 1U]) ++i;
+      if (i == count) recent[count++] = ids[n - 1U];
+    }
+    for (uint8_t n = 0U; n < g_tx_closed_ack_count && count < 4U; ++n) {
+      const uint8_t slot = (uint8_t)((g_tx_closed_ack_cursor + 3U - n) % 4U);
+      const uint64_t id = g_tx_closed_ack_ids[slot];
+      uint8_t i = 0U;
+      while (i < count && recent[i] != id) ++i;
+      if (i == count) recent[count++] = id;
+    }
+    for (uint8_t i = 0U; i < count; ++i)
+      g_tx_closed_ack_ids[i] = recent[count - 1U - i];
+    g_tx_closed_ack_count = count;
+    g_tx_closed_ack_cursor = (uint8_t)(count % 4U);
   }
   g_tx_last_forced_boundary_ms = now;
   g_tx_packet_active |= RADIO_PACKET_CLOSING | RADIO_PACKET_FORCED_SEEN;
@@ -1097,7 +1172,7 @@ uint32_t radio_uart_tx_queue_count(void)
   }
 
   /* Reading queue depth must not invalidate already accepted SDT history. */
-  count = g_tx_count;
+  count = radio_uart_owned_frame_count();
   radio_uart_unlock_tx_queue();
   return count;
 }
@@ -1428,9 +1503,7 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
     HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
     radio_uart_mark_tx_quiet(g_tx_dma_item.len);
 #if !RFBOARD_LORA_SCHEDULER
-    if (g_tx_dma_item.priority >= RADIO_UART_PRIORITY_NETWORK_CONTROL &&
-        radio_uart_independent_control(g_tx_dma_item.data, g_tx_dma_item.len,
-                                       g_tx_dma_item.priority)) {
+    if (g_tx_dma_item.priority >= RADIO_UART_PRIORITY_NETWORK_CONTROL) {
       radio_uart_close_packet_batch(&g_tx_dma_item);
     }
 #endif
@@ -1749,6 +1822,8 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
   if (huart->Instance != g_huart->Instance) return;
 
   const uint8_t preserves_rx = g_tx_dma_preserves_rx;
+  const uint8_t uart_frames = g_tx_dma_busy && preserves_rx && g_tx_dma_item.uart_frames
+                                  ? g_tx_dma_item.uart_frames : 1U;
 #if !RFBOARD_LORA_SCHEDULER
   if (g_tx_dma_busy && preserves_rx) {
     const uint32_t credit = (uint32_t)g_tx_completed_service_credit_ms + g_tx_pending_service_ms;
@@ -1759,7 +1834,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 #endif
   g_tx_dma_busy = 0U;
   g_tx_dma_preserves_rx = 0U;
-  g_radio_tx_ok++;
+  g_radio_tx_ok += uart_frames;
   g_tx_dma_complete++;
   if (!preserves_rx && radio_uart_start_rx() != HAL_OK) {
     g_rx_restart_errors++;

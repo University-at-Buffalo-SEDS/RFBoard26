@@ -27,6 +27,7 @@ class ModemSchedulingTests(unittest.TestCase):
 #include <stddef.h>
 #include <string.h>
 #define RADIO_UART_FRAME_HEADER_SIZE 4U
+#define RADIO_UART_FRAME_BUF_SIZE 1028U
 #define RADIO_UART_FRAME_SYNC_0 0xa5
 #define RADIO_UART_FRAME_SYNC_1 0x5a
 #define RADIO_UART_PRIORITY_NETWORK_CONTROL 254U
