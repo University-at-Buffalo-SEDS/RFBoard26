@@ -658,7 +658,12 @@ def build_selected_artifact(
         shutil.copy2(app_image, output)
         ui.say("ok", f"Built full-image recovery OTA: {output}")
         return BuiltArtifact("ota-recovery", output, "", elf)
-    delta_tool = cfg.build_dir / "_deps" / "sedslaunchcore-src" / "tools" / "mkdelta.py"
+    configured_launchcore = _cache_value(
+        cfg.build_dir / "CMakeCache.txt", "FETCHCONTENT_SOURCE_DIR_SEDSLAUNCHCORE"
+    )
+    launchcore_source = (Path(configured_launchcore) if configured_launchcore else
+                         cfg.build_dir / "_deps" / "sedslaunchcore-src")
+    delta_tool = launchcore_source / "tools" / "mkdelta.py"
     if not delta_tool.is_file():
         raise FriendlyError(f"LaunchCore delta tool was not fetched: {delta_tool}")
     cmd = [sys.executable, str(delta_tool), "--base", str(base),

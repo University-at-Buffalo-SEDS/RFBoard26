@@ -241,5 +241,43 @@ class OtaBuildScriptTests(unittest.TestCase):
             self.assertEqual(artifact.path.read_bytes(), b"packaged-launchcore-image")
 
 
+    def test_delta_uses_the_configured_launchcore_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "Bootloader").mkdir()
+            (root / "Bootloader/board_config.h").write_text(
+                "#define TEST_SLOT_A_BASE 0x08004000u\n"
+                "#define TEST_SLOT_A_SIZE 0x74000u\n"
+                "#define TEST_DELTA_SIZE 0x2000u\n"
+                "#define TEST_FLASH_ERASE_SIZE 0x800u\n")
+            cfg = build.BuildConfig(repo_root=root, build_type="Release", telemetry=True,
+                generator="Ninja", toolchain_file=root/"toolchain.cmake",
+                build_subdir="Release", project_name="TestBoard", artifact=None, use_preset=False)
+            cfg.build_dir.mkdir(parents=True)
+            launchcore = root / "configured dependency with spaces"
+            tool = launchcore / "tools/mkdelta.py"
+            tool.parent.mkdir(parents=True)
+            tool.write_text("# selected tool fixture\n")
+            (cfg.build_dir/"CMakeCache.txt").write_text(
+                f"FETCHCONTENT_SOURCE_DIR_SEDSLAUNCHCORE:PATH={launchcore}\n")
+            baseline = root / "old.launchcore.img"
+            baseline.write_bytes(b"old application")
+            def configured_build(_ui, _cfg, _target):
+                (cfg.build_dir/"TestBoard.launchcore.img").write_bytes(b"new application")
+                return cfg.build_dir/"TestBoard.elf", cfg.build_dir/"TestBoard.bin"
+            def delta(command, **kwargs):
+                self.assertEqual(command[1], str(tool))
+                self.assertEqual(command[command.index("--base")+1], str(baseline))
+                self.assertEqual(Path(command[command.index("--target")+1]).read_bytes(), b"new application")
+                Path(command[command.index("--output")+1]).write_bytes(b"delta package")
+                return build.subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+            with mock.patch.object(build, "configure_and_build", side_effect=configured_build), \
+                 mock.patch.object(build.subprocess, "run", side_effect=delta) as called:
+                artifact = build.build_selected_artifact(mock.Mock(), cfg, "ota", str(baseline), None, False)
+            self.assertEqual(called.call_count, 1)
+            self.assertEqual(artifact.kind, "ota-delta")
+            self.assertEqual(artifact.path.read_bytes(), b"delta package")
+
+
 if __name__ == "__main__":
     unittest.main()
