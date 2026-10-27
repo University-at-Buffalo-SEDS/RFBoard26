@@ -1,0 +1,30 @@
+{
+  "result": "PASS_NATIVE_RF_RECEIPT_PROMOTION_DEDUP; MATCHED_ALL7_QUALIFICATION_PENDING",
+  "base_RF_commit": "e00cc5710267faf4193ab5d5c3f99bbbf2b40483",
+  "runtime_scope": "Only existing4entryack_for promotion guard now applies before normal155 or fundedclose. ACKbytes/priority/owner/retry enqueue and normal100ms batching remain. No rates,caps,queue/storage,air/quiet or SDK changes.",
+  "measured_cause": "e00full60 oldFC-onlycommand10813779986720294056 sentGS3223.7/retry3473.3; firstACKGS3494.8. DuplicateRFACK3772.9 obtainsnormalpermitagain. State3833.9/UND3894.973 spend110; Buzzer3955.4 denied. RelayfirstFCACK30325 alreadyclosed; itsseparate500failure liesbeforefirstGSUART.",
+  "actual_reduced_replay": "Ten actualRF_TX frames, including first108 ACK and retry, actualnormalcredit, then3newmanagedACKs. OldC rejects desiredBuzzerclose(lastforced3894); candidate skips duplicatepromotion, Statebase3833 preserves110, UND3894leaves55, Buzzer3955leaves0 andcloses. No unknownpriorcache seed.",
+  "loss_and_ownership_proof": "Sourcecache cannot know firstACK delivery. Newtest intentionally loses it; exactretrybytes physicallyDMAat1260, then5normalframes and existing100msburst/55quiet produceidle1414(laststop1359). A lostDMAcompletion is aborted/requeued and physicallyretriesexactbytes withoutnewpromotion. Differentowner samecontract stillwritten; cache4eviction makesoldeventeligibleagain. No receipt is filtered.",
+  "validation": {
+    "tests": 178,
+    "passed": 178,
+    "failed": 0,
+    "skipped": 0,
+    "log_sha256": "33eb938d7cee5c017bcfe2021f90f391e204d7edcb0f1bc60793518d3dad1a6d",
+    "sanitizers": "Address+undefined; LeakSanitizer disabled underhostptrace asbefore."
+  },
+  "source_sha256": {
+    "Core/Src/radio.c": "69b86f3d6002be57b787777e408c8b53347c3179582e8a5a1490ac94fb9fb293",
+    "tests/test_radio_receipt_promotion_dedup.py": "23a841ace0492bff0a0d598cf518a4268c175135ab5fa42136478dc9c19843a3"
+  },
+  "limits": "Fixed-TX reducedreplay provesclose/ownership behavior, not ACK queue readiness or actual500ms latency. Existingall178isolated suite plusproductionfocused passed; newmatchedall7build andshort/full/fault/memory checks required beforepush/deploy.",
+  "no_actions": "Localsourcecommit authorized; nohardware,releases,tags orpush.",
+  "review": "Root and independent freshness source review ACCEPT before integration.",
+  "production_focused": {
+    "passed": 1,
+    "failed": 0,
+    "scope": "Actual productionradio.c compiled+sanitized with capturedcold, firstACKlostboundedbatch, lostDMAcompletion/requeue, differentowner byteownership and4cacheeviction.",
+    "log_sha256": "da9859974f2a55589ab0fed7e91b0cc0bba1a9dee2419ac6a523aef541c090db"
+  },
+  "hardware_profile_correction": "PrevioussimulationRF/PB/GBcompactOFF mismatched actualhardware. These unchanged-wire transportfixtures/nativeCtests are diagnostic evidence only and do not establish hardwareconfiguration qualification. Parentnextall7cohortmust use immutableSDKa54020b7832f324f15ce2c9bcda2a14a460b77a5 withTLSFON+compactON everyboard,compressionOFF/samepools/rates/gates; defaultshort16 thenfull60. No oldOFFprofile pass is represented as hardware validation."
+}

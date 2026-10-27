@@ -993,10 +993,13 @@ static void radio_uart_close_packet_batch(const radio_tx_item_t *item)
   const uint8_t ack = radio_uart_ack_contract(item, &id);
   uint8_t slot = 0U;
   while (slot < g_tx_closed_ack_count && g_tx_closed_ack_ids[slot] != id) ++slot;
+  /* Retried receipts retain their bytes and normal batching; one recent
+   * logical ACK must not repeatedly spend either kind of close opportunity. */
+  if (ack && slot < g_tx_closed_ack_count) return;
   if ((g_tx_packet_active & RADIO_PACKET_FORCED_SEEN) &&
       (uint32_t)(now - g_tx_last_forced_boundary_ms) <
           RADIO_PACKET_BURST_MS + RADIO_PACKET_GAP_MS) {
-    if (!ack || slot < g_tx_closed_ack_count || RADIO_PACKET_GAP_MS == 0U ||
+    if (!ack || RADIO_PACKET_GAP_MS == 0U ||
         RADIO_PACKET_GAP_MS > 55U || g_tx_completed_service_credit_ms < RADIO_PACKET_GAP_MS) return;
     g_tx_completed_service_credit_ms -= RADIO_PACKET_GAP_MS;
   }
