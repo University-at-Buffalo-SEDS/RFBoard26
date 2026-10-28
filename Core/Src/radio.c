@@ -1095,7 +1095,7 @@ static uint8_t radio_uart_ack_contracts(const uint8_t *data, uint16_t len,
 }
 
 /* The normal155ms permit remains unchanged. Only a new logical ACK can spend
- * a whole extra idle gap funded by completed ordinary DMA airtime. */
+ * a whole extra idle gap funded by completed noninteractive DMA airtime. */
 static void radio_uart_close_packet_batch(const radio_tx_item_t *item)
 {
   const uint32_t now = radio_now_ms();
@@ -1504,8 +1504,10 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
     g_tx_dma_started_at_ms = radio_now_ms();
 #if !RFBOARD_LORA_SCHEDULER
     g_tx_pending_service_ms = 0U;
-    if (g_tx_dma_item.priority < RADIO_UART_PRIORITY_NETWORK_CONTROL &&
-        !radio_uart_independent_control(g_tx_dma_item.data, g_tx_dma_item.len,
+    /* Ordered discovery is noninteractive service too. Its actual completed
+     * UART airtime funds the same capped idle allowance as telemetry; ACKs,
+     * commands and other independent controls cannot mint this credit. */
+    if (!radio_uart_independent_control(g_tx_dma_item.data, g_tx_dma_item.len,
                                         g_tx_dma_item.priority)) {
       const uint32_t cost = radio_uart_air_ms(g_tx_dma_item.len);
       g_tx_pending_service_ms = (uint8_t)(cost > RADIO_PACKET_SERVICE_CREDIT_CAP_MS ? RADIO_PACKET_SERVICE_CREDIT_CAP_MS : cost);

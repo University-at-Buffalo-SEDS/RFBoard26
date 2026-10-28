@@ -95,7 +95,7 @@ int main(void){
   if(warm){for(unsigned i=0;i<2;++i){clock_ms=1000+i*80;large_frame(42+i);assert(radio_uart_process_tx_with_budget(2000));earned+=radio_uart_air_ms(candidate.len);clock_ms+=20;HAL_UART_TxCpltCallback(g_huart);}}
   unsigned base=warm?2000:0,ai=0,ao=0,ni=0,no=0,mi=0,mo=0,finish=0,kind=0,finish_kind=0,maxn=0,maxa=0,maxm=0,peak=0;unsigned at[200],nt[50],mt[10];
   for(unsigned t=0;t<=12000;++t){unsigned now=base+t;
-   if(g_tx_dma_busy&&now>=finish){clock_ms=now;HAL_UART_TxCpltCallback(g_huart);if(finish_kind==2)earned+=radio_uart_air_ms(g_tx_dma_item.len);}
+   if(g_tx_dma_busy&&now>=finish){clock_ms=now;HAL_UART_TxCpltCallback(g_huart);/* Both completed telemetry and ordered discovery pay physical service. */if(finish_kind==2||finish_kind==3)earned+=radio_uart_air_ms(g_tx_dma_item.len);}
    if(t<=8000&&t%period==0)at[ai++]=t;
    if(t<=8000&&t%200==0)nt[ni++]=t;
    if(t<=8000&&t%1000==0)mt[mi++]=t;

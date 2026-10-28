@@ -122,7 +122,7 @@ int main(void){
  if(candidate.data[4]&8)radio_read_uleb128(candidate.data,candidate.len,&header,&field);
  candidate.data[header]^=1;unsigned ownercrc=launchcore_crc32(candidate.data+4,candidate.len-8);for(unsigned i=0;i<4;++i)candidate.data[candidate.len-4+i]=(ownercrc>>(8*i))&255;
  assert(radio_uart_ack_contract(candidate.data,candidate.len,candidate.priority,&id)&&id==UINT64_C(17267761553259278303));clock_ms=30384;radio_uart_close_packet_batch(&candidate);assert(g_tx_last_forced_boundary_ms==30255&&g_tx_completed_service_credit_ms==95);
- /* Critical-only traffic and failed HAL admission/lateIRQ earn no service. */
+ /* Independent controls and failed HAL admission/lateIRQ earn no service. */
  reset();queue(und,sizeof(und),255);start(1000);done(1005);queue(fc,sizeof(fc),255);start(1060);assert(g_tx_last_forced_boundary_ms==1000&&g_tx_completed_service_credit_ms==0);done(1065);
  reset();normal(124);clock_ms=2000;hal_status=HAL_BUSY;assert(!radio_uart_process_tx_with_budget(2000));assert(g_tx_pending_service_ms==0&&g_tx_completed_service_credit_ms==0);done(2010);assert(g_tx_completed_service_credit_ms==0);
  reset();normal(124);start(3000);clock_ms=4000;offered=0;radio_uart_process_tx_with_budget(2000);assert(!g_tx_dma_busy&&g_tx_pending_service_ms==0&&g_tx_completed_service_credit_ms==0);done(4001);assert(g_tx_completed_service_credit_ms==0);
@@ -166,7 +166,7 @@ int main(void){
 '''
 
 class FundedAckBoundaryTests(unittest.TestCase):
-    def test_actual_dma_completion_funds_only_new_plaintext_ack_boundaries(self):
+    def _run(self, checks):
         source = (ROOT / 'Core/Src/radio.c').read_text()
         code = function(source, 'static uint8_t radio_read_uleb128(')
         code += function(source[source.index('/* Only canonical packets are independent'):], 'static uint8_t radio_uart_independent_control(')
@@ -177,5 +177,31 @@ class FundedAckBoundaryTests(unittest.TestCase):
         crc = function((ROOT / 'tests/radio_crc_reference.h').read_text(), 'uint32_t launchcore_crc32(')
         with tempfile.TemporaryDirectory() as directory:
             exe = str(Path(directory) / 'funded-ack')
-            subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-fsanitize=address,undefined', '-x', 'c', '-', '-o', exe], input=PREAMBLE + next(line for line in source.splitlines() if line.startswith("#define RADIO_PACKET_SERVICE_CREDIT_CAP_MS ")) + "\n" + crc + code + ACK_FIXTURES + CHECKS, text=True, check=True)
+            subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-fsanitize=address,undefined', '-x', 'c', '-', '-o', exe], input=PREAMBLE + next(line for line in source.splitlines() if line.startswith("#define RADIO_PACKET_SERVICE_CREDIT_CAP_MS ")) + "\n" + crc + code + ACK_FIXTURES + checks, text=True, check=True)
             subprocess.run([exe], check=True)
+
+    def test_actual_dma_completion_funds_only_new_plaintext_ack_boundaries(self):
+        self._run(CHECKS)
+
+    def test_completed_discovery_airtime_funds_the_same_bounded_ack_close(self):
+        captured = (ROOT / 'tests/fixtures/radio-startup-discovery-frame.bin').read_bytes()
+        assert len(captured) == 196 and captured[4:7] == b'SDT'
+        code = 'static const uint8_t discovery[]={' + ','.join(map(str, captured)) + '};\n'
+        self._run(CHECKS[:CHECKS.index('int main(void)')] + code + r'''int main(void){
+ reset();queue(discovery,sizeof(discovery),254);start(1000);
+ assert(g_tx_completed_service_credit_ms==0 && g_tx_pending_service_ms==67);
+ done(1018);assert(g_tx_completed_service_credit_ms==67);
+ queue(und,sizeof(und),255);start(1068);done(1073);
+ assert(g_tx_last_forced_boundary_ms==1068 && g_tx_completed_service_credit_ms==67);
+ queue(fc,sizeof(fc),255);start(1128);done(1133);
+ assert(g_tx_last_forced_boundary_ms==1128 && g_tx_completed_service_credit_ms==12);
+ normal(124);clock_ms=1170;assert(!radio_uart_process_tx_with_budget(2000));
+ assert(offered==1 && g_tx_completed_service_credit_ms==12);
+ clock_ms=1188;assert(radio_uart_process_tx_with_budget(2000)==1);
+ reset();queue(discovery,sizeof(discovery),254);hal_status=HAL_BUSY;
+ clock_ms=2000;assert(!radio_uart_process_tx_with_budget(2000));done(2018);
+ assert(g_tx_pending_service_ms==0 && g_tx_completed_service_credit_ms==0);
+ reset();queue(discovery,sizeof(discovery),254);start(3000);
+ HAL_UART_ErrorCallback(g_huart);done(3018);assert(g_tx_completed_service_credit_ms==0);
+ return 0;
+}''')
