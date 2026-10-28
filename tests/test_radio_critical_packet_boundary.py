@@ -67,7 +67,9 @@ static unsigned radio_uart_tx_ready(void){return 1;}
 static unsigned radio_e22_ready_for_uart(void){return 1;}
 static unsigned radio_uart_requeue_frame_front(const radio_tx_item_t *item){(void)item;++requeues;return HAL_OK;}
 static void radio_uart_classify_packet_drop(unsigned a,unsigned b,unsigned c){(void)a;(void)b;(void)c;}
-static unsigned radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out,unsigned budget){(void)budget;if(!offered)return 0;--offered;*out=candidate;return 1;}
+static uint8_t g_tx_ack_only_admission;
+static uint8_t radio_uart_ack_contracts(const uint8_t*,uint16_t,uint8_t,uint64_t[4]);
+static unsigned radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out,unsigned budget){(void)budget;if(!offered)return 0;if(g_tx_ack_only_admission){uint64_t ids[4];if(candidate.len>196||!radio_uart_ack_contracts(candidate.data,candidate.len,candidate.priority,ids))return 0;}--offered;*out=candidate;return 1;}
 static void HAL_UART_AbortTransmit(void *uart){(void)uart;}
 static unsigned HAL_UART_Transmit_DMA(void *uart,uint8_t *data,unsigned n){(void)uart;(void)data;(void)n;++sends;return hal_status;}
 static void HAL_GPIO_TogglePin(unsigned port,unsigned pin){(void)port;(void)pin;}

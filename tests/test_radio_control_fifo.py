@@ -57,7 +57,7 @@ static radio_tx_queue_item_t g_tx_queue[RADIO_UART_TX_QUEUE_SLOTS];
 static uint8_t g_tx_queue_bytes[RADIO_UART_TX_QUEUE_BYTE_CAPACITY];
 static uint32_t g_tx_count, g_tx_queue_bytes_used, g_tx_busy, g_tx_enqueued, g_tx_last_flow_id, g_tx_budget_misses, g_radio_tx_ok __attribute__((unused));
 #if !RFBOARD_LORA_SCHEDULER
-static uint8_t g_tx_independent_streak;
+static uint8_t g_tx_independent_streak, g_tx_ack_only_admission;
 #define completed(item) radio_uart_account_completed_item(item)
 #else
 #define completed(item) ((void)0)
@@ -84,6 +84,37 @@ static uint32_t radio_uart_air_ms(uint16_t n){return n;}
             subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-x','c','-','-o',exe],
                            input=preamble+types+globals_+air+read+remove+stale+count+independent+crc+ack+account+'\n'+dequeue+enqueue+retry+test,text=True,check=True)
             subprocess.run([exe],check=True)
+
+    def test_ack_only_loan_leaves_fifo_and_invalid_owners_unchanged(self):
+        from test_radio_funded_packet_boundary import ACK_FIXTURES
+        frames = '\n'.join(re.search(r'static const uint8_t ' + name + r'\[\]=\{[^;]+;', ACK_FIXTURES).group() for name in ['und', 'fc'])
+        self._run_case(frames + r'''int main(void){
+ radio_uart_drop_stale_locked(0);
+ uint8_t schema[16]={165,90,12,0,'S','D','T',3};radio_tx_item_t out;
+ assert(radio_uart_enqueue_sedsnet_frame(schema,sizeof(schema),254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_frame(und,sizeof(und),255)==HAL_OK);
+ unsigned count=g_tx_count,bytes=g_tx_queue_bytes_used;
+ g_tx_ack_only_admission=1;g_tx_independent_streak=7;
+ assert(!radio_uart_dequeue_frame_with_budget(&out,2000));
+ assert(g_tx_count==count&&g_tx_queue_bytes_used==bytes);
+ g_tx_independent_streak=0;
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000));
+ assert(out.len==sizeof(und)&&memcmp(out.data,und,sizeof(und))==0);
+ assert(g_tx_count==1&&memcmp(g_tx_queue_bytes,schema,sizeof(schema))==0);
+ assert(!radio_uart_dequeue_frame_with_budget(&out,2000));
+ assert(g_tx_count==1&&g_tx_queue_bytes_used==sizeof(schema));
+ uint8_t bad[sizeof(fc)];memcpy(bad,fc,sizeof(bad));bad[sizeof(bad)-1]^=1;
+ assert(radio_uart_enqueue_sedsnet_frame(bad,sizeof(bad),255)==HAL_OK);
+ count=g_tx_count;bytes=g_tx_queue_bytes_used;
+ assert(!radio_uart_dequeue_frame_with_budget(&out,2000));
+ assert(g_tx_count==count&&g_tx_queue_bytes_used==bytes);
+ g_tx_ack_only_admission=0;
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000));
+ assert(out.len==sizeof(bad)&&memcmp(out.data,bad,sizeof(bad))==0);
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000));
+ assert(out.len==sizeof(schema)&&memcmp(out.data,schema,sizeof(schema))==0);
+ return 0;
+}''')
 
     def test_ack_bypasses_schema_without_losing_template_order_or_bounding(self):
         test = r'''

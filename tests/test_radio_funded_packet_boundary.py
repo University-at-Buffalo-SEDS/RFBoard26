@@ -56,7 +56,9 @@ static unsigned radio_uart_tx_ready(void){return 1;}
 static unsigned radio_e22_ready_for_uart(void){return 1;}
 static unsigned radio_uart_requeue_frame_front(const radio_tx_item_t *item){(void)item;++requeues;return HAL_OK;}
 static void radio_uart_classify_packet_drop(unsigned a,unsigned b,unsigned c){(void)a;(void)b;(void)c;}
-static unsigned radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out,unsigned budget){(void)budget;if(!offered)return 0;--offered;*out=candidate;return 1;}
+static uint8_t g_tx_ack_only_admission;
+static uint8_t radio_uart_ack_contracts(const uint8_t*,uint16_t,uint8_t,uint64_t[4]);
+static unsigned radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out,unsigned budget){(void)budget;if(!offered)return 0;if(g_tx_ack_only_admission){uint64_t ids[4];if(candidate.len>196||!radio_uart_ack_contracts(candidate.data,candidate.len,candidate.priority,ids))return 0;}--offered;*out=candidate;return 1;}
 static void HAL_UART_AbortTransmit(void *uart){(void)uart;}
 static unsigned HAL_UART_Transmit_DMA(void *uart,uint8_t *data,unsigned n){(void)uart;(void)data;(void)n;++sends;return hal_status;}
 static void HAL_GPIO_TogglePin(unsigned port,unsigned pin){(void)port;(void)pin;}
@@ -208,5 +210,44 @@ class FundedAckBoundaryTests(unittest.TestCase):
  reset();queue(und,sizeof(und),255);memcpy(candidate.data+candidate.len,fc,sizeof(fc));
  candidate.len+=sizeof(fc);candidate.uart_frames=2;start(4000);
  assert(g_tx_pending_service_ms==0);done(4010);assert(g_tx_completed_service_credit_ms==0);
+ return 0;
+}''')
+
+    def test_one_canonical_ack_can_borrow_only_repaid_ordinary_airtime(self):
+        captured = (ROOT / 'tests/fixtures/radio-startup-discovery-frame.bin').read_bytes()
+        code = 'static const uint8_t discovery[]={' + ','.join(map(str, captured)) + '};\n'
+        self._run(CHECKS[:CHECKS.index('int main(void)')] + code + r'''int main(void){
+ reset();queue(discovery,sizeof(discovery),254);start(1000);done(1018);
+ assert(g_tx_quiet_until_ms==1067);
+ queue(und,sizeof(und),255);clock_ms=1020;
+ assert(radio_uart_process_tx_with_budget(2000)==1);
+ assert(g_tx_quiet_until_ms==1090); /* Previous67ms plus full23ms ACK cost. */
+ done(1025);queue(fc,sizeof(fc),255);clock_ms=1026;
+ assert(!radio_uart_process_tx_with_budget(2000)&&offered==1);
+ clock_ms=1089;assert(!radio_uart_process_tx_with_budget(2000)&&offered==1);
+ clock_ms=1090;assert(radio_uart_process_tx_with_budget(2000)==1);done(1095);
+ /* A coalesced ACK group is still only one loan and earns no service. */
+ reset();queue(discovery,sizeof(discovery),254);start(1000);done(1018);
+ queue(und,sizeof(und),255);memcpy(candidate.data+candidate.len,fc,sizeof(fc));
+ candidate.len+=sizeof(fc);candidate.uart_frames=2;clock_ms=1020;
+ assert(radio_uart_process_tx_with_budget(2000)==1&&g_tx_quiet_until_ms==1107);
+ done(1030);assert(g_tx_independent_streak==2&&g_tx_completed_service_credit_ms==67);
+ queue(fc,sizeof(fc),255);clock_ms=1031;assert(!radio_uart_process_tx_with_budget(2000)&&offered==1);
+ /* Ordinary bytes, invalid receipts and the owed FIFO turn cannot borrow. */
+ reset();queue(discovery,sizeof(discovery),254);start(2000);done(2018);
+ normal(124);clock_ms=2020;assert(!radio_uart_process_tx_with_budget(2000)&&offered==1);
+ queue(und,sizeof(und),255);candidate.data[candidate.len-1]^=1;
+ assert(!radio_uart_process_tx_with_budget(2000)&&offered==1);
+ queue(und,sizeof(und),255);g_tx_independent_streak=7;
+ assert(!radio_uart_process_tx_with_budget(2000)&&offered==1);
+ /* An existing ACK's forced quiet interval remains authoritative. */
+ reset();queue(und,sizeof(und),255);start(3000);done(3005);
+ queue(fc,sizeof(fc),255);clock_ms=3020;assert(!radio_uart_process_tx_with_budget(2000)&&offered==1);
+ /* HAL refusal charges no bytes and must preserve previously owed debt. */
+ reset();queue(discovery,sizeof(discovery),254);start(4000);done(4018);
+ queue(und,sizeof(und),255);hal_status=HAL_BUSY;clock_ms=4020;
+ assert(!radio_uart_process_tx_with_budget(2000));assert(g_tx_quiet_until_ms==4067);
+ queue(und,sizeof(und),255);hal_status=HAL_OK;clock_ms=4021;
+ assert(radio_uart_process_tx_with_budget(2000)==1 && g_tx_quiet_until_ms==4090);
  return 0;
 }''')

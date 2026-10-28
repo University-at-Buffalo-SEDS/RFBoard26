@@ -290,6 +290,7 @@ static volatile uint8_t g_tx_packet_active;
 static volatile uint32_t g_tx_last_forced_boundary_ms;
 static volatile uint8_t g_tx_completed_service_credit_ms;
 static volatile uint8_t g_tx_pending_service_ms;
+static uint8_t g_tx_ack_only_admission;
 static uint64_t g_tx_closed_ack_ids[4];
 static uint8_t g_tx_closed_ack_count;
 static uint8_t g_tx_closed_ack_cursor;
@@ -844,6 +845,18 @@ static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32
         }
       }
     }
+#if !RFBOARD_LORA_SCHEDULER
+    if (g_tx_ack_only_admission) {
+      uint64_t ids[4];
+      if (g_tx_independent_streak >= 7U ||
+          g_tx_queue[selected].len > 192U + RADIO_UART_FRAME_HEADER_SIZE ||
+          !radio_uart_ack_contracts(&g_tx_queue_bytes[g_tx_queue[selected].offset],
+              g_tx_queue[selected].len, g_tx_queue[selected].priority, ids)) {
+        radio_uart_unlock_tx_queue();
+        return 0U;
+      }
+    }
+#endif
     if (radio_uart_air_ms(g_tx_queue[selected].len) <= budget_ms) {
       out->len = g_tx_queue[selected].len;
       out->uart_frames = g_tx_queue[selected].uart_frames ? g_tx_queue[selected].uart_frames : 1U;
@@ -1012,7 +1025,8 @@ static void radio_uart_account_completed_item(const radio_tx_item_t *item)
 enum {
   RADIO_PACKET_ACTIVE = 1U,
   RADIO_PACKET_CLOSING = 2U,
-  RADIO_PACKET_FORCED_SEEN = 4U
+  RADIO_PACKET_FORCED_SEEN = 4U,
+  RADIO_PACKET_ACK_LOAN = 8U
 };
 #endif
 
@@ -1035,7 +1049,17 @@ static void radio_uart_mark_tx_quiet(uint16_t len)
       RADIO_BAUD_RATE - 1U) / RADIO_BAUD_RATE);
   g_tx_packet_until_ms = now + wire_ms + RADIO_PACKET_GAP_MS;
 #endif
+#if !RFBOARD_LORA_SCHEDULER
+  /* An early ACK borrows one turn; every byte still extends the original
+   * reservation. Never replace an outstanding deadline with now+cost. */
+  const uint32_t sampled = radio_now_ms();
+  const uint32_t base = g_tx_air_budget_active &&
+      (int32_t)(g_tx_quiet_until_ms - sampled) > 0 ?
+      g_tx_quiet_until_ms : sampled;
+  g_tx_quiet_until_ms = base + quiet_ms;
+#else
   g_tx_quiet_until_ms = radio_now_ms() + quiet_ms;
+#endif
   g_tx_air_budget_active = 1U;
 }
 
@@ -1182,6 +1206,9 @@ uint8_t radio_uart_air_busy(void)
 {
   if (radio_uart_quiet_remaining_ms() != 0U) return 1U;
   g_tx_air_budget_active = 0U;
+#if !RFBOARD_LORA_SCHEDULER
+  g_tx_packet_active &= (uint8_t)~RADIO_PACKET_ACK_LOAN;
+#endif
   return 0U;
 }
 
@@ -1454,6 +1481,10 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
   radio_tx_item_t item;
   HAL_StatusTypeDef status;
   uint32_t sent = 0U;
+#if !RFBOARD_LORA_SCHEDULER
+  uint8_t borrowed_ack = 0U;
+  g_tx_ack_only_admission = 0U;
+#endif
 
   if (!g_huart) {
     return 0U;
@@ -1495,9 +1526,30 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
   /* Retain queued frames until bounded shared capacity has drained so a new
    * command can still overtake bulk before DMA offloads it into the modem.
    * RFD owns all MAC/turn arbitration; no receive window or AUX is added. */
-  if (radio_uart_air_busy()) return 0U;
+  if (radio_uart_air_busy()) {
+#if RFBOARD_LORA_SCHEDULER
+    return 0U;
+#else
+    const uint32_t now = radio_now_ms();
+    const uint32_t remaining = g_tx_quiet_until_ms - now;
+    /* One canonical ACK group may use an idle UART during an ordinary
+     * packet's existing burst. Quiet boundaries and the seven-control FIFO
+     * obligation remain authoritative; no MAC or receive window is added. */
+    if (!(g_tx_packet_active & RADIO_PACKET_ACTIVE) ||
+        (g_tx_packet_active & (RADIO_PACKET_CLOSING | RADIO_PACKET_ACK_LOAN)) ||
+        g_tx_independent_streak >= 7U ||
+        (int32_t)remaining <= 0 ||
+        remaining > RADIO_PACKET_BURST_MS + RADIO_PACKET_GAP_MS ||
+        (uint32_t)(now - g_tx_packet_started_ms) >= RADIO_PACKET_BURST_MS) return 0U;
+    borrowed_ack = 1U;
+    g_tx_ack_only_admission = 1U;
+#endif
+  }
   while (sent < RADIO_UART_TX_FRAMES_PER_SERVICE &&
          radio_uart_dequeue_frame_with_budget(&item, budget_ms)) {
+#if !RFBOARD_LORA_SCHEDULER
+    g_tx_ack_only_admission = 0U;
+#endif
     g_tx_dma_item = item;
     g_tx_dma_busy = 1U;
     g_tx_dma_preserves_rx = 1U;
@@ -1532,7 +1584,11 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
         g_tx_busy++;
       }
       (void)HAL_UART_AbortTransmit(g_huart);
+#if !RFBOARD_LORA_SCHEDULER
+      if (!borrowed_ack) g_tx_quiet_until_ms = radio_now_ms();
+#else
       g_tx_quiet_until_ms = radio_now_ms();
+#endif
       if (radio_uart_requeue_frame_front(&g_tx_dma_item) != HAL_OK) {
         g_tx_drops++;
         radio_uart_classify_packet_drop(g_tx_dma_item.priority,
@@ -1543,6 +1599,9 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
     }
 
     HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
+#if !RFBOARD_LORA_SCHEDULER
+    if (borrowed_ack) g_tx_packet_active |= RADIO_PACKET_ACK_LOAN;
+#endif
     radio_uart_mark_tx_quiet(g_tx_dma_item.len);
 #if !RFBOARD_LORA_SCHEDULER
     if (g_tx_dma_item.priority >= RADIO_UART_PRIORITY_NETWORK_CONTROL) {
@@ -1551,8 +1610,14 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
 #endif
     g_tx_dma_started++;
     sent++;
+#if !RFBOARD_LORA_SCHEDULER
+    if (borrowed_ack) break;
+#endif
 
   }
+#if !RFBOARD_LORA_SCHEDULER
+  g_tx_ack_only_admission = 0U;
+#endif
 
   return sent;
 }

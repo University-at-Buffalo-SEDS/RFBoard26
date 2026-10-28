@@ -36,9 +36,9 @@ now=UINT32_MAX; assert(!radio_uart_air_busy());
             subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-fsanitize=address,undefined", "-x", "c", "-", "-o", exe], input=preamble+funcs+test, text=True, check=True)
             subprocess.run([exe], check=True)
 
-    def test_service_waits_before_selecting_next_priority_frame(self):
+    def test_service_checks_capacity_before_selecting_next_priority_frame(self):
         source = (ROOT / "Core/Src/radio.c").read_text()
         service = source.split("uint32_t radio_uart_process_tx_with_budget", 1)[1].split("HAL_StatusTypeDef radio_uart_subscribe_rx", 1)[0]
-        self.assertLess(service.index("if (radio_uart_air_busy()) return 0U;"), service.index("radio_uart_dequeue_frame_with_budget"))
+        self.assertLess(service.index("if (radio_uart_air_busy())"), service.index("radio_uart_dequeue_frame_with_budget"))
         self.assertIn("radio_uart_mark_tx_quiet(g_tx_dma_item.len);", service)
         self.assertNotIn("tx_thread_sleep", service)
