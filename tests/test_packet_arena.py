@@ -13,7 +13,7 @@ class PacketArenaTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as directory:
                 commands=[]
                 if hasattr(build, 'make_parser'):
-                    args=build.make_parser().parse_args(['build','--release'] + (['--packet-store','compact'] if compact else []))
+                    args=build.make_parser().parse_args(['build','--release'] + ['--packet-store','compact' if compact else 'heap'])
                     cfg=build.build_cfg_from_args(mock.Mock(),args)
                     self.assertEqual(cfg.sedsnet_ref, 'main')
                     cfg.repo_root=Path(directory)

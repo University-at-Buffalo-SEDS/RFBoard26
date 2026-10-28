@@ -1,4 +1,4 @@
-# Opt-in queue payload arena. Reservation comes from the existing Rust pool.
+# Default bounded queue payload arena. Reservation comes from the existing Rust pool.
 set(BOARD_PACKET_ARENA_BYTES "8192" CACHE STRING "Packet arena byte capacity")
 set(BOARD_PACKET_ARENA_HANDLES "64" CACHE STRING "Packet arena handle capacity")
 if(NOT BOARD_PACKET_ARENA_BYTES MATCHES "^[1-9][0-9]*$" OR

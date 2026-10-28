@@ -12,7 +12,7 @@ class BuildAllocatorTests(unittest.TestCase):
                 cfg=build.build_cfg_from_args(mock.Mock(),args)
                 self.assertEqual(cfg.allocator,allocator)
             args=build.make_parser().parse_args([command,'--release'])
-            self.assertEqual(build.build_cfg_from_args(mock.Mock(),args).allocator,'threadx')
+            self.assertEqual(build.build_cfg_from_args(mock.Mock(),args).allocator,'tlsf')
 
     def test_all_configure_paths_explicitly_override_cached_allocator(self):
         preset_modes=(False,True) if 'use_preset' in build.BuildConfig.__dataclass_fields__ else (False,)
