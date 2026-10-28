@@ -826,8 +826,9 @@ static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32
     /* Seven control turns, then a FIFO turn. Within independent controls,
      * honor SDK priority so older heartbeats cannot hold ACKs behind them.
      * Equal priorities retain FIFO order; SDT history and active DMA do not
-     * move. Count consecutive completed independent controls; cumulative
-     * ordinary traffic must not spend this seven-control fairness quota. */
+     * move. Count completed independent priority turns, resetting after
+     * ordinary service or the owed FIFO turn. Cumulative ordinary traffic
+     * must not spend this seven-control fairness quota. */
 #if RFBOARD_LORA_SCHEDULER
     if ((g_radio_tx_ok & 7U) != 7U) {
 #else
@@ -987,6 +988,13 @@ static uint32_t radio_uart_air_ms(uint16_t len)
 static void radio_uart_account_completed_item(const radio_tx_item_t *item)
 {
   if (!item || item->len < RADIO_UART_FRAME_HEADER_SIZE) return;
+  /* At quota exhaustion dequeue served the oldest FIFO owner, even when
+   * that owner itself was control traffic. One completed FIFO turn pays
+   * the obligation; do not keep later ACKs behind additional FIFO items. */
+  if (g_tx_independent_streak >= 7U) {
+    g_tx_independent_streak = 0U;
+    return;
+  }
   const uint32_t first_span = RADIO_UART_FRAME_HEADER_SIZE + item->data[2] +
                               ((uint32_t)item->data[3] << 8U);
   if (first_span <= item->len && radio_uart_independent_control(

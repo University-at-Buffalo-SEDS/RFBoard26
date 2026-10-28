@@ -275,6 +275,25 @@ int main(void) {
 }
 """, lora=True)
 
+    def test_completed_owed_fifo_turn_reopens_priority_even_if_head_was_control(self):
+        from test_radio_receipt_promotion_dedup import ACK_AND_NORMAL_FIXTURES
+        fixtures='\n'.join(re.search(r'static const uint8_t '+name+r'\[\]=\{[^}]*\};',ACK_AND_NORMAL_FIXTURES).group() for name in ['d1','d7'])
+        self._run_case(fixtures+r"""
+int main(void) {
+ uint8_t ordinary[40]={0};radio_tx_item_t out;
+ radio_uart_drop_stale_locked(0);g_tx_independent_streak=7;
+ assert(radio_uart_enqueue_sedsnet_frame(d1,sizeof(d1),254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_frame(ordinary,sizeof(ordinary),16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_frame(d7,sizeof(d7),255)==HAL_OK);
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(d1));
+ completed(&out);assert(g_tx_independent_streak==0);
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(d7));
+ assert(!memcmp(out.data,d7,sizeof(d7)));completed(&out);
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(ordinary));
+ return 0;
+}
+""")
+
     def test_ordinary_tx_history_does_not_spend_the_control_fairness_quota(self):
         from test_radio_receipt_promotion_dedup import ACK_AND_NORMAL_FIXTURES
         fixture = re.search(r'static const uint8_t d1\[\]=\{[^}]*\};', ACK_AND_NORMAL_FIXTURES).group()
