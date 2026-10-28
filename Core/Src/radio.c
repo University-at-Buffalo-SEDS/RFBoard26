@@ -1507,7 +1507,14 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
     /* Ordered discovery is noninteractive service too. Its actual completed
      * UART airtime funds the same capped idle allowance as telemetry; ACKs,
      * commands and other independent controls cannot mint this credit. */
-    if (!radio_uart_independent_control(g_tx_dma_item.data, g_tx_dma_item.len,
+    /* Queue coalescing admits homogeneous spans. Inspect the first logical
+     * frame, as the completed-control quota does: an ACK batch's aggregate
+     * length does not match its first UART header. */
+    const uint32_t first_span = RADIO_UART_FRAME_HEADER_SIZE +
+        g_tx_dma_item.data[2] + ((uint32_t)g_tx_dma_item.data[3] << 8U);
+    if (g_tx_dma_item.len >= RADIO_UART_FRAME_HEADER_SIZE &&
+        first_span <= g_tx_dma_item.len &&
+        !radio_uart_independent_control(g_tx_dma_item.data, (uint16_t)first_span,
                                         g_tx_dma_item.priority)) {
       const uint32_t cost = radio_uart_air_ms(g_tx_dma_item.len);
       g_tx_pending_service_ms = (uint8_t)(cost > RADIO_PACKET_SERVICE_CREDIT_CAP_MS ? RADIO_PACKET_SERVICE_CREDIT_CAP_MS : cost);

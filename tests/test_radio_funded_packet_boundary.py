@@ -203,5 +203,10 @@ class FundedAckBoundaryTests(unittest.TestCase):
  assert(g_tx_pending_service_ms==0 && g_tx_completed_service_credit_ms==0);
  reset();queue(discovery,sizeof(discovery),254);start(3000);
  HAL_UART_ErrorCallback(g_huart);done(3018);assert(g_tx_completed_service_credit_ms==0);
+ /* Coalesced receipts remain independent controls: aggregate UART length
+  * must never make ACK-only traffic look like completed ordinary service. */
+ reset();queue(und,sizeof(und),255);memcpy(candidate.data+candidate.len,fc,sizeof(fc));
+ candidate.len+=sizeof(fc);candidate.uart_frames=2;start(4000);
+ assert(g_tx_pending_service_ms==0);done(4010);assert(g_tx_completed_service_credit_ms==0);
  return 0;
 }''')
