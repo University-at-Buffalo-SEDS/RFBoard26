@@ -591,7 +591,9 @@ def run_network_simulation(
         "virtual_time_ms": int(
             os.environ.get("SEDS_FIRMWARE_SIM_AVIONICS_TIME_MS", "16000")
         ),
-        "sample_count": 6,
+        "sample_count": network_sample_count(
+            {node: layouts[node] for node in ("rf", "flight")}, 6
+        ),
         "enforce_end_drop": True,
         "nodes": [
             {"name": node, "layout": f"/simulation/{node}.json",

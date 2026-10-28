@@ -15,10 +15,10 @@ REPOSITORIES = ("RFBoard26", "PowerBoard26", "FlightComputer26", "gateway-board2
 ROOT = Path(__file__).resolve().parents[1]
 
 class NetworkRestartScenarioTests(unittest.TestCase):
-    def capture(self, ultra_soak):
+    def capture(self, ultra_soak, warmup=0):
         captured = []
         layout = {"execution": {"memory_probes": [{"name": "can_tx_expired", "maximum": 0}], "sample_count": 6,
-                                "memory_probe_warmup_samples": 0, "virtual_time_ms": 16000}}
+                                "memory_probe_warmup_samples": warmup, "virtual_time_ms": 16000}}
         with tempfile.TemporaryDirectory() as tmp:
             for repository in REPOSITORIES:
                 (Path(tmp) / repository / ".git").mkdir(parents=True)
@@ -35,6 +35,18 @@ class NetworkRestartScenarioTests(unittest.TestCase):
                 run_full.run_network_simulation(SimpleNamespace(say=lambda *a: None),
                                                 ROOT, "stm32g4", "Release", ultra_soak=ultra_soak)
         return captured
+
+    def test_power_absent_gate_keeps_two_post_warmup_progress_samples(self):
+        for warmup in (2, 5, 8):
+            with self.subTest(warmup=warmup):
+                topology = self.capture(False, warmup)[0]
+                self.assertGreaterEqual(topology['sample_count'] - warmup, 2)
+                self.assertEqual(topology['virtual_time_ms'], 16000)
+                self.assertTrue(topology['enforce_end_drop'])
+                self.assertEqual(len(topology['nodes']), 2)
+                self.assertTrue(any(a.get('probe') == 'telemetry_loop_completions'
+                                    and a.get('minimum_gain') == 1
+                                    for a in topology['assertions']))
 
     def test_short_gate_has_no_reboots(self):
         topologies = self.capture(False)
