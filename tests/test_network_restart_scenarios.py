@@ -48,6 +48,17 @@ class NetworkRestartScenarioTests(unittest.TestCase):
                                     and a.get('minimum_gain') == 1
                                     for a in topology['assertions']))
 
+    def test_full_bay_enables_each_requested_live_telemetry_validator(self):
+        topology = self.capture(False)[-1]
+        host = next(n for n in topology['host_nodes'] if n['name'] == 'groundstation')
+        self.assertEqual(host['env'].get('GS_SIM_VALIDATE_VALVE_POWER'), '1')
+        checks = {a['name']: a['contains'] for a in topology['host_log_assertions']}
+        self.assertEqual(checks['Flight sensor telemetry completed the return path'],
+                         'full-bay Flight sensor 5 Hz stream reached GroundStation')
+        for channel in ('battery', 'current'):
+            self.assertIn(f'full-bay Valve {channel} 1 Hz stream reached GroundStation',
+                          checks.values())
+
     def test_short_gate_has_no_reboots(self):
         topologies = self.capture(False)
         self.assertTrue(topologies)

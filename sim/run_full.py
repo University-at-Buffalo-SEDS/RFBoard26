@@ -790,6 +790,7 @@ def run_network_simulation(
                     "GS_SIM_VALIDATE_VALVE_ROUNDTRIP": "1",
                     "GS_SIM_VALIDATE_FLIGHT_COMMAND": "1",
                     "GS_SIM_VALIDATE_TELEMETRY_RETURN": "1",
+                    "GS_SIM_VALIDATE_VALVE_POWER": "1",
                     # During the optional ten-minute soak, issue one routed
                     # Valve command after every completed sample. The next
                     # sample must observe both board execution and the ACK at
@@ -1021,7 +1022,7 @@ def run_network_simulation(
              "contains": "full-bay RF GPS 1 Hz stream reached GroundStation"},
             {"name": "Flight sensor telemetry completed the return path",
              "node": "groundstation",
-             "contains": "full-bay Flight sensor 1 Hz stream reached GroundStation"},
+             "contains": "full-bay Flight sensor 5 Hz stream reached GroundStation"},
             {"name": (
                  "Power telemetry maintained its five-second cadence"
                  if ultra_soak
