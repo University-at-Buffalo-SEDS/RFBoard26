@@ -5,6 +5,7 @@ allows a single-threaded harness with the standard allocator. Host metadata is
 larger than ARM metadata, so this tests admission rather than ARM byte totals.
 """
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import tempfile
@@ -12,13 +13,18 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 class BootstrapTests(unittest.TestCase):
     def test_bootstrap_budget_and_fixed_slots(self):
-        cache = ROOT / "build/Release/CMakeCache.txt"
-        if not cache.exists():
-            self.skipTest("configure Release to fetch SEDSnet first")
-        entry = next((line for line in cache.read_text().splitlines() if line.startswith("SEDSNET_DIR:PATH=")), None)
-        if entry is None:
-            self.skipTest("SEDSNET_DIR is not configured")
-        source = Path(entry.split("=", 1)[1])
+        configured_source = os.environ.get("SEDSNET_TEST_SOURCE")
+        if configured_source:
+            source = Path(configured_source)
+            self.assertTrue((source / "Cargo.toml").is_file(), "SEDSNET_TEST_SOURCE must contain SEDSnet")
+        else:
+            cache = ROOT / "build/Release/CMakeCache.txt"
+            if not cache.exists():
+                self.skipTest("configure Release to fetch SEDSnet first")
+            entry = next((line for line in cache.read_text().splitlines() if line.startswith("SEDSNET_DIR:PATH=")), None)
+            if entry is None:
+                self.skipTest("SEDSNET_DIR is not configured")
+            source = Path(entry.split("=", 1)[1])
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             lib = work / "library"

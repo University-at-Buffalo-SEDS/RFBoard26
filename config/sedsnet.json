@@ -130,7 +130,7 @@
         "ActuatorGroundStation",
         "FillSdCard"
       ],
-      "reliable": "Off",
+      "reliable": "Unordered",
       "priority": 0
     },
     {
@@ -147,7 +147,7 @@
         "ActuatorGroundStation",
         "FillSdCard"
       ],
-      "reliable": "Off",
+      "reliable": "Unordered",
       "priority": 0
     },
     {
