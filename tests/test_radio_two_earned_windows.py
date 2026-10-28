@@ -101,7 +101,7 @@ int main(void){
    if(t<=8000&&t%1000==0)mt[mi++]=t;
    unsigned pending=ai-ao+ni-no+mi-mo;if(pending>peak)peak=pending;
    clock_ms=now;if(g_tx_dma_busy||radio_uart_air_busy())continue;
-   if(ao<ai&&((g_radio_tx_ok&7U)!=7U||(no==ni&&mo==mi))){kind=1;offer(f7,sizeof(f7),255);uint64_t key=1000000+ao;for(unsigned i=0;i<8;++i)candidate.data[candidate.len-12+i]=(key>>(8*i))&255;fix_crc();}
+   if(ao<ai&&(g_tx_independent_streak<7U||(no==ni&&mo==mi))){kind=1;offer(f7,sizeof(f7),255);uint64_t key=1000000+ao;for(unsigned i=0;i<8;++i)candidate.data[candidate.len-12+i]=(key>>(8*i))&255;fix_crc();}
    else if(no<ni&&(mo==mi||nt[no]<=mt[mo])){kind=2;large_frame(no);}
    else if(mo<mi){kind=3;offer(schema_metadata,sizeof(schema_metadata),254);}else continue;
    unsigned before=g_tx_completed_service_credit_ms;

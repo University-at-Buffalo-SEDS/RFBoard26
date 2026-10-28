@@ -62,6 +62,7 @@ static unsigned HAL_UART_Transmit_DMA(void *uart,uint8_t *data,unsigned n){(void
 static void HAL_GPIO_TogglePin(unsigned port,unsigned pin){(void)port;(void)pin;}
 #include <stdio.h>
 
+static uint8_t g_tx_independent_streak;
 static unsigned g_radio_tx_ok, g_tx_dma_complete, g_rx_restart_errors, g_rx_errors, g_rx_restart_pending;
 static volatile uint8_t g_tx_completed_service_credit_ms, g_tx_pending_service_ms;
 static uint64_t g_tx_closed_ack_ids[4];
@@ -84,13 +85,25 @@ static void reset(void){
  g_tx_packet_active=g_tx_air_budget_active=g_tx_dma_busy=g_tx_dma_preserves_rx=0;
  g_tx_last_forced_boundary_ms=g_tx_completed_service_credit_ms=g_tx_pending_service_ms=0;
  g_tx_closed_ack_count=g_tx_closed_ack_cursor=0;memset(g_tx_closed_ack_ids,0,sizeof(g_tx_closed_ack_ids));
- offered=0;hal_status=HAL_OK;g_radio_tx_ok=g_tx_dma_complete=0;normal_fixture_cursor=0;
+ offered=0;hal_status=HAL_OK;g_tx_independent_streak=0;g_radio_tx_ok=g_tx_dma_complete=0;normal_fixture_cursor=0;
 }
 static void queue(const uint8_t *bytes,unsigned len,unsigned priority){memset(&candidate,0,sizeof(candidate));candidate.len=len;candidate.priority=priority;memcpy(candidate.data,bytes,len);offered=1;}
 static void normal(unsigned len){memset(&candidate,0,sizeof(candidate));candidate.len=len;candidate.priority=0;const uint8_t *bytes;if(len==124){bytes=(normal_fixture_cursor++&1)?health_b:health_a;}else{assert(len==40);bytes=baro;}memcpy(candidate.data,bytes,len);offered=1;}
 static void done(unsigned now){clock_ms=now;HAL_UART_TxCpltCallback(g_huart);}
 static void start(unsigned now){clock_ms=now;unsigned n=radio_uart_process_tx_with_budget(2000);if(n!=1)fprintf(stderr,"start_failed now=%u quiet=%u packetuntil=%u active=%u busy=%u\n",now,g_tx_quiet_until_ms,g_tx_packet_until_ms,g_tx_packet_active,g_tx_dma_busy);assert(n==1);}
 int main(void){
+ /* Actual DMA completion counts controls, never ordinary-history modulo. */
+ reset();normal(124);start(1000);done(1011);assert(g_tx_independent_streak==0);
+ for(unsigned quota=0;quota<7;++quota){
+  queue(und,sizeof(und),255);start(1200+quota*200);done(1206+quota*200);
+  assert(g_tx_independent_streak==quota+1);
+ }
+ normal(124);start(2800);done(2811);assert(g_tx_independent_streak==0);
+ queue(und,sizeof(und),255);memcpy(candidate.data+candidate.len,fc,sizeof(fc));
+ candidate.len+=sizeof(fc);candidate.uart_frames=2;start(3000);done(3010);
+ assert(g_tx_independent_streak==2);
+ normal(124);start(3200);done(3211);assert(g_tx_independent_streak==0);
+
  reset();uint64_t id;queue(fc,sizeof(fc),255);assert(radio_uart_ack_contract(candidate.data,candidate.len,candidate.priority,&id)&&id==UINT64_C(17267761553259278303));
  /* Real completed124B BOARD_HEALTH frames fund44+44 capped55, never at launch. */
  normal(124);start(30085);assert(g_tx_completed_service_credit_ms==0&&g_tx_pending_service_ms==44);done(30096);assert(g_tx_completed_service_credit_ms==44);
@@ -136,7 +149,7 @@ int main(void){
   if(now<=8000&&now%200==0)normal_times[ni++]=now;
   clock_ms=now;
   if(g_tx_dma_busy||radio_uart_air_busy())continue;
-  unsigned choose_ack=ao<ai&&((g_radio_tx_ok&7U)!=7U||no==ni);
+  unsigned choose_ack=ao<ai&&(g_tx_independent_streak<7U||no==ni);
   if(choose_ack){
    queue(fc,sizeof(fc),255);uint64_t key=100000U+ack_times[ao];
    for(unsigned i=0;i<8;++i)candidate.data[candidate.len-12+i]=(key>>(8*i))&255;

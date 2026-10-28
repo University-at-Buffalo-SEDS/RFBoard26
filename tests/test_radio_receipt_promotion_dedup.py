@@ -21,7 +21,7 @@ static const uint8_t baro[]={165,90,36,0,83,68,84,2,136,224,226,162,135,3,12,187
 '''
 RECOVERY_CHECKS = r'''
 
-static void reset_all(void){g_tx_packet_active=g_tx_air_budget_active=g_tx_dma_busy=g_tx_dma_preserves_rx=0;g_tx_last_forced_boundary_ms=g_tx_completed_service_credit_ms=g_tx_pending_service_ms=0;g_tx_closed_ack_count=g_tx_closed_ack_cursor=0;memset(g_tx_closed_ack_ids,0,sizeof(g_tx_closed_ack_ids));g_radio_tx_ok=g_tx_dma_complete=g_tx_dma_started=0;offered=0;hal_status=HAL_OK;}
+static void reset_all(void){g_tx_packet_active=g_tx_air_budget_active=g_tx_dma_busy=g_tx_dma_preserves_rx=0;g_tx_last_forced_boundary_ms=g_tx_completed_service_credit_ms=g_tx_pending_service_ms=0;g_tx_closed_ack_count=g_tx_closed_ack_cursor=0;memset(g_tx_closed_ack_ids,0,sizeof(g_tx_closed_ack_ids));g_tx_independent_streak=0;g_radio_tx_ok=g_tx_dma_complete=g_tx_dma_started=0;offered=0;hal_status=HAL_OK;}
 static void offer(const uint8_t*b,unsigned n,unsigned p){memset(&candidate,0,sizeof(candidate));candidate.len=n;candidate.priority=p;memcpy(candidate.data,b,n);offered=1;}
 static void begin(unsigned at){clock_ms=at;assert(radio_uart_process_tx_with_budget(2000)==1);}
 static void done(unsigned at){clock_ms=at;HAL_UART_TxCpltCallback(g_huart);}

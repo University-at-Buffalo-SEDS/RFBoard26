@@ -54,6 +54,7 @@ typedef unsigned HAL_StatusTypeDef;
 typedef struct { uint16_t len; uint8_t priority; uint8_t is_heartbeat; uint8_t control_class; uint8_t data[1028]; uint8_t uart_frames; } radio_tx_item_t;
 static radio_tx_item_t g_tx_dma_item, candidate;
 static unsigned clock_ms, g_tx_quiet_until_ms, g_tx_air_budget_active;
+static uint8_t g_tx_independent_streak;
 static unsigned g_tx_packet_started_ms, g_tx_packet_until_ms, g_tx_packet_active;
 static unsigned g_tx_last_forced_boundary_ms;
 static unsigned g_tx_dma_busy, g_tx_dma_started_at_ms, g_tx_dma_preserves_rx, g_tx_dma_recoveries;
@@ -133,5 +134,5 @@ int main(void){
         with tempfile.TemporaryDirectory() as directory:
             exe = str(Path(directory) / 'critical-boundary')
             subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-x','c','-','-o',exe],
-                           input=preamble+read+independent+gates+service+test,text=True,check=True)
+                           input=preamble+read+independent+gates.replace("static void radio_uart_account_completed_item(", "static void __attribute__((unused)) radio_uart_account_completed_item(")+service+test,text=True,check=True)
             subprocess.run([exe],check=True)

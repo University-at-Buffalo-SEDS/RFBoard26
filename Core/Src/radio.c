@@ -283,6 +283,7 @@ static volatile uint32_t g_tx_dma_started_at_ms = 0U;
 static volatile uint32_t g_tx_quiet_until_ms = 0U;
 static volatile uint8_t g_tx_air_budget_active;
 #if !RFBOARD_LORA_SCHEDULER
+static volatile uint8_t g_tx_independent_streak;
 static volatile uint32_t g_tx_packet_started_ms;
 static volatile uint32_t g_tx_packet_until_ms;
 static volatile uint8_t g_tx_packet_active;
@@ -825,8 +826,13 @@ static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32
     /* Seven control turns, then a FIFO turn. Within independent controls,
      * honor SDK priority so older heartbeats cannot hold ACKs behind them.
      * Equal priorities retain FIFO order; SDT history and active DMA do not
-     * move. The existing completed-TX counter bounds ordinary service. */
+     * move. Count consecutive completed independent controls; cumulative
+     * ordinary traffic must not spend this seven-control fairness quota. */
+#if RFBOARD_LORA_SCHEDULER
     if ((g_radio_tx_ok & 7U) != 7U) {
+#else
+    if (g_tx_independent_streak < 7U) {
+#endif
       uint8_t found_control = 0U;
       for (uint32_t i = 0U; i < g_tx_count; ++i) {
         if (radio_uart_independent_control(&g_tx_queue_bytes[g_tx_queue[i].offset],
@@ -870,7 +876,7 @@ static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32
               radio_uart_air_ms((uint16_t)combined) > budget_ms) break;
           if (ack_batch) {
             const uint32_t frames = (uint32_t)out->uart_frames + next_frames;
-            if (frames > 4U || frames > 7U - (g_radio_tx_ok & 7U) ||
+            if (frames > 4U || frames > 7U - g_tx_independent_streak ||
                 radio_uart_ack_contracts(&g_tx_queue_bytes[next->offset],
                     next->len, next->priority, ack_ids) != next_frames) break;
           } else if (radio_uart_independent_control(&g_tx_queue_bytes[next->offset],
@@ -974,6 +980,25 @@ static uint32_t radio_uart_air_ms(uint16_t len)
   return (uint32_t)(((bytes * 8ULL * 1000ULL) + (uint64_t)air_bps - 1ULL) /
                     (uint64_t)air_bps);
 }
+
+#if !RFBOARD_LORA_SCHEDULER
+/* DMA owns homogeneous batches. Classify the first complete UART span;
+ * a batched ACK buffer is longer than its first frame's length header. */
+static void radio_uart_account_completed_item(const radio_tx_item_t *item)
+{
+  if (!item || item->len < RADIO_UART_FRAME_HEADER_SIZE) return;
+  const uint32_t first_span = RADIO_UART_FRAME_HEADER_SIZE + item->data[2] +
+                              ((uint32_t)item->data[3] << 8U);
+  if (first_span <= item->len && radio_uart_independent_control(
+          item->data, (uint16_t)first_span, item->priority)) {
+    const uint32_t frames = item->uart_frames ? item->uart_frames : 1U;
+    const uint32_t streak = (uint32_t)g_tx_independent_streak + frames;
+    g_tx_independent_streak = (uint8_t)(streak > 7U ? 7U : streak);
+  } else {
+    g_tx_independent_streak = 0U;
+  }
+}
+#endif
 
 #if !RFBOARD_LORA_SCHEDULER
 enum {
@@ -1826,6 +1851,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
                                   ? g_tx_dma_item.uart_frames : 1U;
 #if !RFBOARD_LORA_SCHEDULER
   if (g_tx_dma_busy && preserves_rx) {
+    radio_uart_account_completed_item(&g_tx_dma_item);
     const uint32_t credit = (uint32_t)g_tx_completed_service_credit_ms + g_tx_pending_service_ms;
     g_tx_completed_service_credit_ms = (uint8_t)(credit > RADIO_PACKET_SERVICE_CREDIT_CAP_MS ? RADIO_PACKET_SERVICE_CREDIT_CAP_MS : credit);
   }
