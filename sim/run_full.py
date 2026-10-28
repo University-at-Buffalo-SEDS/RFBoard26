@@ -805,6 +805,8 @@ def run_network_simulation(
                     # virtual watchdog deadline.
                     "GS_HEARTBEAT_INTERVAL_MS": "1000",
                     "GS_SIM_ROUTER_TIME_DIVISOR": "8",
+                    # Match the simulated RF GNSS source in SedsSpiSensors.
+                    "GS_SIM_NETWORK_EPOCH_MS": "1767225600000",
                     "GS_SIM_COMPACT_INITIAL_DISCOVERY": "0",
                     "GS_SIM_EXPECT_DISCOVERY_NODES": "RF,PB,FC,GB,AB,VB,DAQ",
                     # Hold each state long enough for delivery and persistence.
