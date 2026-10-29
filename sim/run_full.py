@@ -13,7 +13,7 @@ SIMULATOR_REPOSITORY = (
     "https://github.com/University-at-Buffalo-SEDS/FirmwareSimulator.git"
 )
 SIMULATOR_INTERFACE_VERSION = "0.4.15"
-FIRMWARE_BRANCH = "migration/sedlaunch-sedsnet-mainline"
+FIRMWARE_BRANCH = "dev"
 FIRMWARE_ORGANIZATION = "University-at-Buffalo-SEDS"
 SIMULATOR_DOCKER_PLATFORM = os.environ.get(
     "SEDS_FIRMWARE_SIM_PLATFORM", "linux/amd64"
