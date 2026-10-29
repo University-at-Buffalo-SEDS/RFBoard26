@@ -99,6 +99,26 @@ int main(void) {
   clock_ms=UINT32_MAX-20U; radio_uart_mark_tx_drained();
   clock_ms+=54; assert(radio_uart_air_busy());
   ++clock_ms; assert(!radio_uart_air_busy());
+  /* Sweep arrival phase, including timer wrap, through an ordinary frame
+   * followed by one early ACK. No hidden uplink phase may keep the UART
+   * unavailable beyond the bounded byte debt and physical idle boundary. */
+  for (unsigned wrap=0;wrap<2;++wrap) {
+    for (unsigned phase=0;phase<67;++phase) {
+      const uint32_t base=wrap ? UINT32_MAX-50U : 100000U;
+      g_tx_packet_active=0; g_tx_air_budget_active=0;
+      clock_ms=base; radio_uart_mark_tx_quiet(196);
+      clock_ms=base+17U; radio_uart_mark_tx_drained();
+      clock_ms=base+17U+phase;
+      radio_uart_mark_tx_quiet(63);
+      g_tx_packet_active|=RADIO_PACKET_CLOSING;
+      clock_ms+=6U; radio_uart_mark_tx_drained();
+      unsigned waited=0;
+      while (radio_uart_air_busy() && waited<1000U) { ++clock_ms; ++waited; }
+      assert(waited<=RADIO_PACKET_BURST_MS+RADIO_PACKET_GAP_MS);
+      assert(!radio_uart_air_busy());
+      assert(!aux_reads);
+    }
+  }
   clock_ms=UINT32_MAX; assert(radio_e22_ready_for_uart());
   clock_ms=0; assert(radio_e22_ready_for_uart());
   (void)radio_uart_close_packet_batch;

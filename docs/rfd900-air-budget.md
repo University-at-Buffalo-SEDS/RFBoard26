@@ -43,11 +43,12 @@ by the installed modem. The captured **RFD ASYNC 4.03 / RFD900X2** reports:
 | TX_ENCAP_METHOD / RX_ENCAP_METHOD | S7 / S8 | Serial encapsulation |
 | TXPOWER | S12 | Transmit power in dBm |
 | MIN_FREQ | S14 | Minimum frequency, **not a latency window** |
-| RTSCTS | S19 | Hardware flow control |
+| RTSCTS | S18 | Hardware flow control |
 
 The older [RFDesign ASYNC manual](https://files.rfdesign.com.au/Files/documents/RFD900x%20Asynchronous%20User%20Manual%20V1.1.pdf)
-also identifies S4 as retries and S12 as power, but lists flow control at S18.
-The captured 4.03 firmware has DUTY_CYCLE at S17 and moves the following entries.
+also identifies S4 as retries, S12 as power, and flow control at S18.
+The October 28 RRLS readback queried S18 and recorded flow control disabled.
+That readback did not query S19 or establish a different register layout.
 Do not copy register numbers from a different firmware table. In particular,
 the earlier SiK-style `ATS4=30` / `ATS14=120` recipe does not configure 30 dBm /
 a 120 ms window on this ASYNC firmware.
@@ -84,6 +85,13 @@ and compile definitions `RADIO_PACKET_BURST_MS=100` and
 `RADIO_PACKET_GAP_MS=55` on RF. Match any explicit override to verified modem
 settings; zero gap is retained for controlled negative tests or a modem whose
 packetization has independently been verified not to need it.
+
+Default builds explicitly pass `RFBOARD_LORA_SCHEDULER=OFF` to CMake, including
+when reusing a build directory that previously selected LoRa. Select
+`python3 build.py --radio-mode lora` only for the legacy LoRa hardware. The
+GS/RRLS production worker uses independent RX and TX handles and does not
+consult the legacy uplink grants or emit scheduler handshakes. A retained
+serial framing boundary is not an uplink slot.
 
 The same long-packet fixture now measures 173.7 ms with all 192 transport probes
 delivered in order and no FIFO loss. A permanent negative control disables only
