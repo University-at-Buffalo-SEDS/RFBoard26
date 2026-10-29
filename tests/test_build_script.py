@@ -9,6 +9,38 @@ import build
 
 
 class OtaBuildScriptTests(unittest.TestCase):
+    def test_radio_selection_overrides_stale_scheduler_cache(self):
+        import subprocess
+        import shutil
+        from dataclasses import replace
+
+        if shutil.which("cmake") is None:
+            self.fail("CMake is required to verify stale scheduler cache recovery")
+        ui = mock.Mock()
+        args = build.make_parser().parse_args(["build", "--release"])
+        cfg = build.build_cfg_from_args(ui, args)
+        self.assertEqual(cfg.radio_mode, "rfd")
+        for mode, wanted in [("lora", "ON"), ("rfd", "OFF")]:
+            with self.subTest(mode=mode):
+                for preset in [True, False]:
+                    with mock.patch.object(build, "run") as execute, \
+                         mock.patch.object(build, "assert_embedded_cache"), \
+                         mock.patch.object(build, "pick_elf", return_value=Path("/tmp/radio-mode.elf")):
+                        build.configure_and_build(ui, replace(cfg, radio_mode=mode, use_preset=preset))
+                    command = execute.call_args_list[0].args[1]
+                    flag = f"-DRFBOARD_LORA_SCHEDULER={wanted}"
+                    self.assertIn(flag, command)
+                    with tempfile.TemporaryDirectory() as directory:
+                        root = Path(directory)
+                        (root / "CMakeLists.txt").write_text(
+                            'cmake_minimum_required(VERSION 3.16)\nproject(CacheCheck NONE)\n'
+                            'option(RFBOARD_LORA_SCHEDULER "Legacy LoRa" OFF)\n'
+                            'file(WRITE "${CMAKE_BINARY_DIR}/selected.txt" "${RFBOARD_LORA_SCHEDULER}")\n')
+                        prefix = ["cmake", "-S", str(root), "-B", str(root / "out")]
+                        subprocess.run(prefix + ["-DRFBOARD_LORA_SCHEDULER=" + ("OFF" if wanted == "ON" else "ON")], check=True, capture_output=True)
+                        subprocess.run(prefix + [flag], check=True, capture_output=True)
+                        self.assertEqual((root / "out/selected.txt").read_text(), wanted)
+
     def test_clean_command_removes_all_or_selected_build_artifacts(self):
         self.assertEqual(build.make_parser().parse_args(["clean"]).cmd, "clean")
         ui = mock.Mock()

@@ -426,6 +426,7 @@ class BuildConfig:
 
     packet_store: str = "compact"
     sedsnet_ref: str = "main"
+    radio_mode: str = "rfd"
     watchdog: bool = True
 
     @property
@@ -486,6 +487,8 @@ def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> 
     ui.say("info", f"Telemetry allocator: {cfg.allocator} (ThreadX scheduler)")
     telemetry_flag = f"-DENABLE_TELEMETRY={'ON' if cfg.telemetry else 'OFF'}"
     watchdog_flag = f"-DENABLE_BOARD_WATCHDOG={'ON' if cfg.watchdog else 'OFF'}"
+    radio_mode_flag = f"-DRFBOARD_LORA_SCHEDULER={'ON' if cfg.radio_mode == 'lora' else 'OFF'}"
+    ui.say("info", f"Radio mode: {cfg.radio_mode}; {radio_mode_flag}")
     simulation_flag = (
         "-DSEDS_FIRMWARE_SIM_TEST=ON"
         if os.environ.get("SEDS_FIRMWARE_SIM_TEST") == "1"
@@ -499,6 +502,7 @@ def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> 
             "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
             allocator_flag,
             watchdog_flag,
+            radio_mode_flag,
         f"-DSEDSNET_GIT_REF={cfg.sedsnet_ref}",
         f"-DSEDSNET_COMPACT_PACKET_STORE={'ON' if cfg.packet_store == 'compact' else 'OFF'}",
         "-DSEDSNET_COMPACT_PACKET_COMPRESSION=OFF",
@@ -520,6 +524,7 @@ def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> 
             "-DCMAKE_COMMAND=cmake",
             allocator_flag,
             watchdog_flag,
+            radio_mode_flag,
         f"-DSEDSNET_GIT_REF={cfg.sedsnet_ref}",
         f"-DSEDSNET_COMPACT_PACKET_STORE={'ON' if cfg.packet_store == 'compact' else 'OFF'}",
         "-DSEDSNET_COMPACT_PACKET_COMPRESSION=OFF",
@@ -898,6 +903,8 @@ def make_parser() -> argparse.ArgumentParser:
                         help="Telemetry allocator (default: tlsf); scheduling always uses ThreadX.")
         sp.add_argument("--packet-store", choices=["heap", "compact"], default="compact",
                         help="Compact packet arena (default); uses main unless --sedsnet-ref is explicit.")
+        sp.add_argument("--radio-mode", choices=["rfd", "lora"], default="rfd",
+                        help="Radio mode (default: rfd); only lora enables legacy airtime windows and AUX gating.")
         sp.add_argument("--sedsnet-ref", choices=["main", "dev"], default=None,
                         help="SEDSnet branch; current remote commit is fetched, with offline fallback.")
         sp.add_argument("--no-telemetry", action="store_true", help="Configure with -DENABLE_TELEMETRY=OFF")
@@ -979,6 +986,7 @@ def build_cfg_from_args(ui: UI, args: argparse.Namespace) -> BuildConfig:
         watchdog=args.watchdog,
         packet_store=args.packet_store,
         sedsnet_ref=args.sedsnet_ref or "main",
+        radio_mode=args.radio_mode,
         allocator=args.allocator,
         generator=args.generator,
         toolchain_file=toolchain,
@@ -1061,7 +1069,8 @@ def main() -> None:
             _run_test_stage(
                 ui, results, "Network discovery and time sync",
                 lambda: run_network_simulation(
-                    ui, cfg.repo_root, "stm32g4", cfg.build_subdir
+                    ui, cfg.repo_root, "stm32g4", cfg.build_subdir,
+                    sedsnet_ref=cfg.sedsnet_ref,
                 ),
             )
             if args.ultra_soak:
@@ -1070,6 +1079,7 @@ def main() -> None:
                     lambda: run_network_simulation(
                         ui, cfg.repo_root, "stm32g4", cfg.build_subdir,
                         ultra_soak=True,
+                        sedsnet_ref=cfg.sedsnet_ref,
                     ),
                 )
         _print_test_summary(ui, results)

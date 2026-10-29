@@ -437,10 +437,16 @@ def simulated_pico_uart_baud() -> int:
     return baud
 
 
-def network_firmware_build_command(root: Path, repository: str, release: bool) -> list[str]:
-    if repository == "FlightComputer26":
-        return [sys.executable, str(root / "build.py"), "release" if release else "debug", "firmware"]
-    command = [sys.executable, str(root / "build.py"), "build", "--release" if release else "--debug", "--image", "firmware"]
+def network_firmware_build_command(
+    root: Path, repository: str, release: bool, sedsnet_ref: str | None = None
+) -> list[str]:
+    if sedsnet_ref is not None and sedsnet_ref not in {"main", "dev"}:
+        raise ValueError("SEDSnet ref must be main or dev")
+    if repository == "FlightComputer26" and sedsnet_ref is None:
+        return [sys.executable, str(root / "build.py"), "release" if release else "debug", "factory"]
+    command = [sys.executable, str(root / "build.py"), "build", "--release" if release else "--debug", "--image", "factory"]
+    if sedsnet_ref is not None:
+        command += ["--sedsnet-ref", sedsnet_ref]
     if repository in {"gateway-board", "gateway-board26"}:
         # Qualification uses the deployed Pico1M pair, not the RFD radio baud.
         command += ["--pico-baud", str(simulated_pico_uart_baud())]
@@ -508,6 +514,7 @@ def run_network_simulation(
     build_subdir: str | None = None,
     *,
     ultra_soak: bool = False,
+    sedsnet_ref: str | None = None,
 ) -> None:
     """Boot all firmware plus the GroundStation26 host and prove end-to-end SEDSNet."""
     docker = require_docker()
@@ -555,7 +562,7 @@ def run_network_simulation(
                 root.parent.mkdir(parents=True, exist_ok=True)
                 subprocess.run([git, "clone", "--depth", "1", "--branch", FIRMWARE_BRANCH, remote, str(root)], check=True)
         roots[node] = root
-        command = network_firmware_build_command(root, repository, release)
+        command = network_firmware_build_command(root, repository, release, sedsnet_ref)
         if os.environ.get("SEDS_FIRMWARE_SIM_SKIP_BUILD") != "1":
             ui.say("run", " ".join(command))
             subprocess.run(command, cwd=root, env=simulation_env, check=True)
