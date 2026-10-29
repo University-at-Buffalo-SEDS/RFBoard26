@@ -139,7 +139,7 @@ class OtaBuildScriptTests(unittest.TestCase):
                         ui, "/usr/bin/docker", Path("/board"), "stm32g4"
                     )
 
-        self.assertEqual(image, "seds-firmware-simulator:local-v0.4.15")
+        self.assertEqual(image, "seds-firmware-simulator:local-dev-v0.4.15")
         commands = [call.args[0] for call in execute.call_args_list]
         self.assertIn(
             [

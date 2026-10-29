@@ -210,7 +210,7 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str
         "SEDS_FIRMWARE_SIM_IMAGE",
         "ghcr.io/university-at-buffalo-seds/firmwaresimulator:dev",
     )
-    local = f"seds-firmware-simulator:local-v{SIMULATOR_INTERFACE_VERSION}"
+    local = f"seds-firmware-simulator:local-dev-v{SIMULATOR_INTERFACE_VERSION}"
     configured_source = os.environ.get("SEDS_FIRMWARE_SIM_SOURCE")
     if configured_source:
         source = Path(configured_source).expanduser().resolve()
