@@ -20,6 +20,29 @@ SIMULATOR_DOCKER_PLATFORM = os.environ.get(
 )
 
 
+def daq_loadcell_observer_config() -> dict:
+    """Observe each current loadcell stream at its publication rate.
+
+    The aggregate 100 packet/s firmware scheduler publishes each loadcell at
+    40 Hz. Older firmware can explicitly select its observer cadence; this
+    setting never changes acquisition, SD logging or firmware publication.
+    """
+    try:
+        rate = int(os.environ.get("SEDS_FIRMWARE_SIM_DAQ_LOADCELL_HZ", "40"))
+    except ValueError as error:
+        raise RuntimeError("SEDS_FIRMWARE_SIM_DAQ_LOADCELL_HZ must be an integer in 1..1000") from error
+    if not 1 <= rate <= 1000:
+        raise RuntimeError("SEDS_FIRMWARE_SIM_DAQ_LOADCELL_HZ must be an integer in 1..1000")
+    return {
+        "environment": {"GS_SIM_DAQ_LOADCELL_HZ": str(rate)},
+        "assertion": {
+            "name": f"GroundStation received the DAQ raw {rate} Hz loadcell stream",
+            "node": "groundstation",
+            "contains": f"full-bay DAQ raw loadcell {rate} Hz stream reached GroundStation",
+        },
+    }
+
+
 def simulated_fill_link() -> dict[str, str]:
     """Select the actual bounded Pico transport for linked qualification."""
     mode = os.environ.get("SEDS_FIRMWARE_SIM_FILL_TRANSPORT", "discovery").strip().lower()
@@ -83,6 +106,7 @@ def run_live(command: list[str], label: str) -> None:
 
 
 def require_docker() -> str:
+    daq_loadcell_observer_config()  # Reject invalid observer settings before any Docker call.
     docker = shutil.which("docker")
     if docker is None:
         raise RuntimeError(
@@ -184,7 +208,7 @@ def _build_simulator_image(ui, docker: str, source: Path, image: str) -> None:
 def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str) -> str:
     requested = os.environ.get(
         "SEDS_FIRMWARE_SIM_IMAGE",
-        "ghcr.io/university-at-buffalo-seds/firmwaresimulator:v0.4.15",
+        "ghcr.io/university-at-buffalo-seds/firmwaresimulator:dev",
     )
     local = f"seds-firmware-simulator:local-v{SIMULATOR_INTERFACE_VERSION}"
     configured_source = os.environ.get("SEDS_FIRMWARE_SIM_SOURCE")
@@ -198,7 +222,7 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str
         return local
 
     # An explicitly selected local development image should be used as-is.
-    # The default is release-pinned; explicit development images remain usable.
+    # Dev qualification follows the dev GroundStation observer; explicit images remain usable.
     if "SEDS_FIRMWARE_SIM_IMAGE" in os.environ and _image_exists(docker, requested):
         return requested
 
@@ -231,7 +255,7 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str
         try:
             subprocess.run(
                 [
-                    git, "clone", "--depth", "1", "--branch", "v0.4.15",
+                    git, "clone", "--depth", "1", "--branch", "dev",
                     SIMULATOR_REPOSITORY, str(source),
                 ],
                 check=True,
@@ -517,6 +541,7 @@ def run_network_simulation(
     sedsnet_ref: str | None = None,
 ) -> None:
     """Boot all firmware plus the GroundStation26 host and prove end-to-end SEDSNet."""
+    daq_observer = daq_loadcell_observer_config()
     docker = require_docker()
     image = resolve_simulator_image(ui, docker, repo_root, architecture)
     release = build_subdir is not None and "release" in build_subdir.lower()
@@ -783,6 +808,7 @@ def run_network_simulation(
                 "binary": "/usr/local/bin/groundstation_backend",
                 "cwd": "/opt/groundstation/backend",
                 "env": {
+                    **daq_observer["environment"],
                     "GS_DEBUG_PRINTS": "0",
                     "GS_RADIO_DIAGNOSTICS": "1",
                     "RUST_LOG": "info",
@@ -1055,9 +1081,7 @@ def run_network_simulation(
                  "contains": f"full-bay fill telemetry reached GroundStation from {node}"}
                 for node in ("GB", "AB", "VB", "DAQ")
             ],
-            {"name": "GroundStation received the DAQ raw 250 Hz loadcell stream",
-             "node": "groundstation",
-             "contains": "full-bay DAQ raw loadcell 250 Hz stream reached GroundStation"},
+            daq_observer["assertion"],
         ],
     }
 

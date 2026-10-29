@@ -147,7 +147,7 @@ class OtaBuildScriptTests(unittest.TestCase):
                 "pull",
                 "--platform",
                 "linux/amd64",
-                "ghcr.io/university-at-buffalo-seds/firmwaresimulator:v0.4.15",
+                "ghcr.io/university-at-buffalo-seds/firmwaresimulator:dev",
             ],
             commands,
         )
@@ -157,7 +157,8 @@ class OtaBuildScriptTests(unittest.TestCase):
         )
         self.assertNotIn("stdout", pull_call.kwargs)
         self.assertNotIn("stderr", pull_call.kwargs)
-        self.assertTrue(any("clone" in command for command in commands))
+        clone = next(command for command in commands if "clone" in command)
+        self.assertEqual(clone[clone.index("--branch") + 1], "dev")
         self.assertTrue(
             any(
                 command[:2] == ["/usr/bin/docker", "build"]
