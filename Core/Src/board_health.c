@@ -1,4 +1,5 @@
 #include "board_health.h"
+#include "board_temperature.h"
 #include "board_uptime.h"
 #include "board_watchdog.h"
 #include "telemetry.h"
@@ -26,6 +27,8 @@ void board_health_poll(SedsRouter *router)
   const uint32_t now = (uint32_t)uptime;
   if ((uint32_t)(now - last_report_ms) < 5000U) return;
   last_report_ms = now;
+  board_temperature_poll();
+
   uint32_t words[24] = {1U, 2U, (uint32_t)uptime, (uint32_t)(uptime >> 32U), BOARD_UPTIME_FREQUENCY_HZ};
   const uint32_t saved = __get_PRIMASK(); __disable_irq();
   words[5] = g_watchdog_reset_flags; words[6] = g_watchdog_missing_mask;
@@ -41,6 +44,7 @@ void board_health_poll(SedsRouter *router)
   __set_PRIMASK(saved);
   words[11] = (uint32_t)seds_memory_admission_rejected();
   words[23] = failures;
+  words[1] |= board_temperature_health_flags();
   telemetry_lock();
   /* Static UInt32 schema + exact little-endian bytes: use the existing
    * bounded byte path without pulling every generic numeric converter in. */

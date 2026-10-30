@@ -32,7 +32,7 @@ class ModemSchedulingTests(unittest.TestCase):
 #define RADIO_UART_FRAME_SYNC_1 0x5a
 #define RADIO_UART_PRIORITY_NETWORK_CONTROL 254U
 typedef struct { uint16_t len; uint8_t priority; uint8_t data[1028]; uint8_t uart_frames; } radio_tx_item_t;
-static uint8_t g_tx_completed_service_credit_ms, g_tx_independent_streak;
+static uint8_t g_tx_completed_service_credit_ms, g_tx_independent_streak, g_tx_ack_only_admission;
 static uint64_t g_tx_closed_ack_ids[4];
 static uint8_t g_tx_closed_ack_count, g_tx_closed_ack_cursor;
 """

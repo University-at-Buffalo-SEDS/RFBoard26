@@ -7,7 +7,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 class RadioControlFifoTests(unittest.TestCase):
-    def _run_case(self, test, *, real_air=False, lora=False):
+    def _run_case(self, test, *, real_air=False, lora=False, lookahead=2056):
         source = (ROOT/'Core/Src/radio.c').read_text()
         types = '\n'.join(re.search(r'typedef struct \{[^}]*\} '+name+';', source).group()
                           for name in ['radio_tx_item_t', 'radio_tx_queue_item_t'])
@@ -54,6 +54,8 @@ typedef unsigned HAL_StatusTypeDef;
 '''
         globals_ = r'''
 static radio_tx_queue_item_t g_tx_queue[RADIO_UART_TX_QUEUE_SLOTS];
+static radio_tx_item_t g_tx_dma_item __attribute__((unused));
+static uint32_t g_tx_dma_busy __attribute__((unused));
 static uint8_t g_tx_queue_bytes[RADIO_UART_TX_QUEUE_BYTE_CAPACITY];
 static uint32_t g_tx_count, g_tx_queue_bytes_used, g_tx_busy, g_tx_enqueued, g_tx_last_flow_id, g_tx_budget_misses, g_radio_tx_ok __attribute__((unused));
 #if !RFBOARD_LORA_SCHEDULER
@@ -76,14 +78,74 @@ static uint32_t radio_uart_air_ms(uint16_t n){return n;}
         else:
             air = ''
         account = function(source, 'static void radio_uart_account_completed_item(').replace('static void radio_uart_account_completed_item(', 'static void __attribute__((unused)) radio_uart_account_completed_item(') if not lora else ''
+        tail_support = source[source.index('/* One receipt group, anchored'):source.index('enum {\n  RADIO_PACKET_ACTIVE')]
+        tail_support += '\nstatic uint64_t g_tx_closed_ack_ids[4];\nstatic uint8_t g_tx_closed_ack_count;\n'
+        ack = tail_support + function(source, 'static uint8_t radio_uart_ack_ids_are_new(') + ack
         if lora: crc = ack = ''
         preamble += '\n#define RFBOARD_LORA_SCHEDULER ' + str(int(lora)) + '\n'
+        preamble += '#define RADIO_UART_TX_NORMAL_LOOKAHEAD_BYTES ' + str(lookahead) + 'U\n'
         preamble += '#define RADIO_AIR_BIT_RATE_BPS 64000U\n#define RADIO_AIR_SHARE_PERCENT 40U\n#define RADIO_AIR_FRAME_OVERHEAD_BYTES 16U\n'
         with tempfile.TemporaryDirectory() as tmp:
             exe=str(Path(tmp)/'queue-test')
             subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-x','c','-','-o',exe],
                            input=preamble+types+globals_+air+read+remove+stale+count+independent+crc+ack+account+'\n'+dequeue+enqueue+retry+test,text=True,check=True)
             subprocess.run([exe],check=True)
+
+    def test_pending_independent_retry_retains_one_owner_through_dma(self):
+        from test_radio_funded_packet_boundary import ACK_FIXTURES
+        frames = '\n'.join(re.search(r'static const uint8_t ' + name + r'\[\]=\{[^;]+;', ACK_FIXTURES).group() for name in ['und', 'fc'])
+        self._run_case(frames + r'''int main(void){
+ radio_uart_drop_stale_locked(0);
+ radio_tx_item_t out;
+ assert(radio_uart_enqueue_sedsnet_frame(und,sizeof(und),255)==HAL_OK);
+ for(unsigned i=0;i<18;i++)
+   assert(radio_uart_enqueue_sedsnet_frame(und,sizeof(und),255)==HAL_BUSY);
+ assert(g_tx_count==1 && g_tx_queue_bytes_used==sizeof(und));
+ assert(radio_uart_enqueue_sedsnet_frame(fc,sizeof(fc),255)==HAL_OK);
+ assert(radio_uart_dequeue_frame_with_budget(&out,sizeof(und)));
+ assert(out.len==sizeof(und) && memcmp(out.data,und,sizeof(und))==0);
+ g_tx_dma_item=out;g_tx_dma_busy=1;
+ assert(radio_uart_enqueue_sedsnet_frame(und,sizeof(und),255)==HAL_BUSY);
+ assert(g_tx_count==1 && g_tx_queue_bytes_used==sizeof(fc));
+ g_tx_dma_busy=0;
+ assert(radio_uart_enqueue_sedsnet_frame(und,sizeof(und),255)==HAL_OK);
+ assert(radio_uart_dequeue_frame_with_budget(&out,sizeof(und)));
+ assert(out.len==sizeof(fc) && memcmp(out.data,fc,sizeof(fc))==0);
+ assert(radio_uart_dequeue_frame_with_budget(&out,sizeof(und)));
+ assert(out.len==sizeof(und) && memcmp(out.data,und,sizeof(und))==0);
+ uint8_t schema[16]={165,90,12,0,'S','D','T',3};
+ assert(radio_uart_enqueue_sedsnet_frame(schema,sizeof(schema),254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_frame(schema,sizeof(schema),254)==HAL_OK);
+ assert(g_tx_count==2 && g_tx_queue_bytes_used==2*sizeof(schema));
+ }''')
+
+    def test_short_ordinary_lookahead_counts_dma_and_preserves_control_credit(self):
+        from test_radio_funded_packet_boundary import ACK_FIXTURES
+        frames = '\n'.join(re.search(r'static const uint8_t ' + name + r'\[\]=\{[^;]+;', ACK_FIXTURES).group() for name in ['und', 'fc'])
+        self._run_case(frames + r'''int main(void){
+ radio_uart_drop_stale_locked(0);
+ uint8_t schema[196]={165,90,192,0,'S','D','T',3};
+ uint8_t next[16]={165,90,12,0,'S','D','T',3};
+ radio_tx_item_t out;
+ assert(radio_uart_enqueue_sedsnet_frame(schema,sizeof(schema),254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_frame(next,sizeof(next),254)==HAL_BUSY);
+ assert(radio_uart_enqueue_sedsnet_frame(und,sizeof(und),255)==HAL_OK);
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000));
+ assert(out.len==sizeof(und));
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000));
+ assert(out.len==sizeof(schema));g_tx_dma_item=out;g_tx_dma_busy=1;
+ assert(radio_uart_enqueue_sedsnet_frame(next,sizeof(next),254)==HAL_BUSY);
+ assert(radio_uart_enqueue_sedsnet_frame(fc,sizeof(fc),255)==HAL_OK);
+ g_tx_dma_busy=0;
+ assert(radio_uart_enqueue_sedsnet_frame(next,sizeof(next),254)==HAL_OK);
+ assert(g_tx_count==2 && g_tx_drops==0);
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000));
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000));
+ uint8_t large[520]={165,90,4,2,'S','D','T',3};
+ assert(radio_uart_enqueue_sedsnet_frame(large,sizeof(large),254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_frame(next,sizeof(next),254)==HAL_BUSY);
+ assert(g_tx_count==1 && g_tx_queue_bytes_used==sizeof(large));
+ }''', lookahead=196)
 
     def test_ack_only_loan_leaves_fifo_and_invalid_owners_unchanged(self):
         from test_radio_funded_packet_boundary import ACK_FIXTURES

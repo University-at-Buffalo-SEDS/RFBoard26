@@ -44,8 +44,11 @@ int main(void) {
   g_frame_len=0; g_rx_sync_loss=0; g_radio_rx_frames_ok=0;
   radio_process_framed_bytes(&starts[mode],1);
   assert(g_frame_len==1 && g_rx_sync_loss==0);
-  const uint8_t rest[]={ends[mode],1,0,42};
-  radio_process_framed_bytes(rest,sizeof(rest));
+  const uint8_t payload=42;
+  const uint32_t crc=launchcore_crc32(&payload,1);
+  const uint8_t rest[]={ends[mode],mode==2?1:5,0,payload,
+    (uint8_t)crc,(uint8_t)(crc>>8),(uint8_t)(crc>>16),(uint8_t)(crc>>24)};
+  radio_process_framed_bytes(rest,mode==2?4:sizeof(rest));
   assert(g_frame_len==0 && g_radio_rx_frames_ok==1 && g_rx_sync_loss==0);
  }
  const uint8_t junk[]={0,1,2};
@@ -54,7 +57,10 @@ int main(void) {
  const uint8_t junk_then_prefix[]={0,1,0xa5};
  radio_process_framed_bytes(junk_then_prefix,sizeof(junk_then_prefix));
  assert(g_frame_len==1 && g_rx_sync_loss==2);
- const uint8_t rest[]={0x5a,1,0,42};
+ const uint8_t payload=42;
+ const uint32_t crc=launchcore_crc32(&payload,1);
+ const uint8_t rest[]={0x5a,5,0,payload,
+   (uint8_t)crc,(uint8_t)(crc>>8),(uint8_t)(crc>>16),(uint8_t)(crc>>24)};
  radio_process_framed_bytes(rest,sizeof(rest));
  assert(g_frame_len==0 && g_rx_sync_loss==2);
  return 0;

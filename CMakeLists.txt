@@ -28,6 +28,34 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 project(${CMAKE_PROJECT_NAME})
 option(ENABLE_TELEMETRY "Enable the telemetry subsystem" ON)
 option(RFBOARD_LORA_SCHEDULER "Enable legacy LoRa airtime windows and AUX gating (off for RFD)" OFF)
+# This board selects the reviewed RFD egress policy; the generic SDK remains opt-in.
+option(SEDSNET_LATEST_VALUE_EGRESS "Coalesce pending RFD telemetry before encoding" ON)
+set(RADIO_AIR_BIT_RATE_BPS "64000" CACHE STRING "Usable RFD air capacity envelope")
+set(RADIO_AIR_SHARE_PERCENT "40" CACHE STRING "RF share of usable radio capacity")
+set(RADIO_AIR_FRAME_OVERHEAD_BYTES "16" CACHE STRING "Conservative air framing overhead")
+set(RADIO_PACKET_BURST_MS "100" CACHE STRING "Maximum UART packet collection interval")
+set(RADIO_PACKET_GAP_MS "55" CACHE STRING "UART packetization idle boundary")
+# Read the checked-in profile on every configure, including rebuilds triggered
+# directly through CMake. FORCE prevents a stale custom profile's short gap from
+# surviving a return to the compatible profile. This never programs a modem.
+set(RFD_PROFILE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/config/rfd-profile.json" CACHE FILEPATH "Matched application RFD profile")
+if(NOT RFBOARD_LORA_SCHEDULER AND NOT "${RFD_PROFILE_FILE}" STREQUAL "")
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    execute_process(COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/rfd_profile.py" --profile "${RFD_PROFILE_FILE}"
+        RESULT_VARIABLE RFD_PROFILE_RESULT OUTPUT_VARIABLE RFD_PROFILE_JSON
+        ERROR_VARIABLE RFD_PROFILE_ERROR)
+    if(NOT RFD_PROFILE_RESULT EQUAL 0)
+        message(FATAL_ERROR "Invalid RFD profile: ${RFD_PROFILE_ERROR}")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${RFD_PROFILE_FILE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/rfd_profile.py")
+    foreach(RFD_KEY RADIO_AIR_BIT_RATE_BPS RADIO_AIR_SHARE_PERCENT
+            RADIO_AIR_FRAME_OVERHEAD_BYTES RADIO_PACKET_BURST_MS RADIO_PACKET_GAP_MS)
+        string(JSON RFD_VALUE GET "${RFD_PROFILE_JSON}" cmake "${RFD_KEY}")
+        set(${RFD_KEY} "${RFD_VALUE}" CACHE STRING "Selected RFD profile value" FORCE)
+    endforeach()
+endif()
 message("Build type: " ${CMAKE_BUILD_TYPE})
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   # Global LTO (Release)
@@ -52,6 +80,14 @@ include(cmake/tlsf_allocator.cmake)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     RFBOARD_LORA_SCHEDULER=$<BOOL:${RFBOARD_LORA_SCHEDULER}>
     USER_VECT_TAB_ADDRESS VECT_TAB_OFFSET=0x00004200U)
+foreach(RADIO_PROFILE_KEY RADIO_AIR_BIT_RATE_BPS RADIO_AIR_SHARE_PERCENT
+        RADIO_AIR_FRAME_OVERHEAD_BYTES RADIO_PACKET_BURST_MS RADIO_PACKET_GAP_MS)
+    if(NOT "${${RADIO_PROFILE_KEY}}" MATCHES "^[0-9]+$")
+        message(FATAL_ERROR "${RADIO_PROFILE_KEY} must be an unsigned integer")
+    endif()
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
+        ${RADIO_PROFILE_KEY}=${${RADIO_PROFILE_KEY}})
+endforeach()
 option(SEDS_FIRMWARE_SIM_TEST
     "Seed deterministic external time for linked firmware qualification" OFF)
 if(SEDS_FIRMWARE_SIM_TEST)
@@ -228,3 +264,6 @@ option(ENABLE_BOARD_WATCHDOG "Enable independent hardware watchdog with task pro
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/Core/Src/board_watchdog.c)
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_SOURCE_DIR}/Core/Src/board_health.c>")
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BOARD_WATCHDOG_ENABLE=$<BOOL:${ENABLE_BOARD_WATCHDOG}>)
+
+# Low-rate internal die temperature; no separate telemetry stream.
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/Core/Src/board_temperature.c)

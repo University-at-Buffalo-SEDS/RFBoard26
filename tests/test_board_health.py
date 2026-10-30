@@ -26,6 +26,8 @@ volatile uint32_t g_telemetry_tlsf_live_bytes=100,g_telemetry_tlsf_peak_bytes=20
 volatile uint32_t g_can_tx_rejected=11,g_can_tx_high_water=12,g_gateway_uart_rx_ring_drops=13;
 volatile uint32_t g_sd_raw_records_enqueued_count=0xf00d1234U,g_sd_raw_records_written_count=15,g_sd_raw_records_dropped_count=16,g_sd_raw_records_flushed_count=17,g_sd_raw_records_io_lost_count=18,g_sd_write_error_count=19,g_sd_max_write_ms=20;
 volatile uint32_t g_sd_enqueued_records=0xf00d1234U,g_sd_written_records=15,g_sd_flushed_records=17,g_sd_format_errors=16,g_sd_lock_contention_drops=18,g_sd_unavailable_drops=19,g_sd_shutdown_lost_records=20,g_sd_write_errors=21;
+void board_temperature_poll(void){}
+uint32_t board_temperature_health_flags(void){return 0x17bd0100U;}
 uint64_t board_uptime_ticks(void){return uptime;}
 uint32_t __get_PRIMASK(void){return mask;}
 void __disable_irq(void){mask=1;}
@@ -51,6 +53,7 @@ int main(void){
  for(unsigned i=0;i<1000;i++)board_health_poll(&router);
  assert(calls==1&&!lock_depth&&!mask); /* no pressure retry storm */
  uptime=10000;refuse=0;board_health_poll(&router);
+ assert((captured[1]&0xffffff00U)==0x17bd0100U);
  assert(calls==2&&captured[23]==1&&captured[0]==1&&captured[4]==1000);
  assert(captured[5]==123&&captured[6]==5&&captured[11]==34&&captured[12]==31);
 #ifdef TELEMETRY_USE_TLSF

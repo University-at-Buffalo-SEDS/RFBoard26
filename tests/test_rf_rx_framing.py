@@ -33,7 +33,10 @@ static unsigned g_rx_sync_loss,g_rx_bad_len,g_radio_rx_frames_ok,received;
 static void radio_uart_store_preview(uint8_t *a,uint8_t *b,const uint8_t *c,size_t n){(void)a;(void)b;(void)c;(void)n;}
 static void radio_notify_rx(const uint8_t *p,size_t n){
     assert(n==(received%2==0?1024U:37U));
-    for(size_t i=0;i<n;i++) assert(p[i]==(uint8_t)(i+received));
+    for(size_t i=0;i<n-4U;i++) assert(p[i]==(uint8_t)(i+received));
+    const uint32_t crc=launchcore_crc32(p,n-4U);
+    assert(p[n-4U]==(uint8_t)crc && p[n-3U]==(uint8_t)(crc>>8) &&
+           p[n-2U]==(uint8_t)(crc>>16) && p[n-1U]==(uint8_t)(crc>>24));
     received++;
 }
 ''' + parser + r'''
@@ -42,7 +45,10 @@ int main(void){
     for(unsigned f=0;f<4;f++){
         size_t len=f%2==0?1024:37;
         wire[n++]=0xA5;wire[n++]=0x5A;wire[n++]=len;wire[n++]=len>>8;
-        for(size_t i=0;i<len;i++)wire[n++]=(uint8_t)(i+f);
+        const size_t body_start=n;
+        for(size_t i=0;i<len-4U;i++)wire[n++]=(uint8_t)(i+f);
+        const uint32_t crc=launchcore_crc32(wire+body_start,len-4U);
+        for(unsigned shift=0;shift<32;shift+=8)wire[n++]=(uint8_t)(crc>>shift);
     }
     for(size_t chunk=1;chunk<=1028;chunk++){
         received=0;g_frame_len=0;g_radio_rx_frames_ok=0;

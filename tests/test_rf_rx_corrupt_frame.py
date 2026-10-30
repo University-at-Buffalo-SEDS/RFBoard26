@@ -10,10 +10,11 @@ class CorruptRadioFrameTests(unittest.TestCase):
     def test_truncated_sdt_frame_cannot_consume_a_following_frame(self):
         source=(ROOT/'Core/Src/radio.c').read_text()
         parser=source[source.index('static void radio_frame_buf_consume'):source.index('/* Push one RX chunk')]
-        good=bytes(range(92))
+        # Use the existing real SDK frame rather than an unchecked byte pattern.
+        good=(ROOT/'tests/fixtures/radio-startup-discovery-frame.bin').read_bytes()[4:]
         valid_body=b'SDT\x03'+b'1'*184
         valid=valid_body+binascii.crc32(valid_body).to_bytes(4,'little')
-        damaged=b'\xa5\x5a\xc0\x00'+valid[:162]+b'\xa5\x5a\x5c\x00'+good
+        damaged=b'\xa5\x5a\xc0\x00'+valid[:162]+b'\xa5\x5a'+len(good).to_bytes(2,'little')+good
         intact=b'\xa5\x5a\xc0\x00'+valid
         arrays=''.join('static const uint8_t '+name+'[]={'+','.join(map(str,data))+'};\n' for name,data in [('good',good),('valid',valid),('damaged',damaged),('intact',intact)])
         stub=r"""

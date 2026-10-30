@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -23,6 +25,38 @@ class SimulatorProbeContractTests(unittest.TestCase):
         with mock.patch.dict(run_full.os.environ, {'SEDS_FIRMWARE_SIM_PICO_BAUD':'0'}):
             with self.assertRaises(RuntimeError):
                 run_full.network_firmware_build_command(Path('/g'), 'gateway-board26', True)
+
+    def test_clean_network_build_produces_layout_factory_for_every_board(self):
+        # The real supported entrypoints distinguish application-only builds
+        # from factory builds. Exercise that interface from empty artifact dirs,
+        # rather than allowing a previous build's factory file to mask a miss.
+        boards = ['FlightComputer26', 'RFBoard26', 'PowerBoard26',
+                  'gateway-board26', 'ActuatorBoard26', 'ValveBoard26', 'DAQ-Board']
+        with tempfile.TemporaryDirectory() as directory:
+            for repository in boards:
+                with self.subTest(repository=repository):
+                    root = Path(directory) / repository
+                    (root / 'sim').mkdir(parents=True)
+                    subdir = 'Release' if repository in {'FlightComputer26', 'RFBoard26'} else 'Release_Script'
+                    artifacts = {name: f'build/{subdir}/board.{suffix}' for name, suffix in
+                                 [('elf', 'elf'), ('firmware', 'launchcore.img'), ('factory', 'factory.bin')]}
+                    (root / 'sim/board.json').write_text(json.dumps({'artifacts': artifacts}))
+                    (root / 'build.py').write_text("""import json,sys
+from pathlib import Path
+root=Path(__file__).parent
+args=sys.argv[1:]
+kind=args[args.index('--image')+1] if '--image' in args else args[-1]
+for name,value in json.loads((root/'sim/board.json').read_text())['artifacts'].items():
+    if name=='factory' and kind!='factory':continue
+    path=root/value;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(name.encode())
+""")
+                    command = run_full.network_firmware_build_command(root, repository, True)
+                    self.assertEqual(command[0], sys.executable)
+                    subprocess.run(command, cwd=root, check=True)
+                    layout = run_full.load_layout_for_build(root, None)
+                    for name in ['elf', 'firmware', 'factory']:
+                        self.assertTrue((root / layout['artifacts'][name]).is_file(), name)
+                    self.assertFalse((root / 'build/Debug').exists())
 
     def test_missing_failure_counter_fails_before_starting_simulator(self):
         with tempfile.TemporaryDirectory() as tmp:

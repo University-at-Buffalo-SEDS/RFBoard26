@@ -222,7 +222,7 @@ class FundedAckBoundaryTests(unittest.TestCase):
  queue(und,sizeof(und),255);clock_ms=1020;
  assert(radio_uart_process_tx_with_budget(2000)==1);
  assert(g_tx_quiet_until_ms==1090); /* Previous67ms plus full23ms ACK cost. */
- done(1025);queue(fc,sizeof(fc),255);clock_ms=1026;
+ done(1025);queue(fc,sizeof(fc),255);clock_ms=1053;
  assert(!radio_uart_process_tx_with_budget(2000)&&offered==1);
  clock_ms=1089;assert(!radio_uart_process_tx_with_budget(2000)&&offered==1);
  clock_ms=1090;assert(radio_uart_process_tx_with_budget(2000)==1);done(1095);
@@ -242,7 +242,7 @@ class FundedAckBoundaryTests(unittest.TestCase):
  assert(!radio_uart_process_tx_with_budget(2000)&&offered==1);
  /* An existing ACK's forced quiet interval remains authoritative. */
  reset();queue(und,sizeof(und),255);start(3000);done(3005);
- queue(fc,sizeof(fc),255);clock_ms=3020;assert(!radio_uart_process_tx_with_budget(2000)&&offered==1);
+ queue(fc,sizeof(fc),255);clock_ms=3033;assert(!radio_uart_process_tx_with_budget(2000)&&offered==1);
  /* HAL refusal charges no bytes and must preserve previously owed debt. */
  reset();queue(discovery,sizeof(discovery),254);start(4000);done(4018);
  queue(und,sizeof(und),255);hal_status=HAL_BUSY;clock_ms=4020;

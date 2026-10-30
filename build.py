@@ -24,6 +24,7 @@ Usage examples
 from __future__ import annotations
 
 import argparse
+from scripts.rfd_profile import cmake_values as rfd_cmake_values
 import io
 import os
 import re
@@ -427,6 +428,7 @@ class BuildConfig:
     packet_store: str = "compact"
     sedsnet_ref: str = "main"
     radio_mode: str = "rfd"
+    rfd_profile: Optional[Path] = None
     watchdog: bool = True
 
     @property
@@ -488,6 +490,16 @@ def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> 
     telemetry_flag = f"-DENABLE_TELEMETRY={'ON' if cfg.telemetry else 'OFF'}"
     watchdog_flag = f"-DENABLE_BOARD_WATCHDOG={'ON' if cfg.watchdog else 'OFF'}"
     radio_mode_flag = f"-DRFBOARD_LORA_SCHEDULER={'ON' if cfg.radio_mode == 'lora' else 'OFF'}"
+    if cfg.rfd_profile is not None and cfg.radio_mode != "rfd":
+        raise FriendlyError("An RFD profile cannot be used with legacy LoRa mode")
+    try:
+        selected_profile = cfg.rfd_profile
+        if selected_profile is None and cfg.radio_mode == "rfd":
+            selected_profile = Path(__file__).resolve().parent / "config/rfd-profile.json"
+        profile_flags = [f"-D{key}={value}" for key, value in rfd_cmake_values(selected_profile).items()]
+        profile_flags.append(f"-DRFD_PROFILE_FILE={selected_profile.resolve() if selected_profile else ''}")
+    except (ValueError, OSError) as error:
+        raise FriendlyError(f"Invalid RFD profile: {error}") from error
     ui.say("info", f"Radio mode: {cfg.radio_mode}; {radio_mode_flag}")
     simulation_flag = (
         "-DSEDS_FIRMWARE_SIM_TEST=ON"
@@ -503,6 +515,7 @@ def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> 
             allocator_flag,
             watchdog_flag,
             radio_mode_flag,
+            *profile_flags,
         f"-DSEDSNET_GIT_REF={cfg.sedsnet_ref}",
         f"-DSEDSNET_COMPACT_PACKET_STORE={'ON' if cfg.packet_store == 'compact' else 'OFF'}",
         "-DSEDSNET_COMPACT_PACKET_COMPRESSION=OFF",
@@ -525,6 +538,7 @@ def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> 
             allocator_flag,
             watchdog_flag,
             radio_mode_flag,
+            *profile_flags,
         f"-DSEDSNET_GIT_REF={cfg.sedsnet_ref}",
         f"-DSEDSNET_COMPACT_PACKET_STORE={'ON' if cfg.packet_store == 'compact' else 'OFF'}",
         "-DSEDSNET_COMPACT_PACKET_COMPRESSION=OFF",
@@ -905,6 +919,8 @@ def make_parser() -> argparse.ArgumentParser:
                         help="Compact packet arena (default); uses main unless --sedsnet-ref is explicit.")
         sp.add_argument("--radio-mode", choices=["rfd", "lora"], default="rfd",
                         help="Radio mode (default: rfd); only lora enables legacy airtime windows and AUX gating.")
+        sp.add_argument("--rfd-profile", type=Path,
+                        help="Shared matched ASYNC modem/application profile JSON; does not configure the modem.")
         sp.add_argument("--sedsnet-ref", choices=["main", "dev"], default=None,
                         help="SEDSnet branch; current remote commit is fetched, with offline fallback.")
         sp.add_argument("--no-telemetry", action="store_true", help="Configure with -DENABLE_TELEMETRY=OFF")
@@ -987,6 +1003,7 @@ def build_cfg_from_args(ui: UI, args: argparse.Namespace) -> BuildConfig:
         packet_store=args.packet_store,
         sedsnet_ref=args.sedsnet_ref or "main",
         radio_mode=args.radio_mode,
+        rfd_profile=args.rfd_profile,
         allocator=args.allocator,
         generator=args.generator,
         toolchain_file=toolchain,

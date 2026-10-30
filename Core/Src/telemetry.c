@@ -709,6 +709,19 @@ SedsResult init_telemetry_router(void) {
     if (!g_router_retry_after_ms) g_router_retry_after_ms = 1U;
     return SEDS_ERR;
   }
+#if !RFBOARD_LORA_SCHEDULER && defined(SEDS_ENABLE_LATEST_VALUE_EGRESS)
+  if (seds_router_set_latest_value_side(r, g_radio_side_id) != SEDS_OK) {
+    printf("Error: failed to configure radio pending-value policy\r\n");
+    seds_router_free(r);
+    g_router.r = NULL;
+    g_router.created = 0U;
+    g_can_side_id = -1;
+    g_radio_side_id = -1;
+    g_router_retry_after_ms = (uint32_t)(init_now_ms + TELEMETRY_ROUTER_RETRY_MS);
+    if (!g_router_retry_after_ms) g_router_retry_after_ms = 1U;
+    return SEDS_ERR;
+  }
+#endif
   telemetry_memory_profile_mark(3U);
 
   result = telemetry_configure_timesync_locked(r);
