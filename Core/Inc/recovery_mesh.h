@@ -2,14 +2,19 @@
 #define RECOVERY_MESH_H
 #include <stddef.h>
 #include <stdint.h>
+#include "recovery_profile.h"
 
 /* Ground/RRLS envelopes never enter the SEDSnet side-template namespace.
- * Only kinds 5/6 address the avionics modem; all other kinds are host-only. */
+ * Kinds5/6 address avionics data; kind14 admits only a validated read-only
+ * application-profile query. Other kinds remain host-only. */
 static inline int recovery_mesh_uplink(const uint8_t **data, size_t *len,
                                        uint8_t *command) {
   const uint8_t *p = *data;
   if (!*command || *len < 2U || p[0] != 'R' || p[1] != 'R') return 1;
-  if (*len < 9U || p[2] != 1U || (p[3] != 5U && p[3] != 6U)) return 0;
+  if (*len < 9U || p[2] != 1U) return 0;
+  if (p[3] == RECOVERY_PROFILE_KIND)
+    return recovery_profile_is_query(p, *len, *command);
+  if (p[3] != 5U && p[3] != 6U) return 0;
   const size_t end = *len - 4U;
   uint32_t crc = UINT32_MAX;
   for (size_t i = 0; i < end; ++i) {

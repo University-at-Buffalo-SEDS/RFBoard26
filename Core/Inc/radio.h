@@ -74,6 +74,8 @@ HAL_StatusTypeDef radio_uart_send_bytes_priority(const uint8_t *bytes, size_t le
                                                  uint8_t priority);
 HAL_StatusTypeDef radio_uart_send_plaintext(const uint8_t *bytes, size_t len);
 HAL_StatusTypeDef radio_uart_send_command_frame(const uint8_t *bytes, size_t len);
+/* Consumes read-only profile control without SDK routing or RX interruption. */
+uint8_t radio_uart_handle_profile_request(const uint8_t *bytes, size_t len, uint8_t command);
 uint8_t radio_uart_tx_ready(void);
 uint8_t radio_uart_tx_busy(void);
 uint8_t radio_uart_air_busy(void);

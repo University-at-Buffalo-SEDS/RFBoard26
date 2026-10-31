@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def parser_program():
     source = (ROOT / 'Core/Src/radio.c').read_text()
-    parser = source[source.index('static void radio_frame_buf_consume'):source.index('/* Push one RX chunk')]
+    parser = source[source.index('/* Bounded resync state:'):source.index('/* Push one RX chunk')]
     return f'#include "{ROOT / "Core/Inc/recovery_mesh.h"}"\n#include "{ROOT / "tests/radio_crc_reference.h"}"\n' + r'''
 #include <assert.h>
 #include <stdio.h>

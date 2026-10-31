@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class CorruptRadioFrameTests(unittest.TestCase):
     def test_truncated_sdt_frame_cannot_consume_a_following_frame(self):
         source=(ROOT/'Core/Src/radio.c').read_text()
-        parser=source[source.index('static void radio_frame_buf_consume'):source.index('/* Push one RX chunk')]
+        parser=source[source.index('/* Bounded resync state:'):source.index('/* Push one RX chunk')]
         # Use the existing real SDK frame rather than an unchecked byte pattern.
         good=(ROOT/'tests/fixtures/radio-startup-discovery-frame.bin').read_bytes()[4:]
         valid_body=b'SDT\x03'+b'1'*184

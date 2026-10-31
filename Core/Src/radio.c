@@ -2,6 +2,7 @@
 #include "launchcore/image.h"
 #include "uart_dma_rx.h"
 #include "recovery_mesh.h"
+#include "recovery_profile.h"
 #include "main.h"
 #include "sedsnet_config.h"
 #include "tx_api.h"
@@ -112,11 +113,19 @@ _Static_assert(RADIO_UART_TX_QUEUE_SLOTS > RADIO_UART_TX_CONTROL_RESERVE_SLOTS,
 #endif
 
 #ifndef RADIO_AIR_BIT_RATE_BPS
+#if RFBOARD_LORA_SCHEDULER
 #define RADIO_AIR_BIT_RATE_BPS 64000U
+#else
+#define RADIO_AIR_BIT_RATE_BPS 32000U
+#endif
 #endif
 
 #ifndef RADIO_AIR_SHARE_PERCENT
+#if RFBOARD_LORA_SCHEDULER
 #define RADIO_AIR_SHARE_PERCENT 40U
+#else
+#define RADIO_AIR_SHARE_PERCENT 35U
+#endif
 #endif
 
 #if RADIO_AIR_SHARE_PERCENT < 1 || RADIO_AIR_SHARE_PERCENT > 100
@@ -1461,6 +1470,67 @@ static void radio_uart_recover_rx_if_needed(void)
   ++g_radio_rx_recoveries;
 }
 
+/* Profile control never reaches SEDSnet or refreshes routing liveness. Replies
+ * are bounded, queue-owned command frames, not settings or actuator commands. */
+volatile uint32_t g_radio_profile_queries;
+volatile uint32_t g_radio_profile_replies;
+volatile uint32_t g_radio_profile_refusals;
+static uint32_t g_radio_profile_last_reply_ms;
+static uint8_t g_radio_profile_replied;
+
+uint8_t radio_uart_handle_profile_request(const uint8_t *data, size_t len,
+                                          uint8_t command)
+{
+  if (!command || !data || len < 4U || data[0] != 'R' || data[1] != 'R' ||
+      data[2] != 1U || data[3] != RECOVERY_PROFILE_KIND)
+    return 0U;
+  if (!g_huart) return 1U;
+  uint8_t flags = RFBOARD_LORA_SCHEDULER ? RECOVERY_PROFILE_LORA_SCHEDULER : 0U;
+  if (g_huart->Init.HwFlowCtl != UART_HWCONTROL_NONE)
+    flags |= RECOVERY_PROFILE_FLOW_CONTROL;
+  if (g_huart->Init.WordLength != UART_WORDLENGTH_8B ||
+      g_huart->Init.StopBits != UART_STOPBITS_1 ||
+      g_huart->Init.Parity != UART_PARITY_NONE)
+    flags |= RECOVERY_PROFILE_UART_FORMAT_MISMATCH;
+  const recovery_profile_config_t config = {
+    .serial_baud = g_huart->Init.BaudRate,
+    .usable_air_bps = RADIO_AIR_BIT_RATE_BPS,
+    .rf_share_percent = RADIO_AIR_SHARE_PERCENT,
+    .frame_overhead_bytes = RADIO_AIR_FRAME_OVERHEAD_BYTES,
+    .packet_burst_ms = RADIO_PACKET_BURST_MS,
+    .packet_gap_ms = RADIO_PACKET_GAP_MS,
+    .flags = flags,
+  };
+  uint8_t reply[RECOVERY_PROFILE_REPLY_SIZE];
+  if (!recovery_profile_build_reply(data, len, command, &config, reply))
+    return 1U;
+  ++g_radio_profile_queries;
+  const uint32_t now = HAL_GetTick();
+  if (g_radio_profile_replied &&
+      (uint32_t)(now - g_radio_profile_last_reply_ms) < 500U) {
+    ++g_radio_profile_refusals;
+    return 1U;
+  }
+  uint8_t framed[RADIO_UART_FRAME_HEADER_SIZE + RECOVERY_PROFILE_REPLY_SIZE];
+  framed[0] = RADIO_UART_COMMAND_SYNC_0; framed[1] = RADIO_UART_COMMAND_SYNC_1;
+  framed[2] = RECOVERY_PROFILE_REPLY_SIZE; framed[3] = 0U;
+  memcpy(framed + RADIO_UART_FRAME_HEADER_SIZE, reply, sizeof(reply));
+  /* Queue one complete physical frame through the ordinary async writer.
+   * No RX abort, blocking transmit, earned-control loan or special air credit. */
+  if (RFBOARD_RADIO_LISTEN_ONLY || !radio_uart_tx_ready() ||
+      radio_uart_enqueue_frame(framed, (uint16_t)sizeof(framed), 253) != HAL_OK) {
+    ++g_radio_profile_refusals;
+    return 1U;
+  }
+  {
+    g_radio_profile_last_reply_ms = now;
+    g_radio_profile_replied = 1U;
+    ++g_radio_profile_replies;
+  }
+  return 1U;
+}
+
+
 HAL_StatusTypeDef radio_uart_send_bytes(const uint8_t *bytes, size_t len) {
   if (!g_huart) return HAL_ERROR;
   if (!bytes || len == 0U || len > RADIO_UART_MAX_PAYLOAD_SIZE) return HAL_ERROR;
@@ -1801,16 +1871,81 @@ uint8_t radio_uart_current_rx_is_command_frame(void) {
   return g_current_rx_is_command_frame;
 }
 
+/* Bounded resync state: only a proven rejected CRC parent grants scanning. */
+static struct {
+  uint16_t remaining, cursor, epoch_length, retry_from;
+} g_rejected_frame;
+_Static_assert(sizeof(g_rejected_frame) == 8U, "Rejected span state is bounded");
+
 static void radio_frame_buf_consume(size_t count)
 {
   g_partial_frame_waiting = 0U;
+  g_rejected_frame.remaining = count >= g_rejected_frame.remaining ? 0U :
+      (uint16_t)(g_rejected_frame.remaining - count);
+  g_rejected_frame.cursor = 1U;
+  g_rejected_frame.retry_from = UINT16_MAX;
   if (count >= g_frame_len) {
+    g_rejected_frame.remaining = 0U;
     g_frame_len = 0U;
     return;
   }
 
   memmove(g_frame_buf, &g_frame_buf[count], g_frame_len - count);
   g_frame_len -= count;
+  g_rejected_frame.epoch_length = g_frame_len;
+}
+
+/* Additional scan work is bounded for each parser invocation. No scan inside
+ * an unknown/CRC-valid parent. New bytes never rewind an unfinished pass. */
+static size_t radio_rejected_anchor(unsigned *steps, size_t *crc_bytes)
+{
+  if (g_rejected_frame.remaining == 0U) return 0U;
+  for (;;) {
+    while (g_rejected_frame.cursor <= g_rejected_frame.remaining &&
+           (size_t)g_rejected_frame.cursor + 1U < g_frame_len) {
+      if (*steps == 0U) return 0U;
+      --*steps;
+      const size_t at = g_rejected_frame.cursor;
+      const uint8_t *frame = g_frame_buf + at;
+      const uint8_t command = frame[0] == RADIO_UART_COMMAND_SYNC_0 &&
+          frame[1] == RADIO_UART_COMMAND_SYNC_1;
+      const uint8_t data = frame[0] == RADIO_UART_FRAME_SYNC_0 &&
+          frame[1] == RADIO_UART_FRAME_SYNC_1;
+      if (!command && !data) { ++g_rejected_frame.cursor; continue; }
+      if (at + RADIO_UART_FRAME_HEADER_SIZE > g_frame_len) {
+        if (at < g_rejected_frame.retry_from) g_rejected_frame.retry_from = (uint16_t)at;
+        ++g_rejected_frame.cursor; continue;
+      }
+      const size_t length = (size_t)frame[2] | ((size_t)frame[3] << 8U);
+      if (length < 4U || length > RADIO_UART_MAX_PAYLOAD_SIZE) {
+        ++g_rejected_frame.cursor; continue;
+      }
+      if (at + RADIO_UART_FRAME_HEADER_SIZE + length > g_frame_len) {
+        if (at < g_rejected_frame.retry_from) g_rejected_frame.retry_from = (uint16_t)at;
+        ++g_rejected_frame.cursor; continue;
+      }
+      const uint8_t *body = frame + RADIO_UART_FRAME_HEADER_SIZE;
+      const uint8_t scheduler = command && (length == 7U || length == 9U) &&
+          body[0] == 'R' && body[1] == 'S' && body[2] == 1U && body[3] <= 1U;
+      if (scheduler) { ++g_rejected_frame.cursor; continue; }
+      if (length - 4U > *crc_bytes) return 0U;
+      *crc_bytes -= length - 4U;
+      const uint8_t *crc = body + length - 4U;
+      const uint32_t expected = (uint32_t)crc[0] | ((uint32_t)crc[1] << 8U) |
+          ((uint32_t)crc[2] << 16U) | ((uint32_t)crc[3] << 24U);
+      ++g_rejected_frame.cursor;
+      if (launchcore_crc32(body, length - 4U) == expected) return at;
+    }
+    /* A single trailing byte may become a sync after append. */
+    if (g_rejected_frame.cursor <= g_rejected_frame.remaining &&
+        g_rejected_frame.cursor < g_rejected_frame.retry_from)
+      g_rejected_frame.retry_from = g_rejected_frame.cursor;
+    if (g_rejected_frame.epoch_length == g_frame_len ||
+        g_rejected_frame.retry_from == UINT16_MAX) return 0U;
+    g_rejected_frame.cursor = g_rejected_frame.retry_from;
+    g_rejected_frame.retry_from = UINT16_MAX;
+    g_rejected_frame.epoch_length = g_frame_len;
+  }
 }
 
 static void radio_frame_buf_append(const uint8_t *data, size_t len)
@@ -1823,6 +1958,7 @@ static void radio_frame_buf_append(const uint8_t *data, size_t len)
     data += len - RADIO_UART_FRAME_BUF_SIZE;
     len = RADIO_UART_FRAME_BUF_SIZE;
     g_frame_len = 0U;
+    g_rejected_frame.remaining = 0U;
   } else if (g_frame_len + len > RADIO_UART_FRAME_BUF_SIZE) {
     radio_frame_buf_consume(g_frame_len + len - RADIO_UART_FRAME_BUF_SIZE);
   }
@@ -1833,7 +1969,8 @@ static void radio_frame_buf_append(const uint8_t *data, size_t len)
 
 static void radio_process_buffered_frames(void)
 {
-
+  unsigned scan_steps = 64U;
+  size_t scan_crc_bytes = RADIO_UART_MAX_PAYLOAD_SIZE;
   while (g_frame_len > 0U) {
     size_t sync_pos = 0U;
     uint8_t found_sync = 0U;
@@ -1852,6 +1989,7 @@ static void radio_process_buffered_frames(void)
     }
 
     if (!found_sync) {
+      g_rejected_frame.remaining = 0U;
       const uint8_t keep_sync_prefix =
           (g_frame_buf[g_frame_len - 1U] == RADIO_UART_FRAME_SYNC_0 ||
            g_frame_buf[g_frame_len - 1U] == RADIO_UART_COMMAND_SYNC_0 ||
@@ -1893,6 +2031,11 @@ static void radio_process_buffered_frames(void)
     }
 
     if (g_frame_len < (RADIO_UART_FRAME_HEADER_SIZE + payload_len)) {
+      const size_t anchor = radio_rejected_anchor(&scan_steps, &scan_crc_bytes);
+      if (anchor != 0U) {
+        radio_frame_buf_consume(anchor);
+        continue;
+      }
       const uint32_t now = radio_now_ms();
       if (!g_partial_frame_waiting) {
         g_partial_frame_started_ms = now;
@@ -1929,11 +2072,14 @@ static void radio_process_buffered_frames(void)
         /* A truncated frame can absorb the next frame's sync. Check integrity
          * before consuming the claimed length, then retain bytes for resync. */
         ++g_rx_crc_errors;
+        const uint16_t rejected = (uint16_t)(RADIO_UART_FRAME_HEADER_SIZE + payload_len);
+        if (rejected > g_rejected_frame.remaining) g_rejected_frame.remaining = rejected;
         radio_frame_buf_consume(1U);
         continue;
       }
     }
 
+    g_rejected_frame.remaining = 0U;
     g_current_rx_is_command_frame = is_command_frame;
     g_last_frame_payload_len = (uint16_t)payload_len;
     g_last_frame_kind = is_command_frame ? 2U : (is_ascii_frame ? 3U : 1U);

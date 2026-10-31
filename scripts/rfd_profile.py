@@ -7,7 +7,7 @@ MODEM = {'serial_baud', 'air_bps', 'max_data_bytes', 'max_retries', 'broadcast_r
          'serial_break_ms', 'tx_encapsulation', 'rx_encapsulation'}
 TRANSPORT = {'usable_air_bps', 'frame_overhead_bytes', 'packet_burst_ms', 'packet_gap_ms',
              'idle_margin_ms', 'rf_share_percent', 'host_default_share_percent'}
-DEFAULTS = {'RADIO_AIR_BIT_RATE_BPS': 64000, 'RADIO_AIR_SHARE_PERCENT': 40,
+DEFAULTS = {'RADIO_AIR_BIT_RATE_BPS': 32000, 'RADIO_AIR_SHARE_PERCENT': 35,
             'RADIO_AIR_FRAME_OVERHEAD_BYTES': 16, 'RADIO_PACKET_BURST_MS': 100,
             'RADIO_PACKET_GAP_MS': 55}
 
@@ -32,6 +32,8 @@ def load(path):
             and 1 <= t['packet_burst_ms'] <= 500 and 1 <= t['packet_gap_ms'] <= 1000
             and 1 <= t['rf_share_percent'] <= 100 and 1 <= t['host_default_share_percent'] <= 100):
         raise ValueError('Invalid transport capacity')
+    if t['rf_share_percent'] + max(2 * t['host_default_share_percent'], 50) > 100:
+        raise ValueError('RF and host base shares exceed the shared link')
     if not 5 <= t['idle_margin_ms'] <= 100 or t['packet_gap_ms'] < m['serial_break_ms'] + t['idle_margin_ms']:
         raise ValueError('UART idle gap must exceed serial break with a guard margin')
     if (m['serial_baud'] * t['packet_burst_ms'] + 9999) // 10000 + 1028 > m['max_data_bytes']:

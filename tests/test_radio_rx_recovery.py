@@ -6,7 +6,13 @@ class RadioRxRecoveryTests(unittest.TestCase):
  def test_retries_failed_rearms_preserves_tx_and_does_not_restart_quiet_rx(self):
   source=(ROOT/'Core/Src/radio.c').read_text()
   begin=source.index('static void radio_uart_recover_rx_if_needed(')
-  end=source.index('\nHAL_StatusTypeDef radio_uart_send_bytes',begin)
+  # Exercise exactly the production RX recovery function, rather than also
+  # compiling unrelated public APIs added after it.
+  end=source.index('{',begin)+1
+  depth=1
+  while depth:
+   depth+=(source[end]=='{')-(source[end]=='}')
+   end+=1
   code=r'''
 #include <stdint.h>
 #include <assert.h>

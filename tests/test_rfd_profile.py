@@ -68,6 +68,45 @@ class RfdProfileTests(unittest.TestCase):
             with self.assertRaises(build.FriendlyError):
                 build.configure_and_build(ui, replace(cfg, rfd_profile=path, radio_mode='lora'))
 
+    def test_role_defaults_and_cache_reset_preserve_lora(self):
+        ui = mock.Mock()
+        cfg = build.build_cfg_from_args(ui, build.make_parser().parse_args(['build', '--release']))
+        with tempfile.TemporaryDirectory() as directory:
+            custom = Path(directory) / 'custom.json'
+            custom.write_text(json.dumps(profile()))
+            for mode, selected, bps, share in [('rfd', None, 32000, 35),
+                                               ('rfd', custom, 32000, 40),
+                                               ('lora', None, 64000, 40)]:
+                for preset in [False, True]:
+                    with self.subTest(mode=mode, preset=preset), \
+                         mock.patch.object(build, 'run') as execute, \
+                         mock.patch.object(build, 'assert_embedded_cache'), \
+                         mock.patch.object(build, 'pick_elf', return_value=Path('/tmp/profile.elf')):
+                        build.configure_and_build(ui, replace(cfg, radio_mode=mode,
+                                                             rfd_profile=selected, use_preset=preset))
+                    args = execute.call_args_list[0].args[1]
+                    self.assertIn(f'-DRADIO_AIR_BIT_RATE_BPS={bps}', args)
+                    self.assertIn(f'-DRADIO_AIR_SHARE_PERCENT={share}', args)
+                    self.assertIn(f"-DRFBOARD_LORA_SCHEDULER={'ON' if mode == 'lora' else 'OFF'}", args)
+                    self.assertEqual(sum(a.startswith('-DRADIO_AIR_SHARE_PERCENT=') for a in args), 1)
+                    self.assertEqual(sum(a.startswith('-DRADIO_AIR_BIT_RATE_BPS=') for a in args), 1)
+                    if mode == 'lora': self.assertIn('-DRFD_PROFILE_FILE=', args)
+            with self.assertRaises(build.FriendlyError):
+                build.configure_and_build(ui, replace(cfg, radio_mode='lora', rfd_profile=custom))
+
+    def test_checked_in_rfd_envelope_and_base_conservation(self):
+        checked = rfd_profile.load(Path(build.__file__).resolve().parent / 'config/rfd-profile.json')
+        self.assertEqual(checked['transport']['rf_share_percent'], 35)
+        self.assertEqual(checked['transport']['usable_air_bps'], 32000)
+        self.assertEqual(checked['modem']['air_bps'], 64000)
+        self.assertEqual(rfd_profile.cmake_values()['RADIO_AIR_BIT_RATE_BPS'], 32000)
+        self.assertEqual(rfd_profile.cmake_values()['RADIO_AIR_SHARE_PERCENT'], 35)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'bad.json'
+            too_large = profile(); too_large['transport']['rf_share_percent'] = 80
+            path.write_text(json.dumps(too_large))
+            with self.assertRaises(ValueError): rfd_profile.load(path)
+
     def test_all_three_live_readbacks_and_forwarding_are_required(self):
         self.assertTrue(rfd_profile.audit(profile(), readbacks())['matched'])
         for key, value in [('max_retries', 10), ('broadcast_retries', 10), ('serial_break_ms', 50),

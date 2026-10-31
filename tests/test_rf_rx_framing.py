@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class RadioFramingTests(unittest.TestCase):
     def test_back_to_back_maximum_frames(self):
         source = (ROOT / 'Core/Src/radio.c').read_text()
-        parser = source[source.index('static void radio_frame_buf_consume'):source.index('/* Push one RX chunk')]
+        parser = source[source.index('/* Bounded resync state:'):source.index('/* Push one RX chunk')]
         code = r'''
 #include <assert.h>
 #include <stdint.h>

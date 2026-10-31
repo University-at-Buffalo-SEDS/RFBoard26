@@ -496,7 +496,12 @@ def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> 
         selected_profile = cfg.rfd_profile
         if selected_profile is None and cfg.radio_mode == "rfd":
             selected_profile = Path(__file__).resolve().parent / "config/rfd-profile.json"
-        profile_flags = [f"-D{key}={value}" for key, value in rfd_cmake_values(selected_profile).items()]
+        profile_values = rfd_cmake_values(selected_profile)
+        if cfg.radio_mode == "lora":
+            # RFD defaults are a32k usable budget; legacy LoRa retains64k/40.
+            # The mode/profile guard above excludes an explicit RFD profile here.
+            profile_values.update(RADIO_AIR_BIT_RATE_BPS=64000, RADIO_AIR_SHARE_PERCENT=40)
+        profile_flags = [f"-D{key}={value}" for key, value in profile_values.items()]
         profile_flags.append(f"-DRFD_PROFILE_FILE={selected_profile.resolve() if selected_profile else ''}")
     except (ValueError, OSError) as error:
         raise FriendlyError(f"Invalid RFD profile: {error}") from error

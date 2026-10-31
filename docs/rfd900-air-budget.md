@@ -1,28 +1,25 @@
 # RFD900x transmit budget
 
-UART remains 115200 baud (ATS1=115); the confirmed air rate is 64000 bit/s
-(ATS2=64). DMA completion drains UART bytes, not the modem's radio FIFO. With
-RTS/CTS disabled, limit each end to 40% of the shared air rate. The other 20%
-is headroom for modem overhead and retries, not a measured capacity guarantee.
+The compatible profile keeps UART at 115200 baud (ATS1=115), modem air rate at
+64000 bit/s (ATS2=64), and the usable application envelope at 32000 bit/s.
+RF reserves 35% of that envelope (1400 charged bytes/s). The four-byte UART
+header is included in the frame, with a separate 16-byte application overhead.
+A 100-byte payload therefore reserves 86 ms; a 1024-byte payload reserves
+746 ms. These are application reservations, not measured RF delivery times.
 
-RF checks the next-send deadline before selecting the next queued frame. It
-returns without sleeping, so CAN and radio RX keep progressing; commands retain
-queue priority. Spacing uses eight bits per air byte, the four-byte UART frame
-header already in the frame, and a configurable 16-byte overhead estimate. A
-100-byte payload reserves 38 ms; a 1024-byte payload reserves 327 ms. There is
-no additional fixed 25 ms delay.
+RF checks the next-send deadline before selecting a queued frame and returns
+without sleeping, so CAN and radio RX keep progressing. Command priority,
+100 ms collection bursts, and 55 ms packetization gaps remain unchanged.
+`config/rfd-profile.json` supplies the actual CMake values on every configure;
+the CMake and script fallback share is also 35%. Explicit custom profiles must
+be checked across every participant before deployment.
 
-GroundStation's rocket_comms worker applies the same budget with defaults
-GS_RADIO_AIR_BIT_RATE_BPS=64000, GS_RADIO_AIR_SHARE_PERCENT=40 and
-GS_RADIO_AIR_FRAME_OVERHEAD_BYTES=16. The fill-system link uses the Pi's main Ethernet interface and is not radio-paced. RF build
-definitions RADIO_AIR_BIT_RATE_BPS, RADIO_AIR_SHARE_PERCENT and
-RADIO_AIR_FRAME_OVERHEAD_BYTES override the matching firmware values.
-
-When GroundStation or RRLS is configured with `GS_RRLS_ROLE=primary` or
-`GS_RRLS_ROLE=rrls`, the host default share is 25%, reserving room for the third
-radio. `GS_RRLS_VOICE=1` selects the same default. An explicit share override
-still applies. Generic router traffic and RRLS forwarding share the same
-physical UART capacity state; reconnecting does not create a second allowance.
+Primary and RRLS hosts share each physical UART capacity state with SDK traffic;
+reconnecting does not create another allowance. A relay may use an expanded
+recovery allocation only with a nonce-bound peer grant and a matching RF
+application/UART profile proof. Unrecognized or legacy RF40 cannot certify
+that expansion. The profile response reports compiled application/UART settings,
+not live modem AT configuration. The fill-system link remains Ethernet.
 
 This backpressure is active with `RFBOARD_LORA_SCHEDULER=OFF`. It keeps traffic
 in the priority queue until the previous reservation has drained. It does not

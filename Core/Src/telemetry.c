@@ -407,6 +407,8 @@ static void telemetry_can_rx(const uint8_t *data, size_t len, void *user) {
 
 static void telemetry_radio_rx(const uint8_t *data, size_t len, void *user) {
   (void)user;
+  if (radio_uart_handle_profile_request(data, len,
+          radio_uart_current_rx_is_command_frame())) return;
   sim_probe_observe_packed(data, len);
 
 #ifdef TELEMETRY_ENABLED

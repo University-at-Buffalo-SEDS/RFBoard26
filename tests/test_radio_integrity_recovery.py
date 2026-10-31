@@ -43,7 +43,7 @@ class RadioIntegrityRecovery(unittest.TestCase):
         if not relayed:
             vectors = [("canonical", frame(canonical), canonical, 0)]
         source = (ROOT / "Core/Src/radio.c").read_text()
-        parser = source[source.index("static void radio_frame_buf_consume"):
+        parser = source[source.index("/* Bounded resync state:"):
                         source.index("/* Push one RX chunk")]
         declarations = []
         cases = []
