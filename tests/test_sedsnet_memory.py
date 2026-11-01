@@ -358,10 +358,15 @@ class SedsnetMemoryTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("TELEMETRY_ROUTER_RETRY_MS", source)
-        self.assertIn("(int32_t)((uint32_t)init_now_ms - g_router_retry_after_ms) < 0", source)
-        self.assertGreaterEqual(
-            source.count("g_router_retry_after_ms = (uint32_t)(init_now_ms +"), 3
-        )
+        # One checked outer attempt now owns the bounded retry deadline instead
+        # of maintaining a separate five-second gate at each failure branch.
+        from router_lifecycle_fixture import function
+        wrapper=function(source,'init_telemetry_router')
+        self.assertLess(wrapper.index('(int32_t)(now_ms - g_router_retry_after_ms) < 0'),wrapper.index('init_telemetry_router_locked()'))
+        self.assertGreater(wrapper.index('g_router_retry_after_ms = now_ms + TELEMETRY_ROUTER_RETRY_MS'),wrapper.index('init_telemetry_router_locked()'))
+        self.assertIn('#define TELEMETRY_ROUTER_RETRY_MS 500U',source)
+        # Executed failure/wrap/no-early-allocation proof: test_router_lifecycle.
+
 
     def test_receive_callbacks_dispatch_without_a_scheduler_queue(self):
         source = (ROOT / "Core" / "Src" / "telemetry.c").read_text(

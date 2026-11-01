@@ -19,6 +19,7 @@ SedsResult seds_router_enable_network_variable(SedsRouter*,unsigned,bool,bool);
 SedsResult seds_router_on_network_variable_update(SedsRouter*,unsigned,SedsResult(*)(const SedsPacketView*,void*),void*);
 SedsResult seds_router_request_managed_variable(SedsRouter*,unsigned);
 void seds_router_disable_managed_variable(SedsRouter*,unsigned);
+SedsResult seds_router_invalidate_network_variable_cache(SedsRouter*,unsigned,bool*);
 ''',
 "sedsnet_config.h": '#pragma once\n#define SEDS_DT_FLIGHT_STATE 444U\n',
 "main.h": '#pragma once\n#include <stdint.h>\nuint32_t HAL_GetTick(void);\n',
@@ -46,7 +47,7 @@ volatile uint32_t g_telemetry_discovery_seen;
 static SedsResult (*callback)(const SedsPacketView*,void*);
 static unsigned writes,clears,requests;
 static uint8_t stored=5,have_stored=1,allow_update=1;
-static int fail_write,fail_read,wrong_read,fail_enable,fail_apply;
+static int fail_write,fail_read,wrong_read,fail_invalidate,fail_apply;
 static unsigned tick;
 uint32_t HAL_GetTick(void){return tick;}
 SedsResult flight_state_cache_apply_network_update(const SedsPacketView *packet){assert(packet);return fail_apply?-14:0;}
@@ -62,13 +63,16 @@ int persistent_store_get(uint32_t key,void *p,size_t *n){
  if(!have_stored)return 1;
  *(uint8_t*)p=wrong_read?15:stored;return 0;
 }
-SedsResult seds_router_enable_network_variable(SedsRouter *r,unsigned ty,bool rd,bool wr){
- assert(r&&ty==SEDS_DT_FLIGHT_STATE&&rd&&!wr);return fail_enable?-9:0;
+static unsigned selective_enable_calls,selective_callback_calls;
+SedsResult seds_router_enable_network_variable(SedsRouter *r,unsigned ty,bool rd,bool wr){assert(++selective_enable_calls==1U);
+ assert(r&&ty==SEDS_DT_FLIGHT_STATE&&rd&&!wr);return SEDS_OK;
 }
-SedsResult seds_router_on_network_variable_update(SedsRouter *r,unsigned ty,SedsResult(*fn)(const SedsPacketView*,void*),void *ctx){
+SedsResult seds_router_on_network_variable_update(SedsRouter *r,unsigned ty,SedsResult(*fn)(const SedsPacketView*,void*),void *ctx){assert(++selective_callback_calls==1U);
  assert(r&&ty==SEDS_DT_FLIGHT_STATE&&fn&&!ctx);callback=fn;return 0;
 }
-void seds_router_disable_managed_variable(SedsRouter *r,unsigned ty){assert(r&&ty==SEDS_DT_FLIGHT_STATE);++clears;callback=NULL;}
+void seds_router_disable_managed_variable(SedsRouter *r,unsigned ty){(void)r;(void)ty;assert(!"whole-service disable forbidden during selective retirement");}
+SedsResult seds_router_invalidate_network_variable_cache(SedsRouter*r,unsigned ty,bool*out_invalidated){assert(out_invalidated==NULL);if(fail_invalidate)return SEDS_HANDLER_ERROR;assert(r&&ty==SEDS_DT_FLIGHT_STATE);++clears;return SEDS_OK;}
+
 SedsResult seds_router_request_managed_variable(SedsRouter *r,unsigned ty){assert(r&&ty==SEDS_DT_FLIGHT_STATE);++requests;return 0;}
 uint8_t board_recovery_managed_update_allowed(const SedsPacketView *p){assert(p);return allow_update;}
 static SedsResult update(uint8_t state){SedsPacketView p={SEDS_DT_FLIGHT_STATE,&state,1,100};assert(callback);return callback(&p,NULL);}
@@ -98,8 +102,8 @@ int main(int argc,char **argv){
   wrong_read=1;assert(board_recovery_apply_safe(0,1,&out)!=0&&out.actual_state==5&&out.abort_epoch==1&&clears==0);
   wrong_read=0;assert(board_recovery_apply_safe(0,1,&out)==0&&out.actual_state==0);
  }else if(!strcmp(argv[1],"service_failure")){
-  fail_enable=1;assert(board_recovery_apply_safe(0,1,&out)!=0&&out.actual_state==5&&out.abort_epoch==1);
-  fail_enable=0;assert(board_recovery_apply_safe(0,1,&out)==0&&out.actual_state==0&&out.abort_epoch==2);
+  fail_invalidate=1;assert(board_recovery_apply_safe(0,1,&out)!=0&&out.actual_state==5&&out.abort_epoch==1);
+  fail_invalidate=0;assert(board_recovery_apply_safe(0,1,&out)==0&&out.actual_state==0&&out.abort_epoch==2);
  }else if(!strcmp(argv[1],"stale_retirement")){
   assert(board_recovery_apply_safe(0,1,&out)==0);unsigned w=writes,c=clears;
   allow_update=0;assert(update(3)==-9&&flight_state_cache_value()==0&&stored==0&&writes==w&&clears==c+1&&callback);

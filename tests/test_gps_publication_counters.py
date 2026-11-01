@@ -3,13 +3,15 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from checked_router_fixture import checked_hooks
+from router_lifecycle_fixture import function
 ROOT = Path(__file__).resolve().parents[1]
 class GpsPublicationCounterTests(unittest.TestCase):
     def test_attempt_success_and_invalid_input_are_distinct(self):
         source=(ROOT/'Core/Src/telemetry.c').read_text()
         start=source.index('SedsResult log_telemetry_asynchronous(')
         end=source.index('SedsResult log_telemetry_string_asynchronous(',start)
-        body=source[start:end]
+        body='\n'.join(function(source,n)for n in ('log_telemetry_asynchronous_locked','log_telemetry_asynchronous'))
         scaffold=r'''
 #include <assert.h>
 #include <stddef.h>
@@ -53,6 +55,6 @@ int main(void) {
 }
 '''
         with tempfile.TemporaryDirectory() as tmp:
-            file=Path(tmp)/'gps.c';file.write_text(scaffold+body+main);exe=Path(tmp)/'gps'
+            file=Path(tmp)/'gps.c';file.write_text(scaffold+'\nstatic unsigned locked;\nvoid telemetry_lock(void){assert(!locked);++locked;}\nvoid telemetry_unlock(void){assert(locked==1);--locked;}\n'+checked_hooks(ROOT)+'\n'+body+main);exe=Path(tmp)/'gps'
             subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined',str(file),'-o',str(exe)],check=True)
             subprocess.run([str(exe)],check=True)

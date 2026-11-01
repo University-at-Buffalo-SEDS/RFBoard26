@@ -4,14 +4,14 @@ import subprocess
 import tempfile
 import unittest
 
+from checked_router_fixture import checked_hooks
+from router_lifecycle_fixture import function
 ROOT = Path(__file__).resolve().parents[1]
 
 class SchemaAnnouncementTests(unittest.TestCase):
     def test_startup_retry_and_no_repeated_schema_flood(self):
         source = (ROOT / 'Core/Src/telemetry.c').read_text()
-        start = source.index('SedsResult telemetry_poll_discovery(')
-        end = source.index('\n}', start) + 2
-        poll = source[start:end]
+        poll='\n'.join(function(source,n)for n in ('telemetry_poll_discovery_locked','telemetry_poll_discovery'))
         code = r'''
 #include <assert.h>
 #include <stdint.h>
@@ -20,7 +20,7 @@ class SchemaAnnouncementTests(unittest.TestCase):
 #define SEDS_DT_DISCOVERY_SCHEMA_REQUEST 12U
 #define TELEMETRY_ENABLED 1
 typedef int SedsResult;
-enum { SEDS_OK=0, SEDS_ERR=1 };
+enum { SEDS_OK=0, SEDS_ERR=1, SEDS_BAD_ARG=2 };
 static struct { void *r; } g_router = {(void*)1};
 static uint8_t g_discovery_schema_announced;
 static uint32_t g_discovery_schema_retry_ms;
@@ -43,9 +43,10 @@ static int daq_log_clock_poll(void *r) { (void)r;return 0; }
 static int flight_buzzer_poll(void *r) { (void)r;return 0; }
 static int av_bay_underglow_poll(void *r) { (void)r;return 0; }
 static void ota_stream_poll(void) {}
-static void telemetry_lock(void) {}
-static void telemetry_unlock(void) {}
-''' + poll + r'''
+static unsigned locked;
+static void telemetry_lock(void) {assert(!locked);++locked;}
+static void telemetry_unlock(void) {assert(locked==1);--locked;}
+''' +checked_hooks(ROOT)+'\n'+ poll + r'''
 int main(void) {
  assert(telemetry_poll_discovery()==SEDS_ERR && attempts==0 && polls==0);
  ready=1; fail=SEDS_ERR;
@@ -81,7 +82,11 @@ int main(void) {
                 input=code,text=True,capture_output=True)
             self.assertEqual(result.returncode,0,result.stderr)
             subprocess.run([str(exe)],check=True)
-        self.assertIn('g_router.created = 1U;\n  g_discovery_schema_announced = 0U;\n  g_discovery_schema_retry_ms = 0U;',source)
+        constructor=function(source,'init_telemetry_router_locked')
+        self.assertLess(constructor.index('g_discovery_schema_announced = 0U;'),constructor.index('flight_state_cache_init(r)'))
+        self.assertLess(constructor.index('g_discovery_schema_retry_ms = 0U;'),constructor.index('flight_state_cache_init(r)'))
+        self.assertLess(constructor.index('flight_state_cache_init(r)'),constructor.index('g_router.r = r;'))
+
 
 if __name__ == '__main__':
     unittest.main()

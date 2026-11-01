@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 import build
+from router_lifecycle_fixture import function
 
 
 class QualificationContractTests(unittest.TestCase):
@@ -120,8 +121,7 @@ class QualificationContractTests(unittest.TestCase):
     def test_router_clock_epoch_is_fixed_before_router_and_side_setup(self):
         root = Path(build.__file__).resolve().parent
         telemetry = (root / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
-        init = telemetry.index("SedsResult init_telemetry_router(void)")
-        body = telemetry[init:]
+        body = function(telemetry,'init_telemetry_router_locked')
         epoch = body.index("g_router.start_time = init_now_ms;")
         create = body.index("seds_router_new_with_memory")
         can_side = body.index('r, "can", 3U, tx_send_with_priority')

@@ -293,6 +293,13 @@ def find_repo_root(start: Path) -> Path:
 
 
 def run_host_tests(ui: UI, repo_root: Path) -> None:
+    # Native ownership tests link the real matching SDK. No manual archive
+    # flag is required; source selection and host builds use an owned cache.
+    import runpy
+    try:
+        runpy.run_path(str(repo_root / "tests/native_sdk.py"))["prepare_native_sdk"](repo_root)
+    except (RuntimeError, OSError, ValueError, KeyError) as error:
+        raise FriendlyError("Host SDK native prerequisite: " + str(error)) from None
     tests = repo_root / "tests"
     if tests.is_dir():
         run(ui, [sys.executable, "-m", "unittest", "discover", "-s", "tests",

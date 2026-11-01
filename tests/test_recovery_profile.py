@@ -6,6 +6,8 @@ import tempfile
 import unittest
 import zlib
 
+from checked_router_fixture import checked_hooks
+from router_lifecycle_fixture import function as actual_function
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -40,8 +42,8 @@ class RecoveryProfile(unittest.TestCase):
         source = (ROOT / "Core/Src/radio.c").read_text()
         start = source.index("/* Profile control never")
         driver = source[start:source.index("HAL_StatusTypeDef radio_uart_send_bytes", start)]
-        consumer = function((ROOT / "Core/Src/telemetry.c").read_text(),
-                            "static void telemetry_radio_rx(")
+        telemetry=(ROOT/'Core/Src/telemetry.c').read_text()
+        consumer='\n'.join(actual_function(telemetry,n)for n in ('telemetry_radio_rx_locked','telemetry_radio_rx'))
         code = r'''
 #include <assert.h>
 #include <stdint.h>
@@ -94,7 +96,7 @@ static int seds_router_receive_packed(void *r,const uint8_t *p,size_t n) {
   return seds_router_receive_packed_from_side(r,0,p,n);
 }
 '''
-        code += array("query", query) + array("expected", reply) + driver + consumer
+        code += array("query", query) + array("expected", reply) + driver +'\nstatic unsigned locked;\nvoid telemetry_lock(void){assert(!locked);++locked;}\nvoid telemetry_unlock(void){assert(locked==1);--locked;}\n'+checked_hooks(ROOT)+'\n'+consumer
         code += r'''
 int main(void) {
   const recovery_profile_config_t config={115200,32000,35,16,100,55,0};

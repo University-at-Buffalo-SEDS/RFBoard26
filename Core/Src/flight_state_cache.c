@@ -32,17 +32,13 @@ static uint8_t g_persisted_state = UINT8_MAX;
 static uint32_t g_last_refresh_ms;
 static SedsRouter *g_cache_router;
 static SedsResult persist_update(const SedsPacketView *packet, void *user);
-/* SDK caches inbound data before its callback. Rejecting a callback alone
- * cannot retire that cache; clear and re-register the read-only service. */
+/* SDK 4.3.6 caches inbound data before its callback. Retire only this
+ * observation; keep read-only permissions, callbacks and advertisements. */
 static SedsResult clear_managed_cache(void)
 {
     if (g_cache_router == NULL) return SEDS_BAD_ARG;
-    seds_router_disable_managed_variable(g_cache_router, SEDS_DT_FLIGHT_STATE);
-    SedsResult result = seds_router_enable_network_variable(
-        g_cache_router, SEDS_DT_FLIGHT_STATE, true, false);
-    if (result != SEDS_OK) return result;
-    return seds_router_on_network_variable_update(
-        g_cache_router, SEDS_DT_FLIGHT_STATE, persist_update, NULL);
+    return seds_router_invalidate_network_variable_cache(
+        g_cache_router, SEDS_DT_FLIGHT_STATE, NULL);
 }
 #endif
 
@@ -183,14 +179,17 @@ static SedsResult persist_update(const SedsPacketView *packet, void *user)
 SedsResult flight_state_cache_init(SedsRouter *router)
 {
     if (router == NULL) return SEDS_BAD_ARG;
+    /* A valid reinitialization must establish both services before cache
+     * retirement may report success. Invalid NULL input preserves readiness. */
+    g_cache_router = NULL;
     flight_state_cache_restore();
-    g_cache_router = router;
     SedsResult result = seds_router_enable_network_variable(
         router, SEDS_DT_FLIGHT_STATE, true, false);
-    if (result != SEDS_OK) return result;
+    if (result != SEDS_OK) { ++g_flight_state_cache_errors; return result; }
     result = seds_router_on_network_variable_update(
         router, SEDS_DT_FLIGHT_STATE, persist_update, NULL);
-    if (result != SEDS_OK) return result;
+    if (result != SEDS_OK) { ++g_flight_state_cache_errors; return result; }
+    g_cache_router = router;
     g_last_refresh_ms = HAL_GetTick();
     return SEDS_OK;
 }

@@ -1,5 +1,6 @@
 from pathlib import Path
 import json,re,subprocess,tempfile,unittest
+from checked_router_fixture import checked_hooks
 ROOT=Path(__file__).resolve().parents[1]
 class BoardHealthTests(unittest.TestCase):
  def test_actual_producer_is_bounded_exact_and_optional(self):
@@ -42,7 +43,7 @@ SedsResult seds_router_log_bytes_ex(SedsRouter *router,int dtype,const uint8_t *
  assert(router&&dtype==42&&length==96&&!stamp&&queue);
  assert(!mask&&lock_depth==1);++calls;memcpy(captured,data,sizeof(captured));return refuse?1:0;
 }
-''' +source+r'''
+''' +checked_hooks(ROOT)+'\n'+source+r'''
 int main(void){
  SedsRouter router=1;
  board_health_poll(NULL);assert(!calls);
