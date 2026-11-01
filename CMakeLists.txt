@@ -274,3 +274,12 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BOARD_WATCHDOG_ENABLE=$
 
 # Low-rate internal die temperature; no separate telemetry stream.
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/Core/Src/board_temperature.c)
+
+# Application state query and explicit verified Startup cache reset.
+# This owner never resets power rails, acquisition or physical outputs.
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+    ${CMAKE_SOURCE_DIR}/Core/Src/board_recovery_query.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/board_recovery_wire.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/board_recovery_boot.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/board_recovery_floor.c
+    "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_SOURCE_DIR}/Core/Src/board_recovery_transport.c>")

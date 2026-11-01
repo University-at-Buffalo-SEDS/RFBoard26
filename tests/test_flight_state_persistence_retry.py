@@ -6,6 +6,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 HEADERS = {
+    "board_recovery_transport.h": '#pragma once\n#include "sedsnet.h"\nuint8_t board_recovery_managed_update_allowed(const SedsPacketView*);\n',
     "sedsnet.h": r'''
 #pragma once
 #include <stddef.h>
@@ -20,6 +21,7 @@ typedef struct { uint32_t ty; const uint8_t *payload; size_t payload_len; } Seds
 SedsResult seds_router_enable_network_variable(SedsRouter*,uint32_t,bool,bool);
 SedsResult seds_router_on_network_variable_update(SedsRouter*,uint32_t,SedsResult(*)(const SedsPacketView*,void*),void*);
 SedsResult seds_router_request_managed_variable(SedsRouter*,uint32_t);
+void seds_router_disable_managed_variable(SedsRouter*,uint32_t);
 ''',
     "sedsnet_config.h": "#pragma once\n#define SEDS_DT_FLIGHT_STATE 444U\n",
     "main.h": "#pragma once\n#include <stdint.h>\nuint32_t HAL_GetTick(void);\n",
@@ -82,6 +84,14 @@ SedsResult seds_router_on_network_variable_update(SedsRouter *r,uint32_t ty,Seds
 }
 SedsResult seds_router_request_managed_variable(SedsRouter *r,uint32_t ty) {
  assert(r && ty==SEDS_DT_FLIGHT_STATE);++requests;return SEDS_OK;
+}
+/* The actual SDK retirement lifecycle is exercised separately with the
+ * public435 archive; this fixture isolates NVM/apply retry semantics. */
+void seds_router_disable_managed_variable(SedsRouter *r,uint32_t ty) {
+ assert(r && ty==SEDS_DT_FLIGHT_STATE);callback=NULL;
+}
+uint8_t board_recovery_managed_update_allowed(const SedsPacketView *packet) {
+ assert(packet);return 1U;
 }
 static SedsResult update(uint8_t state) {
  SedsPacketView packet={SEDS_DT_FLIGHT_STATE,&state,1};

@@ -46,14 +46,16 @@ class SedsnetMemoryTests(unittest.TestCase):
         )
 
 
-    def test_threadx_byte_pool_increase_matches_cubemx(self):
+    def test_threadx_parent_reserve_matches_cubemx(self):
         config = (ROOT / "AZURE_RTOS" / "App" / "app_azure_rtos_config.h").read_text(
             encoding="utf-8"
         )
         size = int(re.search(r"TX_APP_MEM_POOL_SIZE\s+(\d+)", config).group(1))
-        self.assertEqual(size, 66264 + 1024)
+        # Reclaim only unused startup parent reserve; actual ThreadX witness
+        # separately proves >2KiB remains after unchanged child allocations.
+        self.assertEqual(size, 65240)
         ioc = (ROOT / "RFBoard26.ioc").read_text(encoding="utf-8")
-        self.assertIn("TX_APP_MEM_POOL_SIZE=67288", ioc)
+        self.assertIn("TX_APP_MEM_POOL_SIZE=65240", ioc)
 
     def test_shared_pool_is_not_the_legacy_per_queue_size(self):
         cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")

@@ -46,6 +46,12 @@
       "rust": "ActuatorAvBayUnderglowOwner",
       "name": "AV_BAY_UNDERGLOW_OWNER",
       "doc": "Boards that own the persistent avionics-bay underglow variable"
+    },
+    {
+      "rust": "ActuatorRecoveryRF",
+      "name": "BOARD_RECOVERY_RF",
+      "id": 2002,
+      "doc": "Dedicated read-only board-state query. No legacy command endpoint receives this protocol."
     }
   ],
   "types": [
@@ -689,6 +695,38 @@
       ],
       "reliable": "Off",
       "priority": 0
+    },
+    {
+      "rust": "BoardRecoveryRequest",
+      "name": "BOARD_RECOVERY_REQUEST",
+      "id": 200,
+      "doc": "App-only manual query/recovery v1. Exact32LE bytes. Caller must supply exactly one explicit board endpoint; no broadcast default. Recovery requires current persisted boot generation, abort epoch, fresh primary request and issuer session.",
+      "class": "Data",
+      "element": {
+        "kind": "Static",
+        "data_type": "UInt8",
+        "count": 32
+      },
+      "endpoints": [],
+      "reliable": "Ordered",
+      "priority": 200
+    },
+    {
+      "rust": "BoardStateStatus",
+      "name": "BOARD_STATE_STATUS",
+      "id": 201,
+      "doc": "App-only recovery readback v1. Exact40LE bytes; echoed request nonce and issuer session, actual state/abort epoch and commanded GPIO/servo register mask. Not physical valve-position proof or protocolACK confirmation.",
+      "class": "Data",
+      "element": {
+        "kind": "Static",
+        "data_type": "UInt8",
+        "count": 40
+      },
+      "endpoints": [
+        "ActuatorGroundStation"
+      ],
+      "reliable": "Ordered",
+      "priority": 200
     }
   ]
 }

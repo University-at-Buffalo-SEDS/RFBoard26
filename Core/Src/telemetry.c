@@ -8,6 +8,7 @@
 #include "telemetry_rate.h"
 #include "av_bay_underglow.h"
 #include "flight_state_cache.h"
+#include "board_recovery_transport.h"
 #include "sim_network_probe.h"
 #include "board_can_priority.h"
 #include "ota_stream.h"
@@ -593,6 +594,22 @@ static bool radio_admission_probe(size_t additional, size_t largest, uint32_t wo
 }
 #endif
 
+static SedsResult Board_Recovery_handler(const SedsPacketView *packet, void *user)
+{
+  (void)user;
+  return board_recovery_handle(g_router.r, packet, SEDS_EP_BOARD_RECOVERY,
+      (uint32_t)(((uint64_t)tx_time_get() * 1000U) / TX_TIMER_TICKS_PER_SECOND));
+}
+
+static const SedsLocalEndpointDesc locals[] = {
+      {
+          .endpoint = SEDS_EP_BOARD_RECOVERY,
+          .packet_handler = Board_Recovery_handler,
+          .packed_handler = NULL,
+          .user = NULL,
+      },
+};
+
 SedsResult init_telemetry_router(void) {
 #ifndef TELEMETRY_ENABLED
   return SEDS_OK;
@@ -657,7 +674,7 @@ SedsResult init_telemetry_router(void) {
   result = seds_set_runtime_tuning_config(&tuning);
   if (result != SEDS_OK) return result;
 
-  r = seds_router_new_with_memory(node_now_since_ms, NULL, NULL, 0U,
+  r = seds_router_new_with_memory(node_now_since_ms, NULL, locals, sizeof(locals)/sizeof(locals[0]),
                                   SEDS_ROUTER_E2E_DISABLED, 0U, &memory);
   if (!r) {
     printf("Error: failed to create router\r\n");
@@ -764,6 +781,7 @@ SedsResult init_telemetry_router(void) {
   telemetry_memory_profile_mark(6U);
 
   g_router.r = r;
+  board_recovery_transport_set_router(r);
   (void)flight_state_cache_init(r);
   g_router.created = 1U;
   g_discovery_schema_announced = 0U;

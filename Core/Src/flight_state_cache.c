@@ -1,6 +1,9 @@
 #include "flight_state_cache.h"
 #include "main.h"
 #include "sedsnet_config.h"
+#ifdef TELEMETRY_ENABLED
+#include "board_recovery_transport.h"
+#endif
 
 #include "persistent_store.h"
 
@@ -27,6 +30,20 @@ static bool g_network_value_seen;
 /* UINT8_MAX cannot be a valid state; volatile application is not flash durability. */
 static uint8_t g_persisted_state = UINT8_MAX;
 static uint32_t g_last_refresh_ms;
+static SedsRouter *g_cache_router;
+static SedsResult persist_update(const SedsPacketView *packet, void *user);
+/* SDK caches inbound data before its callback. Rejecting a callback alone
+ * cannot retire that cache; clear and re-register the read-only service. */
+static SedsResult clear_managed_cache(void)
+{
+    if (g_cache_router == NULL) return SEDS_BAD_ARG;
+    seds_router_disable_managed_variable(g_cache_router, SEDS_DT_FLIGHT_STATE);
+    SedsResult result = seds_router_enable_network_variable(
+        g_cache_router, SEDS_DT_FLIGHT_STATE, true, false);
+    if (result != SEDS_OK) return result;
+    return seds_router_on_network_variable_update(
+        g_cache_router, SEDS_DT_FLIGHT_STATE, persist_update, NULL);
+}
 #endif
 
 #ifdef TELEMETRY_ENABLED
@@ -81,6 +98,36 @@ uint8_t flight_state_cache_value(void)
     return (uint8_t)g_flight_state_cache_value;
 }
 
+int32_t flight_state_cache_reset_startup(void)
+{
+    const uint8_t startup = 0U;
+    uint8_t verified = UINT8_MAX;
+    size_t size = sizeof(verified);
+    /* A failed boot-time storage initialization may be explicitly retried by
+     * this manual operation. No background wear/retry loop is introduced. */
+    if (persistent_store_init() != LAUNCHCORE_PERSIST_OK ||
+        persistent_store_set(FLIGHT_STATE_PERSIST_KEY, &startup, sizeof(startup)) != LAUNCHCORE_PERSIST_OK ||
+        persistent_store_get(FLIGHT_STATE_PERSIST_KEY, &verified, &size) != LAUNCHCORE_PERSIST_OK ||
+        size != sizeof(verified) || verified != startup) {
+        ++g_flight_state_cache_errors;
+        return -9;
+    }
+    g_persist_ready = true;
+    ++g_flight_state_cache_writes;
+#ifdef TELEMETRY_ENABLED
+    if (clear_managed_cache() != SEDS_OK) {
+        ++g_flight_state_cache_errors;
+        return -9;
+    }
+    g_persisted_state = startup;
+    g_network_value_seen = false;
+    g_last_refresh_ms = HAL_GetTick();
+#endif
+    g_flight_state_cache_value = startup;
+    g_has_value = true;
+    return 0;
+}
+
 #ifdef TELEMETRY_ENABLED
 static SedsResult persist_update(const SedsPacketView *packet, void *user)
 {
@@ -89,13 +136,26 @@ static SedsResult persist_update(const SedsPacketView *packet, void *user)
         packet->payload == NULL || packet->payload_len != 1U ||
         packet->payload[0] > FLIGHT_STATE_MAX_VALUE)
     {
+        /* Public SDK435 caches managed data before invoking this callback.
+         * A malformed FSTATE must not poison future ordering/cache reads. */
+        if (packet != NULL && packet->ty == SEDS_DT_FLIGHT_STATE)
+            (void)clear_managed_cache();
         g_flight_state_cache_errors++;
         return SEDS_HANDLER_ERROR;
     }
 
+    if (!board_recovery_managed_update_allowed(packet)) {
+        (void)clear_managed_cache();
+        ++g_flight_state_cache_errors;
+        return SEDS_HANDLER_ERROR;
+    }
     const uint8_t state = packet->payload[0];
     const SedsResult apply_result = flight_state_cache_apply_network_update(packet);
-    if (apply_result != SEDS_OK) { g_flight_state_cache_errors++; return apply_result; }
+    if (apply_result != SEDS_OK) {
+        (void)clear_managed_cache();
+        g_flight_state_cache_errors++;
+        return apply_result;
+    }
     const bool changed = state != g_persisted_state;
     g_has_value = true;
     g_network_value_seen = true;
@@ -107,6 +167,11 @@ static SedsResult persist_update(const SedsPacketView *packet, void *user)
         persistent_store_set(FLIGHT_STATE_PERSIST_KEY, &state,
                              sizeof(state)) != LAUNCHCORE_PERSIST_OK)
     {
+        /* Preserve the existing volatile apply-before-persist policy, but
+         * retire the SDK cache so an identical reliable retry re-enters this
+         * callback instead of being accepted without retrying durability.
+         * g_network_value_seen is unchanged: no extra polling traffic. */
+        (void)clear_managed_cache();
         g_flight_state_cache_errors++;
         return SEDS_HANDLER_ERROR;
     }
@@ -119,6 +184,7 @@ SedsResult flight_state_cache_init(SedsRouter *router)
 {
     if (router == NULL) return SEDS_BAD_ARG;
     flight_state_cache_restore();
+    g_cache_router = router;
     SedsResult result = seds_router_enable_network_variable(
         router, SEDS_DT_FLIGHT_STATE, true, false);
     if (result != SEDS_OK) return result;

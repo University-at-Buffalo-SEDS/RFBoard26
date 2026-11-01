@@ -43,7 +43,8 @@ extern "C" {
 
 #define USE_STATIC_ALLOCATION                    1
 
-#define TX_APP_MEM_POOL_SIZE                     67288
+/* Parent startup reserve only: child SDK pools and both task stacks stay unchanged. */
+#define TX_APP_MEM_POOL_SIZE                     65240
 
 #define UX_DEVICE_APP_MEM_POOL_SIZE              10752
 
