@@ -10,19 +10,8 @@ static uint8_t previous_request[BOARD_RECOVERY_REQUEST_SIZE];
 static uint8_t previous_request_valid;
 static uint8_t authorized_primary(SedsRouter *router,const SedsPacketView *packet)
 {
- if (packet->sender==0) return 0U;
- if (packet->sender_len==2U && memcmp(packet->sender,"GS",2U)==0) return 1U;
- if (packet->sender_len<7U || packet->sender_len>16U ||
-     memcmp(packet->sender,"@addr:",6U)!=0) return 0U;
- uint32_t address=0U;
- for (size_t i=6U;i<packet->sender_len;i++) {
-  unsigned digit=(unsigned char)packet->sender[i]-(unsigned)'0';
-  if (digit>9U || address>(UINT32_MAX-digit)/10U) return 0U;
-  address=address*10U+digit;
- }
- uint32_t primary=0U;
- return address!=0U && seds_router_resolve_hostname_address(router,"GS",2U,&primary)==SEDS_OK &&
-        primary!=0U && address==primary;
+ return packet!=NULL && seds_router_sender_matches_hostname(router,
+     packet->sender,packet->sender_len,"GS",2U);
 }
 uint8_t board_recovery_command_is_stale(const SedsPacketView *packet)
 {

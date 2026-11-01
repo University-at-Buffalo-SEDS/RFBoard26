@@ -26,13 +26,22 @@ class IdentitySourceTests(unittest.TestCase):
     def test_legacy_offline_source_is_rejected_before_schema_mutation(self):
         result, copied = self.prepare("typedef unsigned int SedsDataType;\n")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("lacks canonical schema identities", result.stderr)
+        self.assertIn("lacks required API seds_endpoint_identity", result.stderr)
+        self.assertFalse(copied)
+
+    def test_version_label_without_sender_matcher_is_rejected_before_schema_mutation(self):
+        result, copied = self.prepare(
+            "/* SEDSnet 4.3.7 */\n"
+            "int seds_endpoint_identity();\nint seds_dtype_identity();\n")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("lacks required API seds_router_sender_matches_hostname", result.stderr)
         self.assertFalse(copied)
 
     def test_compatible_offline_source_is_prepared_without_version_pin(self):
         result, copied = self.prepare(
             "int seds_endpoint_identity(const char *, unsigned, unsigned *);\n"
-            "int seds_dtype_identity(const char *, unsigned, unsigned *);\n")
+            "int seds_dtype_identity(const char *, unsigned, unsigned *);\n"
+            "int seds_router_sender_matches_hostname();\n")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(copied)
 

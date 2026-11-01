@@ -8,11 +8,16 @@ endif()
 # cannot decode the canonical IDs used by this firmware. Fail before building
 # an image that would boot successfully while silently losing all application data.
 file(READ "${SEDSNET_SOURCE_DIR}/C-Headers/sedsnet.h" _sedsnet_identity_header)
-foreach(_identity_api IN ITEMS seds_endpoint_identity seds_dtype_identity)
+foreach(_identity_api IN ITEMS seds_endpoint_identity seds_dtype_identity
+        seds_router_sender_matches_hostname)
     string(FIND "${_sedsnet_identity_header}" "${_identity_api}(" _identity_found)
     if(_identity_found EQUAL -1)
         message(FATAL_ERROR
-            "SEDSnet source lacks canonical schema identities; refresh main online or provide a compatible on-disk source")
+            "Selected SEDSnet lacks required API ${_identity_api}. This firmware requires "
+            "SEDSnet 4.3.7 or a reviewed compatible source with canonical schema identities "
+            "and seds_router_sender_matches_hostname. Refresh selected main online or "
+            "provide a compatible on-disk source; stale 4.3.6 offline caches/overrides "
+            "are unsupported. Selected source: ${SEDSNET_SOURCE_DIR}")
     endif()
 endforeach()
 

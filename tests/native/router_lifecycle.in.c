@@ -23,6 +23,9 @@ SedsRouter*__real_seds_router_new(SedsNowMsFn f,void*u,const SedsLocalEndpointDe
 SedsRouter*__real_seds_router_new_with_memory(SedsNowMsFn f,void*u,const SedsLocalEndpointDesc*l,size_t n,uint8_t m,uint32_t k,const SedsRuntimeMemoryConfig*c){return seds_router_new_with_memory(f,u,l,n,m,k,c);}
 void __real_seds_router_free(SedsRouter*r){seds_router_free(r);}
 SedsResult __real_seds_router_poll_timesync(SedsRouter*r,bool*out){return seds_router_poll_timesync(r,out);}
+SedsResult __real_seds_router_receive_packed_from_side(SedsRouter*r,uint32_t side,const uint8_t*b,size_t n){return seds_router_receive_packed_from_side(r,side,b,n);}
+SedsResult __real_seds_router_receive_packed(SedsRouter*r,const uint8_t*b,size_t n){return seds_router_receive_packed(r,b,n);}
+
 #define seds_router_enable_network_variable __wrap_seds_router_enable_network_variable
 #define seds_router_on_network_variable_update __wrap_seds_router_on_network_variable_update
 #define seds_router_disable_managed_variable __wrap_seds_router_disable_managed_variable
@@ -32,11 +35,20 @@ SedsResult __real_seds_router_poll_timesync(SedsRouter*r,bool*out){return seds_r
 #define seds_router_new_with_memory __wrap_seds_router_new_with_memory
 #define seds_router_free __wrap_seds_router_free
 #define seds_router_poll_timesync __wrap_seds_router_poll_timesync
+#define seds_router_receive_packed_from_side __wrap_seds_router_receive_packed_from_side
+#define seds_router_receive_packed __wrap_seds_router_receive_packed
 
 volatile uint32_t g_telemetry_discovery_seen;
 static uint64_t clock_ms=1000;
 static unsigned writes,app_callbacks,registrations,enables,disables,invalidations,refreshes,outputs;
 static uint8_t stored=5;
+static size_t hosted_schema_allowance,raw_constructor_budget,normalized_constructor_budget;
+static uint32_t cold_memory[16];
+static unsigned rx_calls;
+static SedsResult last_rx_result=SEDS_ERR;
+SedsResult __wrap_seds_router_receive_packed_from_side(SedsRouter*r,uint32_t side,const uint8_t*b,size_t n){rx_calls++;return last_rx_result=__real_seds_router_receive_packed_from_side(r,side,b,n);}
+SedsResult __wrap_seds_router_receive_packed(SedsRouter*r,const uint8_t*b,size_t n){rx_calls++;return last_rx_result=__real_seds_router_receive_packed(r,b,n);}
+
 static bool fail_write=true,policy=true,fail_enable,fail_callback;
 static SedsEndpointHandlerFn original_callback;
 static void *original_user;
@@ -182,7 +194,22 @@ SedsRouter*__wrap_seds_router_new(SedsNowMsFn cb,void*u,const SedsLocalEndpointD
 }
 SedsRouter*__real_seds_router_new_with_memory(SedsNowMsFn,void*,const SedsLocalEndpointDesc*,size_t,uint8_t,uint32_t,const SedsRuntimeMemoryConfig*);
 SedsRouter*__wrap_seds_router_new_with_memory(SedsNowMsFn cb,void*u,const SedsLocalEndpointDesc*l,size_t n,uint8_t mode,uint32_t key,const SedsRuntimeMemoryConfig*m){
- SedsRouter*r=__real_seds_router_new_with_memory(cb,u,l,n,mode,key,m);assert(r);pthread_mutex_lock(&gate);
+ /* Production supplied the untouched MCU profile. Only this hosted fixture
+  * normalizes its std registry RAM; firmware compiled flash tables cost zero
+  * dynamic schema bytes. The allowance is measured in a separate process by
+  * this same executable/schema/archive, never guessed or added to production. */
+ assert(m&&m->max_queue_budget==RF_SEDSNET_QUEUE_BUDGET);
+ assert(hosted_schema_allowance<=SIZE_MAX-m->max_queue_budget);
+ SedsRuntimeMemoryConfig hosted=*m;
+ raw_constructor_budget=m->max_queue_budget;
+ hosted.max_queue_budget+=hosted_schema_allowance;
+ normalized_constructor_budget=hosted.max_queue_budget;
+ assert(hosted.max_recent_rx_ids==m->max_recent_rx_ids&&hosted.starting_queue_size==m->starting_queue_size&&hosted.queue_grow_step==m->queue_grow_step);
+ SedsRouter*r=__real_seds_router_new_with_memory(cb,u,l,n,mode,key,&hosted);assert(r);
+ assert(seds_router_copy_memory_counters(r,cold_memory,16)==16);
+ assert(cold_memory[1]==normalized_constructor_budget);
+ if(hosted_schema_allowance)assert(cold_memory[8]==hosted_schema_allowance);
+ pthread_mutex_lock(&gate);
  assert(allocations<8);allocations_list[allocations++]=r;router=r;pthread_cond_broadcast(&changed);pthread_mutex_unlock(&gate);return r;
 }
 void __real_seds_router_free(SedsRouter*);
@@ -247,11 +274,20 @@ static uint8_t input[2048];static int32_t input_size;
 static void*initialize(void*u){(void)u;assert(init_telemetry_router()==SEDS_OK);return NULL;}
 static void*receive(void*u){(void)u;rx_asynchronous(input,(size_t)input_size);return NULL;}
 int main(int argc,char**argv){
- assert(argc==3);assert(seds_schema_register_json_file(argv[1],strlen(argv[1]))==SEDS_OK);
+ assert(argc==3||argc==4);assert(seds_schema_register_json_file(argv[1],strlen(argv[1]))==SEDS_OK);
+ if(!strcmp(argv[2],"schema_probe")){
+  /* Probe-only process, zero application construction/registration/effects. */
+  SedsRouter*probe=__real_seds_router_new(NULL,NULL,NULL,0);assert(probe);uint32_t counters[16];
+  assert(seds_router_copy_memory_counters(probe,counters,16)==16&&counters[8]>0&&counters[8]<UINT32_MAX);
+  assert(allocations==0&&registrations==0&&app_callbacks==0&&writes==0);
+  printf("SCHEMA_RAM %u\n",counters[8]);__real_seds_router_free(probe);return 0;
+ }
+ if(argc==4){char*end=NULL;assert(!strcmp(argv[2],"race"));hosted_schema_allowance=(size_t)strtoull(argv[3],&end,10);assert(end&&!*end&&hosted_schema_allowance>0&&hosted_schema_allowance<UINT32_MAX);}
+
  pthread_mutexattr_t attr;assert(!pthread_mutexattr_init(&attr));assert(!pthread_mutexattr_settype(&attr,PTHREAD_MUTEX_RECURSIVE));
  assert(!pthread_mutex_init(&g_telemetry_mutex.mutex,&attr));g_telemetry_mutex.tx_mutex_id=TX_MUTEX_ID;
  fail_write=false;
- if(!strcmp(argv[2],"race")){
+ if(!strcmp(argv[2],"race")||!strcmp(argv[2],"raw_budget")){
   input_size=pack(SEDS_DT_FLIGHT_STATE,0,input,sizeof input);pause_enabled=1;
   pthread_t first,second,rx;assert(!pthread_create(&first,NULL,initialize,NULL));
   pthread_mutex_lock(&gate);while(!paused)pthread_cond_wait(&changed,&gate);assert(g_router.r==NULL&&g_router.created==0&&allocations==1);pthread_mutex_unlock(&gate);
@@ -261,7 +297,27 @@ int main(int argc,char**argv){
   assert(!pthread_join(first,NULL));assert(!pthread_join(second,NULL));assert(!pthread_join(rx,NULL));
   if(RX_QUEUED_ONLY)assert(app_callbacks==0);
   if(RX_QUEUED_ONLY){assert(telemetry_router_enter());assert(seds_router_process_all_queues(g_router.r)==SEDS_OK);assert(telemetry_router_leave());}
+  printf("PROFILE raw=%zu allowance=%zu normalized=%zu cold_shared=%u cold_schema=%u rx_calls=%u rx_result=%d callbacks=%u writes=%u state=%u\n",raw_constructor_budget,hosted_schema_allowance,normalized_constructor_budget,cold_memory[2],cold_memory[8],rx_calls,last_rx_result,app_callbacks,writes,stored);
+  printf("FRAME ");for(int32_t i=0;i<input_size;i++)printf("%02x",input[i]);putchar('\n');
+  assert(rx_calls==1&&allocations==1&&g_router.r==router&&g_router.created==1&&registrations==1&&enables==1);
+  if(!strcmp(argv[2],"raw_budget")){
+   assert(hosted_schema_allowance==0&&normalized_constructor_budget==raw_constructor_budget);
+   if(cold_memory[2]>raw_constructor_budget){
+    /* Real native64 RF registry exceeds the MCU profile: admission must not
+     * claim callback/persistence success. Retain this negative permanently. */
+    assert(last_rx_result==SEDS_IO&&app_callbacks==0&&writes==0&&stored==5);
+    puts("RAW_BUDGET_REFUSED_WITHOUT_CALLBACK_OR_NVM");
+   }else{
+    /* A smaller supported host ABI can fit the unadjusted profile. */
+    assert(last_rx_result==SEDS_OK&&app_callbacks==1&&writes==1&&stored==0);
+    puts("RAW_BUDGET_FITS_HOST_ABI");
+   }
+  }else{
+   assert(hosted_schema_allowance==cold_memory[8]);
+   assert(normalized_constructor_budget==raw_constructor_budget+hosted_schema_allowance);
+   assert(last_rx_result==SEDS_OK);
   assert(allocations==1&&g_router.r==router&&g_router.created==1&&registrations==1&&enables==1&&app_callbacks==1&&writes==1&&stored==0&&(!REQUIRE_RX_COUNTER||g_telemetry_rx_packets+g_telemetry_rx_ok==1));
+  }
  }else if(!strcmp(argv[2],"context")){
   isr=1;assert(init_telemetry_router()==SEDS_BAD_ARG&&get_attempts==0&&allocations==0);isr=0;
   context_missing=1;assert(init_telemetry_router()==SEDS_BAD_ARG&&get_attempts==0);context_missing=0;

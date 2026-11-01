@@ -12,7 +12,7 @@ typedef struct {uint32_t ty;size_t data_size;const char *sender;size_t sender_le
 #define SEDS_BAD_ARG -10
 #define SEDS_PERMISSION_DENIED -11
 #define SEDS_EK_UNSIGNED 0
-SedsResult seds_router_resolve_hostname_address(SedsRouter*,const char*,size_t,uint32_t*);
+bool seds_router_sender_matches_hostname(const SedsRouter*,const char*,size_t,const char*,size_t);
 SedsResult seds_router_get_network_time_ms(SedsRouter*,uint64_t*);
 SedsResult seds_router_log_queue_typed(SedsRouter*,uint32_t,const void*,size_t,size_t,int);
 '''
@@ -56,7 +56,14 @@ int32_t board_recovery_apply_safe(uint8_t desired,uint32_t expected,BoardRecover
  else if(!(expected+1==epoch&&state==0)){board_recovery_snapshot(out);return -10;}
  return board_recovery_snapshot(out);
 }
-SedsResult seds_router_resolve_hostname_address(SedsRouter*r,const char*s,size_t n,uint32_t*out){assert(r&&n==2&&!memcmp(s,"GS",2));*out=1234;return 0;}
+bool seds_router_sender_matches_hostname(const SedsRouter*r,const char*s,size_t n,const char*owner,size_t owner_n){
+ assert(r&&owner_n==2&&!memcmp(owner,"GS",2));if(!s)return false;
+ /* Named/assigned SDK boundary only; generic compact identity is exercised
+  * against the actual SDK in the identity regressions. */
+ if(n==owner_n&&!memcmp(s,owner,n))return true;
+ char alias[32];int length=snprintf(alias,sizeof alias,"@addr:%u",(unsigned)1234U);
+ return length>0&&(size_t)length==n&&!memcmp(s,alias,n);}
+
 SedsResult seds_router_get_network_time_ms(SedsRouter*r,uint64_t*out){assert(r);*out=now;return 0;}
 SedsResult seds_router_log_queue_typed(SedsRouter*r,uint32_t ty,const void*p,size_t n,size_t size,int kind){assert(r&&ty==SEDS_DT_BOARD_STATE_STATUS&&n==40&&size==1&&kind==SEDS_EK_UNSIGNED);memcpy(status,p,40);++sent;return 0;}
 int main(int argc,char**argv){

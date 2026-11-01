@@ -25,7 +25,8 @@ class EmbeddedCrcSourceTests(unittest.TestCase):
         source = directory / "sdk"
         (source / "C-Headers").mkdir(parents=True)
         (source / "C-Headers/sedsnet.h").write_text(
-            "int seds_endpoint_identity();\nint seds_dtype_identity();\n")
+            "int seds_endpoint_identity();\nint seds_dtype_identity();\n"
+            "int seds_router_sender_matches_hostname();\n")
         (source / "Cargo.toml").write_text(
             '[dependencies]\n'
             'crc32fast = { version = "1.5.2", default-features = false }\n'

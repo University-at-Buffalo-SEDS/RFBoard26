@@ -4,6 +4,7 @@ Hardware callbacks are inert. These host tests prove ownership and retry
 contracts, not physical output, timing, RAM or deployment suitability.
 """
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -38,17 +39,43 @@ class RouterLifecycleTests(unittest.TestCase):
             command.append('-ldl')
         command += ['-o', str(cls.exe)]
         subprocess.run(command, check=True)
+        # Same archive/schema, separate inert probe: no extra application router
+        # is constructed inside the concurrent initialization/RX cases.
+        probe = subprocess.run([str(cls.exe), str(ROOT / 'config/sedsnet.json'), 'schema_probe'],
+                               capture_output=True, text=True, timeout=10)
+        if probe.returncode:
+            raise AssertionError(probe.stdout + probe.stderr)
+        match = re.search(r'^SCHEMA_RAM (\d+)$', probe.stdout, re.M)
+        assert match and int(match[1]) > 0, probe.stdout
+        cls.hosted_schema_bytes = int(match[1])
 
     @classmethod
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
     def case(self, name):
-        result = subprocess.run([str(self.exe), str(ROOT / 'config/sedsnet.json'), name],
-                                capture_output=True, text=True, timeout=10)
+        arguments = [str(self.exe), str(ROOT / 'config/sedsnet.json'), name]
+        if name == 'race':
+            arguments.append(str(self.hosted_schema_bytes))
+        result = subprocess.run(arguments, capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return result.stdout
 
-    def test_two_initializers_and_actual_rx_wait_for_complete_registration(self): self.case('race')
+    def test_original_mcu_budget_respects_hosted_schema_admission(self):
+        log = self.case('raw_budget')
+        print(re.search(r'^PROFILE .+$', log, re.M)[0], flush=True)
+        self.assertRegex(log, r'RAW_BUDGET_(REFUSED_WITHOUT_CALLBACK_OR_NVM|FITS_HOST_ABI)')
+
+    def test_two_initializers_and_actual_rx_wait_for_complete_registration(self):
+        raw = self.case('raw_budget')
+        hosted = self.case('race')
+        print(re.search(r'^PROFILE .+$', hosted, re.M)[0], flush=True)
+        # The actual wire bytes are identical; only the test constructor's
+        # measured std schema-RAM allowance differs. No packet/clock rewrite.
+        self.assertEqual(re.search(r'^FRAME (.+)$', raw, re.M)[1],
+                         re.search(r'^FRAME (.+)$', hosted, re.M)[1])
+        self.assertIn('allowance=' + str(self.hosted_schema_bytes), hosted)
+        self.assertIn('rx_calls=1 rx_result=0 callbacks=1 writes=1 state=0', hosted)
     def test_isr_startup_missing_mutex_and_failed_acquisition_do_no_sdk_work(self): self.case('context')
     def test_packet_store_failure_is_private_and_retries_after_deadline(self): self.case('1')
     def test_timesync_configuration_failure_cannot_publish_freed_router(self): self.case('2')
