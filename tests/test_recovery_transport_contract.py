@@ -45,7 +45,7 @@ static void put32(uint8_t*p,uint32_t n){for(unsigned i=0;i<4;i++)p[i]=(uint8_t)(
 int persistent_store_init(void){++inits;return 0;}
 int persistent_store_get(uint32_t key,void*p,size_t*n){assert(key==0x4252464cU&&*n==16);++reads;if(floor_read_error){return 2;}if(!have){return 1;}memcpy(p,stored,16);return 0;}
 int persistent_store_set(uint32_t key,const void*p,size_t n){assert(key==0x4252464cU&&n==16);memcpy(stored,p,n);have=1;++writes;return 0;}
-uint64_t board_recovery_boot_generation(void){return 7;}
+uint64_t board_recovery_boot_query_generation(void){return 7;}
 uint64_t board_recovery_boot_current(void){return 7;}
 int32_t board_recovery_snapshot(BoardRecoverySnapshot*out){*out=(BoardRecoverySnapshot){.actual_state=state,.flags=BOARD_RECOVERY_SUPPORTED|BOARD_RECOVERY_STATE_VALID,.abort_epoch=epoch};return 0;}
 int32_t board_recovery_apply_safe(uint8_t desired,uint32_t expected,BoardRecoverySnapshot*out){

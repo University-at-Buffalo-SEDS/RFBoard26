@@ -56,7 +56,7 @@ SedsResult board_recovery_handle(SedsRouter *router,const SedsPacketView *packet
  if (board_recovery_decode_request(packet->payload,packet->payload_len,&request)==0U) return SEDS_BAD_ARG;
  BoardRecoverySnapshot snapshot={.actual_state=255U};
  uint64_t generation=request.operation==BOARD_RECOVERY_QUERY ?
-     board_recovery_boot_generation() : board_recovery_boot_current();
+     board_recovery_boot_query_generation() : board_recovery_boot_current();
  uint8_t result=BOARD_RECOVERY_RESULT_OK;
  if (board_recovery_snapshot(&snapshot)!=0) result=BOARD_RECOVERY_RESULT_IO;
  if (generation==0U || (snapshot.flags&BOARD_RECOVERY_SUPPORTED)==0U) {

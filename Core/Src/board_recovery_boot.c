@@ -9,7 +9,7 @@ static uint64_t decode_generation(const uint8_t value[8]) {
 }
 uint64_t board_recovery_boot_generation(void) {
  if (boot_generation!=0U) return boot_generation;
- /* Explicit QUERY may retry an unpublished failure. Re-read + increment: an
+ /* Boot prime or explicitly safe unpublished retry. Re-read + increment: an
   * uncertain prior write burns an ID rather than reusing a prior boot ID. */
  if (persistent_store_init()!=LAUNCHCORE_PERSIST_OK) return 0U;
  uint8_t stored[8]={0U}; size_t length=sizeof stored;
@@ -30,3 +30,10 @@ uint64_t board_recovery_boot_generation(void) {
 }
 
 uint64_t board_recovery_boot_current(void) { return boot_generation; }
+
+/* Default data/router/FC policy: never initiate storage work from QUERY. */
+__attribute__((weak)) uint8_t board_recovery_boot_retry_is_safe(void) { return 0U; }
+uint64_t board_recovery_boot_query_generation(void) {
+ if (boot_generation!=0U) return boot_generation;
+ return board_recovery_boot_retry_is_safe()!=0U ? board_recovery_boot_generation() : 0U;
+}

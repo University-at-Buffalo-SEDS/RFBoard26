@@ -36,6 +36,7 @@
 #include "radio.h"
 #include "av_bay_underglow.h"
 #include "flight_state_cache.h"
+#include "board_recovery_boot.h"
 
 #if RF_USB_DEBUG_ENABLED
 extern UX_SLAVE_CLASS_CDC_ACM *cdc_acm;
@@ -140,6 +141,8 @@ int main(void)
 
   /* Apply persistent local state before ThreadX and SEDSNet synchronization. */
   av_bay_underglow_restore();
+  /* Establish recovery identity before cached state restore and control tasks. */
+  (void)board_recovery_boot_generation();
   flight_state_cache_restore();
 
   /* USER CODE END 2 */
