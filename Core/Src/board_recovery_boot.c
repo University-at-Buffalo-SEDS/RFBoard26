@@ -19,7 +19,7 @@ uint64_t board_recovery_boot_generation(void) {
   if (length!=sizeof stored) return 0U;
   previous=decode_generation(stored);
   if (previous==0U || previous==UINT64_MAX) return 0U;
- } else if (result!=LAUNCHCORE_PERSIST_NOT_FOUND) return 0U;
+ } else return 0U; /* Missing/deleted BRGE requires explicit commissioning. */
  uint64_t next=previous+1U;
  for (unsigned i=0U;i<8U;i++) stored[i]=(uint8_t)(next>>(8U*i));
  if (persistent_store_set(BOARD_RECOVERY_BOOT_KEY,stored,sizeof stored)!=LAUNCHCORE_PERSIST_OK) return 0U;
@@ -35,5 +35,12 @@ uint64_t board_recovery_boot_current(void) { return boot_generation; }
 __attribute__((weak)) uint8_t board_recovery_boot_retry_is_safe(void) { return 0U; }
 uint64_t board_recovery_boot_query_generation(void) {
  if (boot_generation!=0U) return boot_generation;
- return board_recovery_boot_retry_is_safe()!=0U ? board_recovery_boot_generation() : 0U;
+ return 0U; /* Query never retries unpublished identity. */
+}
+
+/* Caller verified exact physical identity under the checked storage owner.
+ * Runtime publisher and query share the one SDK owner; boot is prethreads. */
+uint8_t board_recovery_boot_publish_commission(uint64_t generation){
+ if(!generation||generation==UINT64_MAX||(boot_generation&&boot_generation!=generation))return 0;
+ boot_generation=generation;return 1;
 }

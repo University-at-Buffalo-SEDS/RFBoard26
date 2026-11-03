@@ -10,4 +10,5 @@ uint64_t board_recovery_boot_query_generation(void);
 uint8_t board_recovery_boot_retry_is_safe(void);
 /* RECOVER cannot initialize/retry identity; it requires prior verified priming. */
 uint64_t board_recovery_boot_current(void);
+uint8_t board_recovery_boot_publish_commission(uint64_t generation);
 #endif

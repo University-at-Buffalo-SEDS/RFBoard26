@@ -51,10 +51,13 @@ int main(int argc,char**argv){
  }else if(!strcmp(argv[1],"defer")){
   fault=1;assert(!board_recovery_boot_generation());fault=0;unsigned before=calls;
   assert(!board_recovery_boot_query_generation());assert(calls==before);
-  safe=1;assert(board_recovery_boot_query_generation()==42);
+  safe=1;for(unsigned i=0;i<100;i++)assert(!board_recovery_boot_query_generation());assert(calls==before);
+  /* Direct storage helper boundary only: no retry transport is registered. */
+  assert(board_recovery_boot_generation()==42);
  }else if(!strcmp(argv[1],"uncertain")){
   fault=2;assert(!board_recovery_boot_generation());assert(durable==42);
-  fault=0;safe=1;assert(board_recovery_boot_query_generation()==43);
+  fault=0;safe=1;unsigned before=calls;assert(!board_recovery_boot_query_generation());assert(calls==before);
+  assert(board_recovery_boot_generation()==43);
  }else if(!strcmp(argv[1],"overflow")){
   durable=UINT64_MAX;assert(!board_recovery_boot_generation());safe=1;
   assert(!board_recovery_boot_query_generation());assert(durable==UINT64_MAX);
@@ -87,7 +90,7 @@ class BootPrimingTests(unittest.TestCase):
         cls.temp.cleanup()
 
     def test_primed_queries_never_touch_storage(self): self.case("primed")
-    def test_failed_prime_defers_until_explicit_safe_owner(self): self.case("defer")
+    def test_failed_prime_queries_never_retry_even_when_owner_safe(self): self.case("defer")
     def test_uncertain_write_burns_generation(self): self.case("uncertain")
     def test_overflow_stays_unknown(self): self.case("overflow")
     def test_corrupt_zero_stays_unknown(self): self.case("corrupt")

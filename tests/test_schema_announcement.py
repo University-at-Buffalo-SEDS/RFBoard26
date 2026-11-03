@@ -43,6 +43,7 @@ static int daq_log_clock_poll(void *r) { (void)r;return 0; }
 static int flight_buzzer_poll(void *r) { (void)r;return 0; }
 static int av_bay_underglow_poll(void *r) { (void)r;return 0; }
 static void ota_stream_poll(void) {}
+static void board_commissioning_service(void) {}
 static unsigned locked;
 static void telemetry_lock(void) {assert(!locked);++locked;}
 static void telemetry_unlock(void) {assert(locked==1);--locked;}

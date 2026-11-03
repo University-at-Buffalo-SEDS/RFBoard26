@@ -31,6 +31,10 @@ typedef int launchcore_persist_status_t;
 #define LAUNCHCORE_PERSIST_OK 0
 #define LAUNCHCORE_PERSIST_NOT_FOUND 1
 #define LAUNCHCORE_PERSIST_STORAGE_ERROR 2
+#include <stdbool.h>
+bool persistent_store_commission_pending(void);
+void persistent_store_hold_commissioning(void);
+bool persistent_store_publish_commission_complete(void);
 int persistent_store_init(void);
 int persistent_store_get(uint32_t,void*,size_t*);
 int persistent_store_set(uint32_t,const void*,size_t);
@@ -51,6 +55,9 @@ static int fail_write,fail_read,wrong_read,fail_invalidate,fail_apply;
 static unsigned tick;
 uint32_t HAL_GetTick(void){return tick;}
 SedsResult flight_state_cache_apply_network_update(const SedsPacketView *packet){assert(packet);return fail_apply?-14:0;}
+bool persistent_store_commission_pending(void){return false;}
+void persistent_store_hold_commissioning(void){}
+bool persistent_store_publish_commission_complete(void){return false;}
 int persistent_store_init(void){return 0;}
 int persistent_store_set(uint32_t key,const void *p,size_t n){
  assert(key==0x46535445u&&n==1);++writes;

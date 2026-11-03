@@ -7,7 +7,9 @@ enum {
  BOARD_RECOVERY_SAFE_OUTPUTS=1u<<1,
  BOARD_RECOVERY_SUPPORTED=1u<<2,
  BOARD_RECOVERY_STATE_VALID=1u<<3,
- BOARD_RECOVERY_OUTPUTS_VALID=1u<<4
+ BOARD_RECOVERY_OUTPUTS_VALID=1u<<4,
+ /* Hardened application transport; independent of readiness or output proof. */
+ BOARD_RECOVERY_VERIFIED_IMPLEMENTATION=1u<<5
 };
 typedef struct {
  uint8_t actual_state;

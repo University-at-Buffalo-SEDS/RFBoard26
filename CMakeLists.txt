@@ -137,6 +137,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/av_bay_underglow.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/flight_state_cache.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/persistent_store.c
+    Core/Src/board_commissioning.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/neom9n.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/neom9n_config.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/neom9n_thread.c

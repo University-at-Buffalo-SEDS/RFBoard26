@@ -1,3 +1,4 @@
+#include "board_commissioning.h"
 
 #ifdef TELEMETRY_ENABLED
 extern int telemetry_router_enter(void);
@@ -598,6 +599,7 @@ static SedsResult telemetry_poll_timesync_locked(void) {
   }
 
   bool did_queue = false;
+  board_commissioning_service();
   (void)flight_state_cache_poll(g_router.r);
   const SedsResult result = seds_router_poll_timesync(g_router.r, &did_queue);
   if (did_queue) {

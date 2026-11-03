@@ -1,3 +1,4 @@
+#include "persistent_store.h"
 /* USER CODE BEGIN Header */
 /**
  ******************************************************************************
@@ -134,6 +135,7 @@ UINT App_ThreadX_Init(VOID *memory_ptr)
 #endif
   (void)tx_thread_stack_error_notify(thread_stack_error_handler);
 
+  (void)persistent_store_runtime_start();
 #ifdef TELEMETRY_ENABLED
   ret = create_telemetry_thread(byte_pool);
   if (ret != TX_SUCCESS)

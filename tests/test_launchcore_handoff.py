@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-FIXED_LAUNCHCORE = "v1.0.0"
+FIXED_LAUNCHCORE = "e2eea7d94245168dc63d31e160f4cb7bdc7688c3"
 FIXED_SEDSNET = "main"
 UNSAFE_HANDOFFS = {
     "1ab6cd3dcddb7acaacb9dbfc16159f36f19363a8",

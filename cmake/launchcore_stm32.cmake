@@ -17,13 +17,15 @@ endforeach()
 FetchContent_Declare(
     sedslaunchcore
     GIT_REPOSITORY https://github.com/University-at-Buffalo-SEDS/SEDSLaunchCore.git
-    GIT_TAG v1.0.0
+    GIT_TAG e2eea7d94245168dc63d31e160f4cb7bdc7688c3
     GIT_SHALLOW FALSE
 )
 FetchContent_GetProperties(sedslaunchcore)
 if(NOT sedslaunchcore_POPULATED)
     FetchContent_Populate(sedslaunchcore)
 endif()
+include("${CMAKE_SOURCE_DIR}/cmake/launchcore_strict_api.cmake")
+launchcore_require_strict_api("${sedslaunchcore_SOURCE_DIR}")
 include("${sedslaunchcore_SOURCE_DIR}/cmake/launchcore_stm32.cmake")
 
 set(_launchcore_bsp_config "${CMAKE_SOURCE_DIR}/Bootloader/board_config.h")

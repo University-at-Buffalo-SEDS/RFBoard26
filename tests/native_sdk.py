@@ -362,3 +362,37 @@ def prepare_native_sdk(root, original=None):
     os.environ['SEDSNET_TEST_NATIVE_ARCHIVE'] = result['archive']
     os.environ['SEDSNET_TEST_NATIVE_PROOF'] = result['proof']
     return result
+
+
+def configured_dependency_source(root, name, override_env):
+    """Find a dependency selected by a real firmware configure, without writes.
+
+    Explicit test overrides remain optional. A shared FetchContent base is as
+    valid as build/<profile>/_deps; no private workspace path is assumed.
+    """
+    root = Path(root).resolve()
+    explicit = os.environ.get(override_env)
+    if explicit:
+        candidate = Path(explicit).resolve()
+        if not (candidate / 'CMakeLists.txt').is_file():
+            raise RuntimeError('Invalid dependency source override: ' + str(candidate))
+        return candidate
+    candidates = []
+    for cache in sorted(root.glob('build/*/CMakeCache.txt')):
+        values = dict(re.findall(r'(?m)^([A-Za-z_][A-Za-z0-9_]*):[^=\r\n]*=([^\r\n]*)$', cache.read_text()))
+        for key in ('FETCHCONTENT_SOURCE_DIR_' + name.upper(), name + '_SOURCE_DIR'):
+            if values.get(key):
+                candidates.append(Path(values[key]))
+        if values.get('FETCHCONTENT_BASE_DIR'):
+            candidates.append(Path(values['FETCHCONTENT_BASE_DIR']) / (name + '-src'))
+        candidates.append(cache.parent / '_deps' / (name + '-src'))
+    candidates.extend(root.glob('build/*/_deps/' + name + '-src'))
+    for candidate in candidates:
+        if not (candidate / 'CMakeLists.txt').is_file():
+            continue
+        if name == 'sedslaunchcore':
+            header = candidate / 'bootloader/include/launchcore/persist.h'
+            if not header.is_file() or 'launchcore_persist_get_strict' not in header.read_text():
+                continue
+        return candidate.resolve()
+    raise RuntimeError('Configure the current firmware once to cache ' + name)
