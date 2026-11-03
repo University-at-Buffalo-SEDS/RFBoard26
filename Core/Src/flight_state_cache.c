@@ -3,6 +3,7 @@
 #include "sedsnet_config.h"
 #ifdef TELEMETRY_ENABLED
 #include "board_recovery_transport.h"
+#include "ota_stream.h"
 #endif
 
 #include "persistent_store.h"
@@ -81,6 +82,11 @@ void flight_state_cache_restore(void)
 #ifdef TELEMETRY_ENABLED
     g_persisted_state = state;
 #endif
+#ifdef TELEMETRY_ENABLED
+    /* A restored unsafe phase is evidence against automatic OTA, not proof
+     * that this board physically launched or owns any outputs. */
+    if (ota_stream_state_begin(state)) ota_stream_state_end();
+#endif
     g_flight_state_cache_restores++;
 }
 
@@ -146,8 +152,14 @@ static SedsResult persist_update(const SedsPacketView *packet, void *user)
         return SEDS_HANDLER_ERROR;
     }
     const uint8_t state = packet->payload[0];
+    if (!ota_stream_state_begin(state)) {
+        (void)clear_managed_cache();
+        ++g_flight_state_cache_errors;
+        return SEDS_HANDLER_ERROR;
+    }
     const SedsResult apply_result = flight_state_cache_apply_network_update(packet);
     if (apply_result != SEDS_OK) {
+        ota_stream_state_end();
         (void)clear_managed_cache();
         g_flight_state_cache_errors++;
         return apply_result;
@@ -157,7 +169,7 @@ static SedsResult persist_update(const SedsPacketView *packet, void *user)
     g_network_value_seen = true;
     g_flight_state_cache_value = state;
     g_flight_state_cache_updates++;
-    if (!changed) return SEDS_OK;
+    if (!changed) { ota_stream_state_end(); return SEDS_OK; }
 
     if (!g_persist_ready ||
         persistent_store_set(FLIGHT_STATE_PERSIST_KEY, &state,
@@ -169,10 +181,12 @@ static SedsResult persist_update(const SedsPacketView *packet, void *user)
          * g_network_value_seen is unchanged: no extra polling traffic. */
         (void)clear_managed_cache();
         g_flight_state_cache_errors++;
+        ota_stream_state_end();
         return SEDS_HANDLER_ERROR;
     }
     g_persisted_state = state;
     g_flight_state_cache_writes++;
+    ota_stream_state_end();
     return SEDS_OK;
 }
 

@@ -3,6 +3,9 @@
 #include "persistent_store.h"
 #include "flight_state_cache.h"
 #include <limits.h>
+#ifdef TELEMETRY_ENABLED
+#include "ota_stream.h"
+#endif
 /* All entry points execute on the existing router/cache owner. Epoch is bound
  * to the verified unique boot generation; no physical output domain exists
  * here. In particular PB power rails and their configuration are untouched. */
@@ -54,5 +57,12 @@ bool board_recovery_commission_applied(uint32_t expected,uint32_t*actual){
  bool valid=actual&&expected&&expected!=UINT32_MAX&&completed_epoch==expected&&recovery_epoch==expected+1U&&persistent_store_commission_pending()&&flight_state_cache_has_value()&&flight_state_cache_value()==0;
  if(valid){*actual=recovery_epoch;}return valid;
 }
-bool board_recovery_commission_finish(uint32_t expected,uint32_t actual){uint32_t live=0;return board_recovery_commission_applied(expected,&live)&&live==actual&&persistent_store_publish_commission_complete();}
+bool board_recovery_commission_finish(uint32_t expected,uint32_t actual){
+ uint32_t live=0;
+ if(!board_recovery_commission_applied(expected,&live)||live!=actual||!persistent_store_publish_commission_complete())return false;
+#ifdef TELEMETRY_ENABLED
+ ota_stream_recovery_complete(actual);
+#endif
+ return true;
+}
 void board_recovery_commission_retain(void){persistent_store_hold_commissioning();completed_epoch=0;if(recovery_epoch!=UINT32_MAX)++recovery_epoch;}

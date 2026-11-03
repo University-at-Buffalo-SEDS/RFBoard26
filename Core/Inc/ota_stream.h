@@ -21,3 +21,9 @@ SedsResult ota_stream_init(SedsRouter *router);
 void ota_stream_poll(void);
 uint32_t ota_stream_max_patch_size(void);
 
+
+/* Trusted managed-state callback only, after existing source/floor checks. */
+bool ota_stream_state_begin(uint8_t phase);
+void ota_stream_state_end(void);
+/* Actual strict COMPLETE publication hook, never ordinary cache reset. */
+void ota_stream_recovery_complete(uint32_t actual_epoch);

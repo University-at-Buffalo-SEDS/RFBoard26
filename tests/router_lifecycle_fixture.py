@@ -3,6 +3,7 @@ from pathlib import Path
 import re
 
 MOCK_HEADERS = {
+    "ota_stream.h": '#pragma once\n#include <stdbool.h>\n#include <stdint.h>\n/* This legacy fixture isolates cache/router/persistence semantics. OTA owner\n * is an explicit permit/no-op boundary; real OTA admission is tested by\n * test_ota_lifecycle_native and the integrated strict recovery fixture. */\nstatic inline bool ota_stream_state_begin(uint8_t phase){(void)phase;return true;}\nstatic inline void ota_stream_state_end(void){}\nstatic inline void ota_stream_recovery_complete(uint32_t epoch){(void)epoch;}\n',
     'main.h': '#pragma once\n#include <stdint.h>\nuint32_t HAL_GetTick(void);\n',
     'persistent_store.h': '''#pragma once
 #include <stddef.h>

@@ -8,12 +8,15 @@
 #include "board_recovery_wire.h"
 #include "flight_state_cache.h"
 #include "launchcore/storage.h"
+#include "launchcore/update.h"
+#include "ota_stream.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 static uint8_t disk[4096],response[40];
+static SedsP2pStreamHandlerFn ota_cb;static SedsResult(*state_cb)(const SedsPacketView*,void*);static uint32_t irq_mask,resets,ota_begins,ota_writes,ota_finishes;
 static bool runtime,fixture=true,fail_lock,fail_unlock,fail_read,owner_fail;static uint32_t fail_key;
 static TX_MUTEX*physical;
 static unsigned media_reads,media_writes,app_replies;
@@ -39,9 +42,24 @@ bool seds_router_sender_matches_hostname(const SedsRouter*r,const char*s,size_t 
 SedsResult seds_router_get_network_time_ms(SedsRouter*r,uint64_t*out){sdk_unlocked();assert(r);*out=clock_ms;return SEDS_OK;}
 SedsResult seds_router_log_queue_typed(SedsRouter*r,SedsDataType type,const void*p,size_t count,size_t width,SedsElemKind kind){sdk_unlocked();assert(r&&type==201&&count==40&&width==1&&kind==SEDS_EK_UNSIGNED);memcpy(response,p,40);assert((response[3]&32U)==EXPECTED_CAP);app_replies++;return SEDS_OK;}
 SedsResult seds_router_enable_network_variable(SedsRouter*r,SedsDataType type,bool read,bool write){sdk_unlocked();(void)r;assert(type==SEDS_DT_FLIGHT_STATE&&read&&!write);return SEDS_OK;}
-SedsResult seds_router_on_network_variable_update(SedsRouter*r,SedsDataType type,SedsResult(*cb)(const SedsPacketView*,void*),void*user){sdk_unlocked();(void)r;(void)cb;assert(type==SEDS_DT_FLIGHT_STATE&&!user);return SEDS_OK;}
+SedsResult seds_router_on_network_variable_update(SedsRouter*r,SedsDataType type,SedsResult(*cb)(const SedsPacketView*,void*),void*user){sdk_unlocked();(void)r;state_cb=cb;assert(type==SEDS_DT_FLIGHT_STATE&&!user);return SEDS_OK;}
 SedsResult seds_router_invalidate_network_variable_cache(SedsRouter*r,SedsDataType type,bool*out){sdk_unlocked();(void)r;assert(type==SEDS_DT_FLIGHT_STATE&&!out);return owner_fail?SEDS_IO:SEDS_OK;}
 SedsResult seds_router_request_managed_variable(SedsRouter*r,SedsDataType type){sdk_unlocked();(void)r;assert(type==SEDS_DT_FLIGHT_STATE);return SEDS_OK;}
+
+uint32_t __get_PRIMASK(void){return irq_mask;}void __disable_irq(void){irq_mask=1;}void __set_PRIMASK(uint32_t p){irq_mask=p;}
+void NVIC_SystemReset(void){assert(irq_mask);++resets;}
+uint64_t telemetry_now_ms(void){return clock_ms;}
+SedsResult seds_router_bind_p2p_stream_port(SedsRouter*r,uint16_t port,SedsP2pStreamHandlerFn cb,void*u){sdk_unlocked();assert(r&&port==4510&&!u);ota_cb=cb;return SEDS_OK;}
+SedsResult seds_router_send_p2p_stream(SedsRouter*r,uint32_t id,const uint8_t*p,size_t n){sdk_unlocked();assert(r&&id==9&&p&&n==13);return SEDS_OK;}
+launchcore_status_t launchcore_delta_update_begin(uint32_t n){check_owner();assert(n==128&&!irq_mask);++ota_begins;return LAUNCHCORE_OK;}
+launchcore_status_t launchcore_delta_update_write(const void*p,size_t n){check_owner();assert(p&&n&&!irq_mask);++ota_writes;return LAUNCHCORE_OK;}
+launchcore_status_t launchcore_delta_update_finish(void){check_owner();assert(!irq_mask);++ota_finishes;return LAUNCHCORE_OK;}
+launchcore_status_t launchcore_delta_update_abort(void){check_owner();assert(!irq_mask);return LAUNCHCORE_OK;}
+launchcore_status_t launchcore_confirm_boot(void){check_owner();assert(!irq_mask);return LAUNCHCORE_OK;}
+static SedsP2pStreamEventView ota_event={.kind=SEDS_P2P_STREAM_ACCEPTED,.stream_id=9,.peer_stream_id=11,.peer_hostname="GS",.peer_hostname_len=2,.peer_address=1234,.local_port=4510,.peer_port=123};
+static void ota_phase(uint8_t phase){SedsPacketView p={.ty=SEDS_DT_FLIGHT_STATE,.sender="GS",.sender_len=2,.payload=&phase,.payload_len=1,.timestamp=clock_ms};assert(state_cb(&p,0)==SEDS_OK);}
+static void ota_before_normal(SedsRouter*r){assert(ota_stream_init(r)==SEDS_OK);assert(ota_cb(&ota_event,0)==SEDS_OK);ota_phase(7);ota_phase(1);assert(ota_cb(&ota_event,0)!=SEDS_OK);}
+static void ota_after_normal(void){ota_event.kind=SEDS_P2P_STREAM_ACCEPTED;assert(ota_cb(&ota_event,0)==SEDS_OK);uint8_t begin[]={1,128,0,0,0},chunk[117]={2},last[21]={2,112,0,0,0},finish=3;ota_event.kind=SEDS_P2P_STREAM_DATA;ota_event.payload=begin;ota_event.payload_len=5;assert(ota_cb(&ota_event,0)==SEDS_OK);ota_event.payload=chunk;ota_event.payload_len=117;assert(ota_cb(&ota_event,0)==SEDS_OK);ota_event.payload=last;ota_event.payload_len=21;assert(ota_cb(&ota_event,0)==SEDS_OK);ota_event.payload=&finish;ota_event.payload_len=1;assert(ota_cb(&ota_event,0)==SEDS_OK);assert(ota_begins==1&&ota_writes==2&&ota_finishes==1);clock_ms+=250;ota_stream_poll();assert(resets==1&&!irq_mask);puts("actual JOB_NORMAL strict COMPLETE -> OTA re-enabled PASS");}
 #ifdef FC_DOMAIN
 /* Bounded physical-owner boundary: valid epoch, receive loop ready, outputs
  * already LOW/retained. The mutation under test precedes owner application. */
@@ -70,6 +88,7 @@ int main(int argc,char**argv){assert(argc==2);(void)send;(void)response_epoch;
  if(healthy){
 
   if(!strcmp(argv[1],"query_fault")){unsigned reads=media_reads,writes=media_writes;request(r,&packet,false);assert(response[1]==7&&reads==media_reads&&writes==media_writes&&!persistent_store_controls_ready());puts("strict boot-prime fault, RAM-only QUERY IO, no mutation PASS");return 0;}
+  if(!strcmp(argv[1],"ota_normal"))ota_before_normal(r);
   unsigned rd=media_reads,wr=media_writes;request(r,&packet,false);assert(response[1]==0&&rd==media_reads&&wr==media_writes);
   body[1]=1;put64(body+4,2);put64(body+12,generation);body[20]=1;packet.timestamp=clock_ms=10001;
 
@@ -88,6 +107,7 @@ int main(int argc,char**argv){assert(argc==2);(void)send;(void)response_epoch;
   uint8_t marker[40];size_t size=40;assert(persistent_store_enter());assert(launchcore_persist_get_strict(COMMISSION_RECORD_KEY,marker,&size,&info)==0);assert(persistent_store_leave());CommissionRecord record;assert(commission_record_decode(marker,size,&record)&&record.kind==1&&record.state==0&&record.generation==generation&&record.nonce==2&&record.source==10001);
   uint8_t original_request[32];memcpy(original_request,body,32);body[1]=0;put64(body+4,3);put64(body+12,0);memset(body+20,0,4);packet.timestamp=clock_ms=10002;unsigned query_reads=media_reads,query_writes=media_writes;request(r,&packet,false);assert(response[1]==0&&response[2]==0&&response_epoch()==2&&!(response[3]&1U)&&get64(response+12)==generation&&media_reads==query_reads&&media_writes==query_writes);memcpy(body,original_request,32);packet.timestamp=10001;
   wr=media_writes;request(r,&packet,false);assert(response[1]==0&&media_writes==wr);packet.timestamp=10002;request(r,&packet,false);assert(response[1]==6&&media_writes==wr);
+  if(!strcmp(argv[1],"ota_normal"))ota_after_normal();
   puts("normal healthy one-request durablePENDING->ownedapply->COMPLETE PASS");return 0;
  }
  unsigned reads=media_reads,writes=media_writes;request(r,&packet,false);assert(reads==media_reads&&writes==media_writes&&response[1]==7&&!(response[3]&1U)&&!(response[3]&18U));uint64_t expected=virgin?UINT64_MAX:generation;assert(get64(response+12)==expected);

@@ -5,6 +5,7 @@ import tempfile
 import unittest
 ROOT = Path(__file__).resolve().parents[1]
 HEADERS = {
+    "ota_stream.h": '#pragma once\n#include <stdbool.h>\n#include <stdint.h>\n/* This legacy fixture isolates cache/router/persistence semantics. OTA owner\n * is an explicit permit/no-op boundary; real OTA admission is tested by\n * test_ota_lifecycle_native and the integrated strict recovery fixture. */\nstatic inline bool ota_stream_state_begin(uint8_t phase){(void)phase;return true;}\nstatic inline void ota_stream_state_end(void){}\nstatic inline void ota_stream_recovery_complete(uint32_t epoch){(void)epoch;}\n',
 "sedsnet.h": r'''#pragma once
 #include <stdint.h>
 #include <stddef.h>
