@@ -58,9 +58,9 @@ static launchcore_persist_status_t inspect(void)
     if (launchcore_storage_init() != LAUNCHCORE_STORAGE_OK) return LAUNCHCORE_PERSIST_STORAGE_ERROR;
     launchcore_persist_strict_info_t info;
     launchcore_persist_status_t status = launchcore_persist_probe_strict(&info);
-    if (status == LAUNCHCORE_PERSIST_OK && info.health != LAUNCHCORE_PERSIST_HEALTH_HEALTHY) {
+    if (status == LAUNCHCORE_PERSIST_OK && info.health != LAUNCHCORE_PERSIST_HEALTH_HEALTHY && info.health != LAUNCHCORE_PERSIST_HEALTH_VIRGIN) {
         controls_ready = false;
-        return LAUNCHCORE_PERSIST_NOT_FOUND; /* Virgin is not implicit commissioning. */
+        return LAUNCHCORE_PERSIST_CORRUPT;
     }
     return status;
 }
@@ -78,9 +78,11 @@ static void validate_controls(void)
     if (launchcore_persist_get_strict(UINT32_C(0x42524745), bytes, &size, &info) != LAUNCHCORE_PERSIST_OK ||
         size != 8U || decode(bytes) == 0U || decode(bytes) == UINT64_MAX) return;
     size = sizeof(bytes);
-    if (launchcore_persist_get_strict(UINT32_C(0x4252464c), bytes, &size, &info) != LAUNCHCORE_PERSIST_OK ||
-        size != sizeof(bytes) || decode(bytes) == 0U || decode(bytes + 8U) == 0U ||
-        decode(bytes + 8U) == UINT64_MAX) return;
+    const launchcore_persist_status_t floor_status=launchcore_persist_get_strict(UINT32_C(0x4252464c),bytes,&size,&info);
+    const bool no_prior_recovery=floor_status==LAUNCHCORE_PERSIST_NOT_FOUND&&
+        info.health==LAUNCHCORE_PERSIST_HEALTH_HEALTHY&&info.record==LAUNCHCORE_PERSIST_RECORD_ABSENT;
+    if(!no_prior_recovery&&(floor_status!=LAUNCHCORE_PERSIST_OK||size!=sizeof(bytes)||
+        decode(bytes)==0U||decode(bytes+8U)==0U||decode(bytes+8U)==UINT64_MAX))return;
     uint8_t marker[COMMISSION_RECORD_SIZE]; size=sizeof marker;
     launchcore_persist_status_t status=launchcore_persist_get_strict(COMMISSION_RECORD_KEY,marker,&size,&info);
     CommissionRecord record;
@@ -115,6 +117,33 @@ bool persistent_store_verify_commissioned_locked(uint64_t generation,const uint8
  commissioning_complete=expected.state==0;controls_ready=true;return true;
 }
 
+/* Normal exclusive boot establishes bookkeeping, not application recovery.
+ * Strict ABSENT permits first initialization; tombstones, ambiguous banks and
+ * corrupt records are never repaired or reclassified as new storage. */
+static launchcore_persist_status_t initialize_boot_identity(void)
+{
+    if (!persistent_store_enter()) return LAUNCHCORE_PERSIST_STORAGE_ERROR;
+    uint8_t identity[8]; size_t size=sizeof identity;
+    launchcore_persist_strict_info_t info;
+    launchcore_persist_status_t status=launchcore_persist_get_strict(UINT32_C(0x42524745),identity,&size,&info);
+    if(status==LAUNCHCORE_PERSIST_NOT_FOUND&&info.record==LAUNCHCORE_PERSIST_RECORD_ABSENT&&
+       (info.health==LAUNCHCORE_PERSIST_HEALTH_VIRGIN||info.health==LAUNCHCORE_PERSIST_HEALTH_HEALTHY)) {
+        const bool virgin=info.health==LAUNCHCORE_PERSIST_HEALTH_VIRGIN;
+        commission_write64(identity,1U);
+        status=virgin?launchcore_persist_provision_virgin_strict(UINT32_C(0x42524745),identity,sizeof identity,&info):
+            launchcore_persist_set_strict(UINT32_C(0x42524745),identity,sizeof identity,&info);
+        if(status==LAUNCHCORE_PERSIST_OK) {
+            size=sizeof identity;
+            status=launchcore_persist_get_strict(UINT32_C(0x42524745),identity,&size,&info);
+        }
+    }
+    if(status==LAUNCHCORE_PERSIST_OK&&(size!=sizeof identity||commission_read64(identity)==0U||commission_read64(identity)==UINT64_MAX))
+        status=LAUNCHCORE_PERSIST_CORRUPT;
+    if(status==LAUNCHCORE_PERSIST_NOT_FOUND) status=LAUNCHCORE_PERSIST_CORRUPT;
+    if(status!=LAUNCHCORE_PERSIST_OK){ownership_faulted=true;persistent_store_note_failure();}
+    return result(status);
+}
+
 /* MAIN is the only caller, before any task/SDK/OTA owner exists. No ISR calls
  * any storage API. End this phase before creating application tasks. */
 launchcore_persist_status_t persistent_store_boot_begin(void)
@@ -123,6 +152,7 @@ launchcore_persist_status_t persistent_store_boot_begin(void)
         return LAUNCHCORE_PERSIST_STORAGE_ERROR;
     phase = 1U;
     launchcore_persist_status_t status = persistent_store_init();
+    if (status == LAUNCHCORE_PERSIST_OK) status=initialize_boot_identity();
     if (status == LAUNCHCORE_PERSIST_OK) validate_controls();
     return status;
 }
@@ -146,7 +176,9 @@ launchcore_persist_status_t persistent_store_get(uint32_t key, void *value, size
     if (!persistent_store_enter()) return LAUNCHCORE_PERSIST_STORAGE_ERROR;
     launchcore_persist_strict_info_t info;
     launchcore_persist_status_t status = launchcore_persist_get_strict(key, value, size, &info);
-    if ((key == UINT32_C(0x42524745) || key == UINT32_C(0x4252464c) || key == COMMISSION_RECORD_KEY) && status != LAUNCHCORE_PERSIST_OK)
+    const bool ordinary_absent=status==LAUNCHCORE_PERSIST_NOT_FOUND&&info.health==LAUNCHCORE_PERSIST_HEALTH_HEALTHY&&
+        info.record==LAUNCHCORE_PERSIST_RECORD_ABSENT&&(key==UINT32_C(0x4252464c)||key==COMMISSION_RECORD_KEY);
+    if ((key == UINT32_C(0x42524745) || key == UINT32_C(0x4252464c) || key == COMMISSION_RECORD_KEY) && status != LAUNCHCORE_PERSIST_OK && !ordinary_absent)
         controls_ready = false;
     return result(status);
 }

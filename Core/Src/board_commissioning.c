@@ -50,7 +50,7 @@ void board_commissioning_probe_boot(void){
  uint64_t current=board_recovery_boot_current();
  known_identity=view.identity&&current&&current!=UINT64_MAX&&view.generation==current;
  known_floor=known_identity&&!view.floor_absent;
- normal_eligible=known_floor&&view.marker!=2;
+ normal_eligible=known_identity&&view.marker!=2;
  repairable_floor=known_identity&&view.floor_absent&&view.marker==2;
  if(view.floor_time&&!view.floor_absent&&!board_recovery_floor_accept_bootstrap(view.floor_time)){persistent_store_note_failure();return;}
  if(view.marker==2&&!board_recovery_floor_note_bootstrap_attempt(history.source)){persistent_store_note_failure();return;}
@@ -112,7 +112,6 @@ int32_t board_commissioning_stage(const BoardRecoveryRequest*r,uint64_t source,u
  if(board_commissioning_uncertain_first()&&r->expected_boot_generation==UINT64_MAX&&query.valid&&!query.generation&&query.epoch==epoch&&fresh(query.source,now)&&r->issuer_session==query.issuer&&!same_tuple(r->issuer_session,r->nonce,query.issuer,query.nonce))kind=JOB_RECONCILE;
  else if(unverified_floor_first&&history_valid&&history.kind==0&&known_identity&&generation&&generation!=UINT64_MAX&&history.generation==generation&&r->expected_boot_generation==generation&&query.valid&&query.generation==generation&&query.epoch==epoch&&fresh(query.source,now)&&r->issuer_session==query.issuer&&!same_tuple(r->issuer_session,r->nonce,query.issuer,query.nonce))kind=JOB_SECOND;
  else if(!board_commissioning_uncertain_first()&&eligible==COMMISSION_IDENTITY&&!generation&&r->expected_boot_generation==UINT64_MAX)kind=JOB_FIRST;
- else if(eligible==COMMISSION_FLOOR&&generation&&generation!=UINT64_MAX&&r->expected_boot_generation==generation)kind=JOB_FIRST;
  else if(normal_eligible&&(!history_valid||history.state==0)&&generation&&generation!=UINT64_MAX&&r->expected_boot_generation==generation)kind=JOB_NORMAL;
  else if(board_commissioning_pending()&&known_identity&&(known_floor||repairable_floor)&&query.valid&&query.generation==generation&&query.epoch==epoch&&fresh(query.source,now)&&r->expected_boot_generation==generation&&r->issuer_session==query.issuer&&!same_tuple(r->issuer_session,r->nonce,query.issuer,query.nonce))kind=history.kind==1?JOB_NORMAL:JOB_SECOND;
  else return BOARD_RECOVERY_RESULT_STALE;
@@ -140,7 +139,7 @@ static bool publish_view(const CommissionView*v){
  known_identity=v->identity&&v->generation==current&&current&&current!=UINT64_MAX;
  if(known_identity)uncertain_first=false;
  known_floor=known_identity&&!v->floor_absent;
- normal_eligible=known_floor&&v->marker!=2;
+ normal_eligible=known_identity&&v->marker!=2;
  repairable_floor=known_identity&&v->floor_absent&&v->marker==2;
  eligible=!current&&v->kind==COMMISSION_IDENTITY?COMMISSION_IDENTITY:known_identity&&v->kind==COMMISSION_FLOOR?COMMISSION_FLOOR:COMMISSION_NONE;
  if(unverified_floor_first)eligible=COMMISSION_NONE;
@@ -261,7 +260,7 @@ static bool write_pending_normal(void){
  if(!board_recovery_commission_held(job.request.expected_abort_epoch)||!board_recovery_floor_note_bootstrap_attempt(job.source))return false;
  publication_pending=true;
  if(!persistent_store_enter())return false;
- CommissionView view;bool valid=classify_locked(&view)&&view.identity&&!view.floor_absent&&view.generation==job.request.expected_boot_generation&&view.generation==board_recovery_boot_current()&&job.source>view_floor(&view)&&board_recovery_commission_held(job.request.expected_abort_epoch);
+ CommissionView view;bool valid=classify_locked(&view)&&view.identity&&view.generation==job.request.expected_boot_generation&&view.generation==board_recovery_boot_current()&&job.source>view_floor(&view)&&board_recovery_commission_held(job.request.expected_abort_epoch);
  if(valid&&view.marker==2)valid=history_valid&&view.history.kind==1&&equal_history(&view.history,&history);
  CommissionRecord record={.state=1,.kind=1,.epoch=job.request.expected_abort_epoch,.source=job.source,.nonce=job.request.nonce,.issuer=job.request.issuer_session,.generation=job.request.expected_boot_generation};
  uint8_t marker[40],floor[16],observed[40];commission_record_encode(marker,&record);commission_write64(floor,job.request.issuer_session);commission_write64(floor+8,job.source);size_t size=40;launchcore_persist_strict_info_t info;

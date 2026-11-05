@@ -19,7 +19,7 @@ uint64_t board_recovery_boot_generation(void) {
   if (length!=sizeof stored) return 0U;
   previous=decode_generation(stored);
   if (previous==0U || previous==UINT64_MAX) return 0U;
- } else return 0U; /* Missing/deleted BRGE requires explicit commissioning. */
+ } else return 0U; /* Exclusive boot initializes ABSENT identity; runtime never repairs it. */
  uint64_t next=previous+1U;
  for (unsigned i=0U;i<8U;i++) stored[i]=(uint8_t)(next>>(8U*i));
  if (persistent_store_set(BOARD_RECOVERY_BOOT_KEY,stored,sizeof stored)!=LAUNCHCORE_PERSIST_OK) return 0U;

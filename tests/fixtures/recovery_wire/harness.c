@@ -83,9 +83,14 @@ int main(int argc,char**argv){assert(argc==2);(void)send;(void)response_epoch;
  bool virgin=!strcmp(argv[1],"virgin");bool healthy=strcmp(argv[1],"virgin")&&strcmp(argv[1],"floor");memset(disk,255,sizeof disk);launchcore_storage_set_driver(&launchcore_board_storage_driver);launchcore_persist_strict_info_t info;uint64_t prior=41;uint8_t original=1;
  if(!virgin){assert(launchcore_persist_init()==0);assert(launchcore_persist_set(0x42524745U,&prior,8)==0);assert(launchcore_persist_set(0x46535445U,&original,1)==0);}
  if(healthy){uint64_t floor[2]={77,100};assert(launchcore_persist_set(0x4252464cU,floor,16)==0);}
- fixture=false;(void)persistent_store_boot_begin();uint64_t generation=board_recovery_boot_generation();if(!strcmp(argv[1],"query_fault"))fail_read=true;(void)board_recovery_floor_prime_boot();board_commissioning_probe_boot();flight_state_cache_restore();assert(persistent_store_runtime_start()==0);runtime=true;if(!healthy||!strcmp(argv[1],"query_fault")){assert(!persistent_store_controls_ready());}else{assert(persistent_store_controls_ready());}
+ if(!strcmp(argv[1],"corrupt_boot"))disk[0]=0;
+ if(!strcmp(argv[1],"deleted_identity"))assert(launchcore_persist_delete_strict(0x42524745U,&info)==0);
+ if(!strcmp(argv[1],"deleted_floor"))assert(launchcore_persist_delete_strict(0x4252464cU,&info)==0);
+ healthy=true; /* Normal virgin/ABSENT bookkeeping is initialized at boot. */
+ fixture=false;(void)persistent_store_boot_begin();uint64_t generation=board_recovery_boot_generation();if(!strcmp(argv[1],"query_fault"))fail_read=true;(void)board_recovery_floor_prime_boot();board_commissioning_probe_boot();flight_state_cache_restore();if(!strcmp(argv[1],"corrupt_boot")||!strcmp(argv[1],"deleted_identity")||!strcmp(argv[1],"deleted_floor")){assert(!persistent_store_controls_ready());return 0;}assert(persistent_store_runtime_start()==0);runtime=true;if(!healthy||!strcmp(argv[1],"query_fault")){assert(!persistent_store_controls_ready());}else{assert(persistent_store_controls_ready());}
  int cookie=0;SedsRouter*r=(SedsRouter*)&cookie;assert(flight_state_cache_init(r)==0);board_recovery_transport_set_router(r);uint32_t endpoint=SEDS_EP_BOARD_RECOVERY;uint8_t body[32]={1,0};put64(body+4,1);put64(body+24,77);SedsPacketView packet={.ty=200,.sender="GS",.sender_len=2,.endpoints=&endpoint,.num_endpoints=1,.payload=body,.payload_len=32,.timestamp=10000};
  if(healthy){
+  if(strcmp(argv[1],"query_fault")){assert(generation&&generation!=UINT64_MAX);assert(board_recovery_floor_is_healthy());assert(board_recovery_command_time_allowed(10000));}
 
   if(!strcmp(argv[1],"query_fault")){unsigned reads=media_reads,writes=media_writes;request(r,&packet,false);assert(response[1]==7&&reads==media_reads&&writes==media_writes&&!persistent_store_controls_ready());puts("strict boot-prime fault, RAM-only QUERY IO, no mutation PASS");return 0;}
   if(!strcmp(argv[1],"ota_normal"))ota_before_normal(r);
