@@ -17,6 +17,7 @@ HARNESS=r'''
 #include "board_recovery_floor.h"
 #include "persistent_store.h"
 #include <assert.h>
+#include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
 static uint8_t disk[16];
@@ -24,6 +25,8 @@ static unsigned writes;
 static int write_error,read_error,wrong_read,copy_before_error;
 static void put(uint8_t *p,uint64_t n){for(unsigned i=0;i<8;i++)p[i]=(uint8_t)(n>>(i*8));}
 int persistent_store_init(void){return 0;}
+/* This fixture models a verified existing store; real-journal tests cover absence/corruption. */
+bool persistent_store_controls_ready(void){return true;}
 int persistent_store_get(uint32_t key,void *value,size_t *n){
  assert(key==0x4252464cU && *n==16);
  if(read_error)return 2;
