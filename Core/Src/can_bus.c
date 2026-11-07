@@ -230,41 +230,81 @@ static volatile uint8_t g_rx_fifo0_pending = 0;
 static volatile uint8_t g_rx_fifo1_pending = 0;
 static volatile uint8_t g_txevt_pending = 0;
 
+/* Recovery runs only in the foreground. A failed HAL Stop can leave ERROR,
+ * and PSR.BusOff is not evidence that the HAL/controller is running. */
+#define CAN_BUS_RECOVERY_RETRY_MS 100U
+static uint8_t g_can_restart_pending;
+static uint8_t g_can_recovery_attempted;
+static uint32_t g_can_last_recovery_attempt_ms;
+volatile uint32_t g_fdcan_bus_off_count;
+volatile uint32_t g_fdcan_recovery_count;
+volatile uint32_t g_fdcan_recovery_attempt_count;
+volatile uint32_t g_fdcan_recovery_fail_count;
+static HAL_StatusTypeDef can_bus_config_accept_all(FDCAN_HandleTypeDef *hfdcan);
+#if !CAN_BUS_POLLING
+static HAL_StatusTypeDef can_bus_activate_notifications(FDCAN_HandleTypeDef *hfdcan);
+#endif
+
 static HAL_StatusTypeDef can_bus_recover_if_bus_off(void)
 {
   if (!g_hfdcan)
     return HAL_ERROR;
 
   FDCAN_ProtocolStatusTypeDef status;
-  if (HAL_FDCAN_GetProtocolStatus(g_hfdcan, &status) != HAL_OK)
+  if (HAL_FDCAN_GetProtocolStatus(g_hfdcan, &status) != HAL_OK) {
+    g_can_restart_pending = 1U;
+    g_can_recovering = 1U;
     return HAL_ERROR;
+  }
 
-  if (status.BusOff == 0U)
+  if (status.BusOff == 0U && !g_can_restart_pending &&
+      g_hfdcan->State == HAL_FDCAN_STATE_BUSY)
   {
     if (__HAL_FDCAN_GET_FLAG(g_hfdcan, FDCAN_FLAG_BUS_OFF) != 0U)
       __HAL_FDCAN_CLEAR_FLAG(g_hfdcan, FDCAN_FLAG_BUS_OFF);
     return HAL_OK;
   }
 
+  const uint32_t now = HAL_GetTick();
+  if (g_can_recovery_attempted &&
+      (uint32_t)(now - g_can_last_recovery_attempt_ms) < CAN_BUS_RECOVERY_RETRY_MS)
+    return HAL_BUSY;
+  g_can_recovery_attempted = 1U;
+  g_can_last_recovery_attempt_ms = now;
+  g_can_restart_pending = 1U;
   g_can_recovering = 1U;
-  (void)HAL_FDCAN_AbortTxRequest(g_hfdcan,
-      FDCAN_TX_BUFFER0 | FDCAN_TX_BUFFER1 | FDCAN_TX_BUFFER2);
-  if (HAL_FDCAN_Stop(g_hfdcan) != HAL_OK) {
-    g_can_recovering = 0U;
-    return HAL_ERROR;
+  ++g_fdcan_recovery_attempt_count;
+  if (status.BusOff != 0U) ++g_fdcan_bus_off_count;
+
+  if (g_hfdcan->State == HAL_FDCAN_STATE_BUSY) {
+    (void)HAL_FDCAN_AbortTxRequest(g_hfdcan,
+        FDCAN_TX_BUFFER0 | FDCAN_TX_BUFFER1 | FDCAN_TX_BUFFER2);
+    if (HAL_FDCAN_Stop(g_hfdcan) != HAL_OK) goto failed;
   }
+  /* Stop timeout leaves HAL ERROR; Start accepts READY only. Reinitialize the
+   * existing controller configuration (message RAM, filters, interrupt
+   * routing) before retrying, without resetting the SDK. */
+  if (g_hfdcan->State != HAL_FDCAN_STATE_READY &&
+      HAL_FDCAN_Init(g_hfdcan) != HAL_OK) goto failed;
+  if (can_bus_config_accept_all(g_hfdcan) != HAL_OK) goto failed;
   can_tx_queue_reset();
-  const HAL_StatusTypeDef restarted = HAL_FDCAN_Start(g_hfdcan);
-  g_can_recovering = 0U;
-  if (restarted != HAL_OK) return HAL_ERROR;
+  if (HAL_FDCAN_Start(g_hfdcan) != HAL_OK) goto failed;
+#if !CAN_BUS_POLLING
+  if (can_bus_activate_notifications(g_hfdcan) != HAL_OK) goto failed;
+#endif
 
   if (__HAL_FDCAN_GET_FLAG(g_hfdcan, FDCAN_FLAG_BUS_OFF) != 0U)
     __HAL_FDCAN_CLEAR_FLAG(g_hfdcan, FDCAN_FLAG_BUS_OFF);
 
+  g_can_restart_pending = 0U;
+  g_can_recovering = 0U;
+  ++g_fdcan_recovery_count;
   return HAL_OK;
+failed:
+  ++g_fdcan_recovery_fail_count;
+  /* Keep ISR TX pumping/admission gated, but let the next foreground retry run. */
+  return HAL_ERROR;
 }
-
-
 
 static inline void can_bus_notify_rx(const uint8_t *data, size_t len)
 {
@@ -761,10 +801,10 @@ static UNUSED_FUNCTION void can_bus_drain_tx_events(FDCAN_HandleTypeDef *hfdcan)
 // having it here prevents the common “receives nothing” failure when
 // no filters are configured or frames route to FIFO0 by default.
 
-static void can_bus_config_accept_all(FDCAN_HandleTypeDef *hfdcan)
+static HAL_StatusTypeDef can_bus_config_accept_all(FDCAN_HandleTypeDef *hfdcan)
 {
   // Global filter: accept non-matching frames into FIFO0.
-  (void)HAL_FDCAN_ConfigGlobalFilter(
+  const HAL_StatusTypeDef global = HAL_FDCAN_ConfigGlobalFilter(
       hfdcan,
       FDCAN_ACCEPT_IN_RX_FIFO0, // Non-matching STD
       FDCAN_ACCEPT_IN_RX_FIFO0, // Non-matching EXT
@@ -780,8 +820,29 @@ static void can_bus_config_accept_all(FDCAN_HandleTypeDef *hfdcan)
   f.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
   f.FilterID1 = 0x000; // ID
   f.FilterID2 = 0x000; // mask (0 => don't care => accept all)
-  (void)HAL_FDCAN_ConfigFilter(hfdcan, &f);
+  const HAL_StatusTypeDef filter = HAL_FDCAN_ConfigFilter(hfdcan, &f);
+  return (global == HAL_OK && filter == HAL_OK) ? HAL_OK : HAL_ERROR;
 }
+
+#if !CAN_BUS_POLLING
+#define CAN_BUS_NOTIFICATIONS \
+  (FDCAN_IT_RX_FIFO0_NEW_MESSAGE | FDCAN_IT_RX_FIFO1_NEW_MESSAGE | \
+   FDCAN_IT_RX_FIFO0_MESSAGE_LOST | FDCAN_IT_RX_FIFO1_MESSAGE_LOST | \
+   FDCAN_IT_TX_EVT_FIFO_NEW_DATA | FDCAN_IT_TX_FIFO_EMPTY | FDCAN_IT_TX_COMPLETE)
+
+/* Shared by boot and recovery so a restarted controller is rearmed exactly
+ * as it was at boot. */
+static HAL_StatusTypeDef can_bus_activate_notifications(FDCAN_HandleTypeDef *hfdcan)
+{
+  g_notification_mask = CAN_BUS_NOTIFICATIONS;
+  const HAL_StatusTypeDef lines = HAL_FDCAN_ConfigInterruptLines(hfdcan,
+      FDCAN_IT_GROUP_RX_FIFO0 | FDCAN_IT_GROUP_RX_FIFO1 |
+      FDCAN_IT_GROUP_SMSG | FDCAN_IT_GROUP_TX_FIFO_ERROR, FDCAN_INTERRUPT_LINE0);
+  const HAL_StatusTypeDef active = HAL_FDCAN_ActivateNotification(hfdcan,
+      CAN_BUS_NOTIFICATIONS, FDCAN_TX_BUFFER0 | FDCAN_TX_BUFFER1 | FDCAN_TX_BUFFER2);
+  return (lines == HAL_OK && active == HAL_OK) ? HAL_OK : HAL_ERROR;
+}
+#endif
 
 // =========================
 // Public API
@@ -798,21 +859,14 @@ void can_bus_init(FDCAN_HandleTypeDef *hfdcan)
   g_notification_mask = 0;
   if (hfdcan != NULL) {
     (void)HAL_FDCAN_Stop(hfdcan);
-    can_bus_config_accept_all(hfdcan);
+    (void)can_bus_config_accept_all(hfdcan);
     if (HAL_FDCAN_Start(hfdcan) != HAL_OK) {
       g_can_recovering = 0U;
       return;
     }
     g_can_recovering = 0U;
 #if !CAN_BUS_POLLING
-    g_notification_mask = FDCAN_IT_RX_FIFO0_NEW_MESSAGE | FDCAN_IT_RX_FIFO1_NEW_MESSAGE |
-        FDCAN_IT_RX_FIFO0_MESSAGE_LOST | FDCAN_IT_RX_FIFO1_MESSAGE_LOST |
-        FDCAN_IT_TX_EVT_FIFO_NEW_DATA | FDCAN_IT_TX_FIFO_EMPTY | FDCAN_IT_TX_COMPLETE;
-    (void)HAL_FDCAN_ConfigInterruptLines(hfdcan,
-        FDCAN_IT_GROUP_RX_FIFO0 | FDCAN_IT_GROUP_RX_FIFO1 |
-        FDCAN_IT_GROUP_SMSG | FDCAN_IT_GROUP_TX_FIFO_ERROR, FDCAN_INTERRUPT_LINE0);
-    (void)HAL_FDCAN_ActivateNotification(hfdcan, g_notification_mask,
-        FDCAN_TX_BUFFER0 | FDCAN_TX_BUFFER1 | FDCAN_TX_BUFFER2);
+    (void)can_bus_activate_notifications(hfdcan);
 #endif
   }
   g_can_recovering = 0U;
