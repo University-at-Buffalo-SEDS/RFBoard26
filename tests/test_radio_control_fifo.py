@@ -58,6 +58,8 @@ static radio_tx_item_t g_tx_dma_item __attribute__((unused));
 static uint32_t g_tx_dma_busy __attribute__((unused));
 static uint8_t g_tx_queue_bytes[RADIO_UART_TX_QUEUE_BYTE_CAPACITY];
 static uint32_t g_tx_count, g_tx_queue_bytes_used, g_tx_busy, g_tx_enqueued, g_tx_last_flow_id, g_tx_budget_misses, g_radio_tx_ok __attribute__((unused));
+static uint32_t g_tx_queue_high_water, g_tx_dma_ack_offset_ms __attribute__((unused));
+static uint8_t g_tx_dma_ack_frames __attribute__((unused));
 #if !RFBOARD_LORA_SCHEDULER
 static uint8_t g_tx_independent_streak, g_tx_ack_only_admission;
 #define completed(item) radio_uart_account_completed_item(item)

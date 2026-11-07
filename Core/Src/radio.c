@@ -293,6 +293,16 @@ static volatile uint8_t g_tx_dma_preserves_rx = 0U;
 static volatile uint32_t g_tx_dma_started = 0U;
 static volatile uint32_t g_tx_dma_complete = 0U;
 volatile uint32_t g_tx_dma_recoveries = 0U;
+/* BOARD_HEALTH window: canonical ACK frames from enqueue to UART DMA
+ * complete, and owned queue depth in descriptors. */
+static volatile uint32_t g_tx_ack_wait_frames;
+static volatile uint32_t g_tx_ack_wait_sum_ms;
+static volatile uint32_t g_tx_ack_wait_max_ms;
+static volatile uint32_t g_tx_queue_high_water;
+/* ACK frames in the item dequeued for the next DMA, and the summed enqueue
+ * offsets of batched frames after the oldest. DMA item storage is fixed. */
+static uint32_t g_tx_dma_ack_offset_ms;
+static uint8_t g_tx_dma_ack_frames;
 static volatile uint32_t g_tx_dma_started_at_ms = 0U;
 static volatile uint32_t g_tx_quiet_until_ms = 0U;
 static volatile uint8_t g_tx_air_budget_active;
@@ -656,6 +666,10 @@ static uint32_t radio_uart_owned_frame_count(void)
   return count;
 }
 
+static void radio_uart_note_queue_depth_locked(void) {
+  if (g_tx_count > g_tx_queue_high_water) g_tx_queue_high_water = g_tx_count;
+}
+
 static void radio_uart_drop_stale_locked(uint32_t now_ms) {
   uint32_t i = 0U;
 
@@ -764,6 +778,7 @@ static HAL_StatusTypeDef radio_uart_enqueue_frame(const uint8_t *data, uint16_t 
   memcpy(&g_tx_queue_bytes[g_tx_queue_bytes_used], data, len);
   g_tx_queue_bytes_used += len;
   g_tx_count++;
+  radio_uart_note_queue_depth_locked();
   g_tx_enqueued++;
   radio_uart_unlock_tx_queue();
   return HAL_OK;
@@ -855,6 +870,7 @@ static HAL_StatusTypeDef radio_uart_enqueue_sedsnet_frame(
   memcpy(&g_tx_queue_bytes[g_tx_queue_bytes_used], data, len);
   g_tx_queue_bytes_used += len;
   g_tx_count++;
+  radio_uart_note_queue_depth_locked();
   g_tx_enqueued++;
   radio_uart_unlock_tx_queue();
   return HAL_OK;
@@ -939,6 +955,8 @@ static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32
       out->control_class = g_tx_queue[selected].control_class;
       memcpy(out->data, &g_tx_queue_bytes[g_tx_queue[selected].offset], out->len);
       radio_uart_remove_queue_index(selected);
+      g_tx_dma_ack_offset_ms = 0U;
+      g_tx_dma_ack_frames = 0U;
 #if !RFBOARD_LORA_SCHEDULER
       /* Batch only already-owned adjacent bytes. Receipts may share a
        * physical burst, while each original UART frame still spends its
@@ -973,11 +991,15 @@ static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32
                                           out->priority, ack_ids)) break;
           }
           memcpy(&out->data[out->len], &g_tx_queue_bytes[next->offset], next->len);
+          if (ack_batch && (int32_t)(next->enqueued_ms - out->enqueued_ms) > 0)
+            g_tx_dma_ack_offset_ms += next_frames * (next->enqueued_ms - out->enqueued_ms);
           out->len = (uint16_t)combined;
           out->uart_frames = (uint8_t)(out->uart_frames + next_frames);
           radio_uart_remove_queue_index(selected);
         }
       }
+      /* A requeued batch loses its offsets and reports as its oldest frame. */
+      if (ack_batch) g_tx_dma_ack_frames = out->uart_frames;
 #endif
       g_tx_last_flow_id = out->flow_id;
       have = 1U;
@@ -1024,6 +1046,7 @@ radio_uart_requeue_frame_front(const radio_tx_item_t *item) {
   memcpy(g_tx_queue_bytes, item->data, item->len);
   g_tx_queue_bytes_used += item->len;
   g_tx_count++;
+  radio_uart_note_queue_depth_locked();
   radio_uart_unlock_tx_queue();
   return HAL_OK;
 }
@@ -2212,6 +2235,20 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
 
 
 
+/* ISR: the completed DMA item is the one dequeued last (one owner at a time). */
+static void radio_uart_note_ack_completion(void)
+{
+  const uint32_t frames = g_tx_dma_ack_frames;
+  if (!frames) return;
+  g_tx_dma_ack_frames = 0U;
+  const uint32_t oldest_ms = radio_now_ms() - g_tx_dma_item.enqueued_ms;
+  const uint32_t total_ms = oldest_ms * frames;
+  g_tx_ack_wait_sum_ms += total_ms > g_tx_dma_ack_offset_ms ?
+      total_ms - g_tx_dma_ack_offset_ms : 0U;
+  g_tx_ack_wait_frames += frames;
+  if (oldest_ms > g_tx_ack_wait_max_ms) g_tx_ack_wait_max_ms = oldest_ms;
+}
+
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
   if (!g_huart) return;
@@ -2233,6 +2270,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
   g_tx_pending_service_ms = 0U;
   radio_uart_mark_tx_drained();
 #endif
+  if (g_tx_dma_busy && preserves_rx) radio_uart_note_ack_completion();
   g_tx_dma_busy = 0U;
   g_tx_dma_preserves_rx = 0U;
   g_radio_tx_ok += uart_frames;
@@ -2258,3 +2296,21 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 }
 
 uint32_t board_health_uart_rx_drops(void) { return g_rx_isr_drops; }
+
+/* BOARD_HEALTH words 16..21, read with interrupts masked. Timing and
+ * high-water restart at each report; stale drops are cumulative. */
+#define RADIO_TX_TIMING_HEALTH_TAG 0x31544652UL /* "RFT1" little-endian */
+void board_health_radio_tx_timing(uint32_t words[6])
+{
+  const uint32_t frames = g_tx_ack_wait_frames;
+  words[0] = RADIO_TX_TIMING_HEALTH_TAG;
+  words[1] = frames;
+  words[2] = frames ? g_tx_ack_wait_sum_ms / frames : 0U;
+  words[3] = g_tx_ack_wait_max_ms;
+  words[4] = g_tx_queue_high_water;
+  words[5] = g_tx_drop_stale;
+  g_tx_ack_wait_frames = 0U;
+  g_tx_ack_wait_sum_ms = 0U;
+  g_tx_ack_wait_max_ms = 0U;
+  g_tx_queue_high_water = g_tx_count;
+}

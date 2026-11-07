@@ -55,6 +55,7 @@ static unsigned radio_uart_tx_timeout_ms(unsigned n){return n;}
 static unsigned radio_uart_tx_ready(void){return 1;}
 static unsigned radio_e22_ready_for_uart(void){return 1;}
 static unsigned radio_uart_requeue_frame_front(const radio_tx_item_t *item){(void)item;++requeues;return HAL_OK;}
+static void radio_uart_note_ack_completion(void){} /* BOARD_HEALTH timing: test_radio_tx_timing_health.py */
 static void radio_uart_classify_packet_drop(unsigned a,unsigned b,unsigned c){(void)a;(void)b;(void)c;}
 static uint8_t g_tx_ack_only_admission;
 static uint8_t radio_uart_ack_contracts(const uint8_t*,uint16_t,uint8_t,uint64_t[4]);

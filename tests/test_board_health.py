@@ -35,6 +35,7 @@ void __disable_irq(void){mask=1;}
 void __set_PRIMASK(uint32_t value){mask=value;}
 uint32_t board_health_can_rx_drops(void){return 31;}
 uint32_t board_health_uart_rx_drops(void){return 32;}
+void board_health_radio_tx_timing(uint32_t w[6]){assert(mask);w[0]=0x31544652U;w[1]=41;w[2]=42;w[3]=43;w[4]=44;w[5]=45;}
 uint32_t board_health_adc_overruns(void){return 33;}
 size_t seds_memory_admission_rejected(void){return 34;}
 void telemetry_lock(void){assert(!mask);++lock_depth;}
@@ -57,6 +58,8 @@ int main(void){
  assert((captured[1]&0xffffff00U)==0x17bd0100U);
  assert(calls==2&&captured[23]==1&&captured[0]==1&&captured[4]==1000);
  assert(captured[5]==123&&captured[6]==5&&captured[11]==34&&captured[12]==31);
+ assert(captured[16]==0x31544652U&&captured[17]==41&&captured[18]==42&&captured[19]==43&&captured[20]==44&&captured[21]==45);
+ assert(!(captured[1]&(16U|32U|128U))&&!captured[22]); /* tagged RF block never claims SD/ADC fields */
 #ifdef TELEMETRY_USE_TLSF
  assert((captured[1]&1)&&captured[7]==100&&captured[8]==200&&captured[9]==4096&&captured[10]==7);
 #else

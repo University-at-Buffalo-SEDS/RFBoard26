@@ -64,6 +64,20 @@ faults, and validates linked discovery, synchronization, managed variables,
 and bidirectional routing.
 
 
+## Radio TX timing in BOARD_HEALTH
+
+The five-second `BOARD_HEALTH` report (still version 1, 24 words) carries an
+RF-only block in words 16..21, which other boards use only with capability
+flags 16, 32 or 128; RF leaves those flags clear. Word 16 is the tag
+`0x31544652` ("RFT1"). Words 17..19 are the number of canonical SEDSNet ACK
+frames whose UART DMA completed since the previous report and their mean and
+maximum enqueue-to-DMA-complete time in ms. Batched ACKs are timed from their
+own enqueue; a batch requeued after a DMA failure is timed from its oldest
+frame. Word 20 is the highest owned radio TX queue depth (descriptors, of 12)
+since the previous report, and word 21 is the cumulative stale-drop count.
+Compare these with the GroundStation receive time: a fast RF departure with a
+late GS arrival places the delay in the modem or air link.
+
 ## Regenerating with STM32CubeMX
 
 Open the checked-in `.ioc` file and generate with the CMake toolchain. Keep user

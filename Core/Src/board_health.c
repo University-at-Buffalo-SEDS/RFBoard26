@@ -16,6 +16,7 @@ extern uint32_t board_health_can_rx_drops(void);
 extern int telemetry_router_enter(void);
 extern int telemetry_router_leave(void);
 extern uint32_t board_health_uart_rx_drops(void);
+extern void board_health_radio_tx_timing(uint32_t words[6]);
 
 void board_health_poll(SedsRouter *router)
 {
@@ -41,6 +42,8 @@ void board_health_poll(SedsRouter *router)
 #endif
   words[12] = board_health_can_rx_drops();
   words[1] |= 8U; words[14] = board_health_uart_rx_drops();
+  /* RF-only tagged block in words otherwise used for SD/ADC; flags 16/32/128 stay clear. */
+  board_health_radio_tx_timing(&words[16]);
   __set_PRIMASK(saved);
   words[11] = (uint32_t)seds_memory_admission_rejected();
   words[23] = failures;
