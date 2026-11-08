@@ -443,24 +443,58 @@ static void on_identity(void *ctx, const char *line, size_t len)
   }
 }
 
-/* "AT+Fx=Src,Dst": any pair other than 0,0 is an entry. */
+/* Reads up to 9 digits after optional spaces; false if there are none. */
+static bool read_digits(const char *s, size_t len, size_t *i, uint32_t *out)
+{
+  while (*i < len && s[*i] == ' ') (*i)++;
+  const size_t start = *i;
+  uint32_t v = 0;
+  while (*i < len && s[*i] >= '0' && s[*i] <= '9' && *i - start < 9U) {
+    v = v * 10U + (uint32_t)(s[*i] - '0');
+    (*i)++;
+  }
+  *out = v;
+  return *i > start;
+}
+
+/* Forwarding table. ASYNC 4.03 prints "slot:src->dst" entries separated by
+ * commas ("0:0->0,1:0->0,...| FwdBuff=13320"); the manual's form is
+ * "AT+Fx=Src,Dst". An entry exists only when src or dst is nonzero. */
 static void on_forwarding(void *ctx, const char *line, size_t len)
 {
   parse_ctx_t *c = ctx;
+  bool arrow = false;
+  for (size_t k = 0; k + 1 < len; k++) arrow |= line[k] == '-' && line[k + 1] == '>';
   size_t i = 0;
   while (i < len) {
-    while (i < len && !((line[i] >= '0' && line[i] <= '9') || line[i] == ',')) i++;
-    const size_t start = i;
-    while (i < len && ((line[i] >= '0' && line[i] <= '9') || line[i] == ',')) i++;
-    size_t comma = start;
-    while (comma < i && line[comma] != ',') comma++;
-    if (comma == i || comma == start || comma + 1 == i) continue;
-    bool second_ok = true, nonzero = false;
-    for (size_t k = start; k < i; k++) {
-      if (k > comma && line[k] == ',') second_ok = false;
-      if (line[k] >= '1' && line[k] <= '9') nonzero = true;
+    uint32_t src, dst;
+    if (arrow) {
+      /* One comma-separated entry: "slot:src->dst". */
+      size_t end = i;
+      while (end < len && line[end] != ',') end++;
+      size_t k = i;
+      while (k < end && line[k] != ':') k++;
+      if (k < end) {
+        k++;
+        if (read_digits(line, end, &k, &src) && k + 1 < end && line[k] == '-' && line[k + 1] == '>') {
+          k += 2;
+          if (read_digits(line, end, &k, &dst) && (src || dst)) c->forwarding = true;
+        }
+      }
+      i = end + 1;
+    } else {
+      /* "Src,Dst" pairs inside the line. */
+      while (i < len && !(line[i] >= '0' && line[i] <= '9')) i++;
+      if (!read_digits(line, len, &i, &src)) break;
+      if (i < len && line[i] == ',') {
+        i++;
+        const size_t after = i;
+        if (read_digits(line, len, &i, &dst) && i - after > 0U && (i >= len || line[i] != ',') &&
+            (src || dst)) {
+          c->forwarding = true;
+        }
+      }
     }
-    if (second_ok && nonzero) c->forwarding = true;
   }
 }
 

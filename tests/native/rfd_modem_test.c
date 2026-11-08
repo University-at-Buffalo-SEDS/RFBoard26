@@ -554,6 +554,17 @@ TEST(forwarding_entries_are_flagged)
   m->forwarding = "F0=0,0";
   r = check(m, RFD_MODE_VERIFY);
   CHECK(!(r.flags & RFD_FLAG_FORWARDING));
+  /* ASYNC 4.03 field format: the comma between entries is not a pair. */
+  free(m);
+  m = modem_new();
+  m->forwarding = "0:0->0,1:0->0,2:0->0,3:0->0,4:0->0,5:0->0,6:0->0,7:0->0,8:0->0,9:0->0, | FwdBuff=13320";
+  r = check(m, RFD_MODE_VERIFY);
+  CHECK(r.outcome == RFD_OUT_MATCHED && !(r.flags & (RFD_FLAG_FORWARDING | RFD_FLAG_ATTENTION)));
+  free(m);
+  m = modem_new();
+  m->forwarding = "0:0->0,1:3->65535,2:0->0, | FwdBuff=13320";
+  r = check(m, RFD_MODE_VERIFY);
+  CHECK(r.flags & RFD_FLAG_FORWARDING);
   free(m);
 }
 
