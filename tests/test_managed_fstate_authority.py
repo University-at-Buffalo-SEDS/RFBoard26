@@ -30,7 +30,7 @@ class ManagedAuthorityTests(unittest.TestCase):
   #define SEDS_DT_FLIGHT_COMMAND 12U
   #define SEDS_DT_ASCENT_BIASES 13U
   typedef struct{uint32_t ty;const char*sender;size_t sender_len;uint64_t timestamp;}SedsPacketView;
-  static bool ready=true,healthy=true,active=false,time_ok=true;static uint64_t now=10000;
+  static bool ready=true,healthy=true,active=false,time_ok=true;static uint64_t now=20000;
   bool persistent_store_controls_ready(void){return ready;}
   uint8_t board_recovery_floor_is_healthy(void){return healthy;}
   uint8_t board_recovery_floor_active(void){return active;}
@@ -42,7 +42,7 @@ class ManagedAuthorityTests(unittest.TestCase):
    if(!strcmp(argv[1],"inactive_nonGS")){assert(!board_recovery_managed_update_allowed(&p));return 0;}
    const char*senders[]={"GS","RF","VB","FC","RRLS"};unsigned cases=0;
    for(unsigned type=11;type<=13;type++)for(unsigned ac=0;ac<2;ac++)for(unsigned h=0;h<2;h++)for(unsigned rr=0;rr<2;rr++)for(unsigned src=0;src<5;src++)for(unsigned stale=0;stale<2;stale++){
-   p.ty=type;active=ac;healthy=h;ready=rr;p.sender=senders[src];p.sender_len=strlen(p.sender);p.timestamp=stale?1:9000;
+   p.ty=type;active=ac;healthy=h;ready=rr;p.sender=senders[src];p.sender_len=strlen(p.sender);p.timestamp=stale?4999:5000;
    bool allowed=board_recovery_managed_update_allowed(&p);bool expected=healthy&&READY_GUARD&&(!active?(type!=SEDS_DT_FLIGHT_STATE||src==0):(src==0&&!stale));assert(allowed==expected);cases++;
    }
    healthy=ready=true;active=false;assert(board_recovery_managed_update_allowed(NULL));recovery_router=NULL;p.ty=SEDS_DT_FLIGHT_STATE;p.sender="GS";p.sender_len=2;assert(!board_recovery_managed_update_allowed(&p));p.ty=SEDS_DT_FLIGHT_COMMAND;assert(board_recovery_managed_update_allowed(&p));printf("actual authority matrix %u PASS\\n",cases);return 0;}

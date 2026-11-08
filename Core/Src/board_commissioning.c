@@ -76,7 +76,7 @@ enum {JOB_FIRST=1,JOB_SECOND=2,JOB_NORMAL=3,JOB_RECONCILE=4};
 static struct {BoardRecoveryRequest request;uint64_t source;void*context;CommissionReply reply;CommissionClock clock;uint32_t applied_epoch;uint8_t kind,phase,result;bool valid,waiting,dirty,owner_started,durable,progress_sent;}job;
 static struct {uint64_t nonce,issuer,source,generation;uint32_t epoch;bool valid;}query;
 static uint64_t attempted_time;
-static bool fresh(uint64_t source,uint64_t now){return source&&source!=UINT64_MAX&&now&&now!=UINT64_MAX&&(now>=source?now-source<=5000U:source-now<=1000U);}
+static bool fresh(uint64_t source,uint64_t now){return source&&source!=UINT64_MAX&&now&&now!=UINT64_MAX&&(now>=source?now-source<=15000U:source-now<=1000U);}
 static bool same_tuple(uint64_t issuer,uint64_t nonce,uint64_t other_issuer,uint64_t other_nonce){return issuer==other_issuer&&nonce==other_nonce;}
 static bool same_request(const BoardRecoveryRequest*a,const BoardRecoveryRequest*b){return a->operation==b->operation&&a->desired_state==b->desired_state&&a->nonce==b->nonce&&a->issuer_session==b->issuer_session&&a->expected_boot_generation==b->expected_boot_generation&&a->expected_abort_epoch==b->expected_abort_epoch;}
 static bool same_history(const BoardRecoveryRequest*r,uint64_t source){return r->operation==BOARD_RECOVERY_RECOVER&&r->desired_state==0&&r->expected_abort_epoch==history.epoch&&r->expected_boot_generation==history.generation&&source==history.source;}

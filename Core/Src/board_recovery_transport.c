@@ -20,7 +20,7 @@ uint8_t board_recovery_command_is_stale(const SedsPacketView *packet)
  if (board_recovery_floor_active()) {
   uint64_t now=0U;
   if (recovery_router==0 || seds_router_get_network_time_ms(recovery_router,&now)!=SEDS_OK ||
-      packet->timestamp==0U || packet->timestamp==UINT64_MAX || now==0U || now==UINT64_MAX || (now>=packet->timestamp ? now-packet->timestamp>5000U : packet->timestamp-now>1000U)) return 1U;
+      packet->timestamp==0U || packet->timestamp==UINT64_MAX || now==0U || now==UINT64_MAX || (now>=packet->timestamp ? now-packet->timestamp>15000U : packet->timestamp-now>1000U)) return 1U;
  }
  return 0U;
 }
