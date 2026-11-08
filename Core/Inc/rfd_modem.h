@@ -75,14 +75,9 @@ typedef struct {
   uint8_t write_count;
   bool save_attempted;
   uint8_t write_number[RFD_MAX_WRITES];
-  uint8_t write_accepted[RFD_MAX_WRITES];
-  uint16_t write_value[RFD_MAX_WRITES];
-  /* Plan indices (bit i) still different from the profile at the end. */
-  uint32_t differs_mask;
   /* Observed by name: S2 AIR_SPEED, S3, S4, S5, S6 serial break, S11, RTSCTS. */
   int32_t observed[7];
   uint8_t rtscts_number; /* register the modem names RTSCTS (0: unknown) */
-  uint32_t duration_ms;
 } rfd_report_t;
 
 typedef struct {

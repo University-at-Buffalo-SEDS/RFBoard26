@@ -2323,7 +2323,6 @@ uint8_t radio_uart_set_modem_hold(uint8_t on)
 int radio_uart_modem_write(const uint8_t *bytes, size_t len)
 {
   if (!g_huart || !g_radio_modem_hold || g_tx_dma_busy) return -1;
-  if (len > 64U) len = 64U;
   /* Polled TX of a short AT command; circular RX DMA stays armed. */
   return HAL_UART_Transmit(g_huart, (uint8_t *)bytes, (uint16_t)len, 50U) == HAL_OK
              ? (int)len : -1;

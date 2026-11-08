@@ -291,6 +291,7 @@ static rfd_report_t check(modem_t *m, rfd_mode_t mode)
 TEST(matching_modem_is_read_and_left_alone)
 {
   modem_t *m = modem_new();
+  const uint64_t t0 = m->now_us;
   rfd_report_t r = check(m, RFD_MODE_FIX);
   CHECK(r.outcome == RFD_OUT_MATCHED);
   CHECK(r.write_count == 0 && m->eeprom_writes == 0);
@@ -300,8 +301,7 @@ TEST(matching_modem_is_read_and_left_alone)
   CHECK(r.map_source == RFD_MAP_ATI5);
   CHECK(r.observed[0] == 64 && r.observed[1] == 3968 && r.observed[5] == 32768);
   CHECK(r.observed[6] == 0 && r.rtscts_number == 18);
-  CHECK(r.differs_mask == 0);
-  CHECK(r.duration_ms < 6000U);
+  CHECK(m->now_us - t0 < 6000000U);
   free(m);
 }
 
@@ -311,19 +311,20 @@ TEST(local_drift_is_written_saved_rebooted_and_verified_once)
   set_reg(m, 6, NULL, 20);
   set_reg(m, 11, NULL, 1);
   set_reg(m, 18, NULL, 1);
+  const uint64_t t0 = m->now_us;
   rfd_report_t r = check(m, RFD_MODE_FIX);
   CHECK(r.outcome == RFD_OUT_APPLIED);
   CHECK(r.write_count == 3);
-  CHECK(r.write_number[0] == 6 && r.write_value[0] == 50 && r.write_accepted[0]);
-  CHECK(r.write_number[1] == 11 && r.write_value[1] == 32768);
-  CHECK(r.write_number[2] == 18 && r.write_value[2] == 0);
+  CHECK(r.write_number[0] == 6);
+  CHECK(r.write_number[1] == 11);
+  CHECK(r.write_number[2] == 18);
   CHECK(r.flags & RFD_FLAG_SAVED && r.flags & RFD_FLAG_REBOOTED && r.flags & RFD_FLAG_RESUMED);
   CHECK(!(r.flags & RFD_FLAG_ATTENTION));
   CHECK(m->eeprom_writes == 1);
   CHECK(reg(m, 6)->eeprom == 50 && reg(m, 11)->eeprom == 32768 && reg(m, 18)->eeprom == 0);
   CHECK(r.observed[4] == 50 && r.observed[5] == 32768);
   CHECK(m->state == DATA && m->air_bytes == 0);
-  CHECK(r.duration_ms < RFD_TIMING.overall);
+  CHECK(m->now_us - t0 < RFD_TIMING.overall * 1000ULL);
   free(m);
 }
 
@@ -334,7 +335,7 @@ TEST(verify_mode_never_writes)
   rfd_report_t r = check(m, RFD_MODE_VERIFY);
   CHECK(r.outcome == RFD_OUT_MISMATCH && (r.flags & RFD_FLAG_ATTENTION));
   CHECK(r.write_count == 0 && m->eeprom_writes == 0 && m->nset == 0);
-  CHECK(r.observed[4] == 20 && (r.differs_mask & (1UL << 5)));
+  CHECK(r.observed[4] == 20);
   CHECK(m->state == DATA);
   free(m);
 }
@@ -376,10 +377,11 @@ TEST(silent_modem_gives_up_and_leaves_the_link)
 {
   modem_t *m = modem_new();
   m->dead = 1;
+  const uint64_t t0 = m->now_us;
   rfd_report_t r = check(m, RFD_MODE_FIX);
   CHECK(r.outcome == RFD_OUT_NO_RESPONSE && (r.flags & RFD_FLAG_ATTENTION));
   CHECK(m->eeprom_writes == 0 && r.write_count == 0);
-  CHECK(r.duration_ms < 12000U);
+  CHECK(m->now_us - t0 < 12000000U);
   CHECK(r.observed[1] == RFD_UNREAD);
   free(m);
 }
@@ -400,9 +402,10 @@ TEST(modem_that_never_answers_is_bounded_by_the_overall_limit)
   /* Answers +++ but then echoes nothing and never says OK to AT. */
   modem_t *m = modem_new();
   m->garbage = 1;
+  const uint64_t t0 = m->now_us;
   rfd_report_t r = check(m, RFD_MODE_FIX);
   CHECK(r.outcome != RFD_OUT_APPLIED && r.write_count == 0 && m->eeprom_writes == 0);
-  CHECK(r.duration_ms < RFD_TIMING.overall + 5000U);
+  CHECK(m->now_us - t0 < (RFD_TIMING.overall + 5000U) * 1000ULL);
   free(m);
 }
 
@@ -425,7 +428,7 @@ TEST(refused_write_discards_ram_changes_without_saving)
   rfd_report_t r = check(m, RFD_MODE_FIX);
   CHECK(r.outcome == RFD_OUT_APPLY_FAILED && m->eeprom_writes == 0);
   CHECK((r.flags & RFD_FLAG_REBOOTED) && r.data_mode == RFD_DATA_REBOOTED);
-  CHECK(r.write_count == 2 && !r.write_accepted[1]);
+  CHECK(r.write_count == 2 && r.write_number[1] == 11);
   m->now_us += 5000000U;
   tick(m);
   CHECK(m->state == DATA && reg(m, 6)->ram == 20);
@@ -499,7 +502,7 @@ TEST(unknown_register_names_block_writes)
   rfd_report_t r = check(m, RFD_MODE_FIX);
   CHECK(r.map_source == RFD_MAP_UNCONFIRMED && r.outcome == RFD_OUT_MISMATCH);
   CHECK(r.write_count == 0 && m->nset == 0);
-  CHECK(r.differs_mask & (1UL << 5));
+  CHECK(r.observed[4] == 20);
   free(m);
 }
 
@@ -603,8 +606,8 @@ TEST(field_403_layout_writes_flow_control_to_its_named_register)
   rfd_report_t r = check(m, RFD_MODE_FIX);
   CHECK(r.outcome == RFD_OUT_APPLIED);
   CHECK(r.write_count == 2);
-  CHECK(r.write_number[0] == 6 && r.write_value[0] == 50);
-  CHECK(r.write_number[1] == 19 && r.write_value[1] == 0);
+  CHECK(r.write_number[0] == 6 && reg(m, 6)->eeprom == 50);
+  CHECK(r.write_number[1] == 19);
   for (int i = 0; i < m->nset; i++) CHECK(m->set_numbers[i] != 18 && m->set_numbers[i] != 17);
   CHECK(reg(m, 18)->eeprom == 0 && reg(m, 17)->eeprom == 100 && reg(m, 19)->eeprom == 0);
   free(m);

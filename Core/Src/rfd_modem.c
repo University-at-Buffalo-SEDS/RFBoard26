@@ -308,14 +308,10 @@ static int wait_for_plus_ok(driver_t *d)
   }
 }
 
+/* Exact match: the modem echoes commands verbatim. */
 static bool line_is(const char *line, size_t len, const char *word)
 {
-  const size_t wl = strlen(word);
-  if (len != wl) return false;
-  for (size_t i = 0; i < len; i++) {
-    if (upper(line[i]) != upper(word[i])) return false;
-  }
-  return true;
+  return len == strlen(word) && memcmp(line, word, len) == 0;
 }
 
 /* Sends one AT command; each answer line goes to on_line. Ends on OK/ERROR,
@@ -443,57 +439,30 @@ static void on_identity(void *ctx, const char *line, size_t len)
   }
 }
 
-/* Reads up to 9 digits after optional spaces; false if there are none. */
-static bool read_digits(const char *s, size_t len, size_t *i, uint32_t *out)
-{
-  while (*i < len && s[*i] == ' ') (*i)++;
-  const size_t start = *i;
-  uint32_t v = 0;
-  while (*i < len && s[*i] >= '0' && s[*i] <= '9' && *i - start < 9U) {
-    v = v * 10U + (uint32_t)(s[*i] - '0');
-    (*i)++;
-  }
-  *out = v;
-  return *i > start;
-}
-
 /* Forwarding table. ASYNC 4.03 prints "slot:src->dst" entries separated by
- * commas ("0:0->0,1:0->0,...| FwdBuff=13320"); the manual's form is
- * "AT+Fx=Src,Dst". An entry exists only when src or dst is nonzero. */
+ * commas ("0:0->0,1:0->0,...| FwdBuff=13320"): an entry exists when the
+ * number after ':' or after "->" is nonzero. The manual's form is
+ * "AT+Fx=Src,Dst": any "Src,Dst" pair other than 0,0. */
 static void on_forwarding(void *ctx, const char *line, size_t len)
 {
   parse_ctx_t *c = ctx;
   bool arrow = false;
   for (size_t k = 0; k + 1 < len; k++) arrow |= line[k] == '-' && line[k + 1] == '>';
-  size_t i = 0;
-  while (i < len) {
-    uint32_t src, dst;
+  char prev = 0; /* character before the current number */
+  bool pair_open = false, pair_nonzero = false;
+  for (size_t i = 0; i < len;) {
+    if (line[i] < '0' || line[i] > '9') { prev = line[i++]; continue; }
+    bool nonzero = false;
+    while (i < len && line[i] >= '0' && line[i] <= '9') nonzero |= line[i++] != '0';
+    const char next = i < len ? line[i] : 0;
     if (arrow) {
-      /* One comma-separated entry: "slot:src->dst". */
-      size_t end = i;
-      while (end < len && line[end] != ',') end++;
-      size_t k = i;
-      while (k < end && line[k] != ':') k++;
-      if (k < end) {
-        k++;
-        if (read_digits(line, end, &k, &src) && k + 1 < end && line[k] == '-' && line[k + 1] == '>') {
-          k += 2;
-          if (read_digits(line, end, &k, &dst) && (src || dst)) c->forwarding = true;
-        }
-      }
-      i = end + 1;
+      if ((prev == ':' || prev == '>') && nonzero) c->forwarding = true;
+    } else if (pair_open && prev == ',' && next != ',') {
+      if (pair_nonzero || nonzero) c->forwarding = true;
+      pair_open = false;
     } else {
-      /* "Src,Dst" pairs inside the line. */
-      while (i < len && !(line[i] >= '0' && line[i] <= '9')) i++;
-      if (!read_digits(line, len, &i, &src)) break;
-      if (i < len && line[i] == ',') {
-        i++;
-        const size_t after = i;
-        if (read_digits(line, len, &i, &dst) && i - after > 0U && (i >= len || line[i] != ',') &&
-            (src || dst)) {
-          c->forwarding = true;
-        }
-      }
+      pair_open = next == ',' && prev != ',';
+      pair_nonzero = nonzero;
     }
   }
 }
@@ -518,18 +487,11 @@ static int read_snapshot(driver_t *d, const rfd_plan_t *plan, snapshot_t *s)
   return 0;
 }
 
-static void fill_observed(rfd_report_t *r, const rfd_plan_t *plan, const snapshot_t *s)
+static void fill_observed(rfd_report_t *r, const snapshot_t *s)
 {
   static const uint8_t idx[7] = {P_S2, P_S3, P_S4, P_S5, P_S6, P_S11, P_RTSCTS};
   for (unsigned k = 0; k < 7U; k++) r->observed[k] = s->value[idx[k]];
   r->rtscts_number = (s->by_name & (1UL << P_RTSCTS)) ? s->number[P_RTSCTS] : 0U;
-  r->differs_mask = 0;
-  for (unsigned p = 0; p < plan->count; p++) {
-    const rfd_status_t st = reg_status(plan, s, p);
-    if (st == RFD_ST_DIFFERS || st == RFD_ST_UNREAD || st == RFD_ST_NAME_MISMATCH) {
-      r->differs_mask |= (uint32_t)1U << p;
-    }
-  }
 }
 
 static void fmt_write(char *cmd, uint8_t number, uint16_t value)
@@ -570,7 +532,7 @@ static int run_inner(driver_t *d, const rfd_plan_t *plan, rfd_mode_t mode, rfd_g
   if (c.forwarding) r->flags |= RFD_FLAG_FORWARDING | RFD_FLAG_ATTENTION;
   const rfd_map_t source = map_source(c.async_identity, &snap, plan);
   r->map_source = (uint8_t)source;
-  fill_observed(r, plan, &snap);
+  fill_observed(r, &snap);
 
   uint32_t pending = 0;
   bool other_differs = false;
@@ -607,8 +569,6 @@ static int run_inner(driver_t *d, const rfd_plan_t *plan, rfd_mode_t mode, rfd_g
     TRY(command(d, cmd, d->t->command, NULL, NULL));
     const unsigned w = r->write_count++;
     r->write_number[w] = number;
-    r->write_value[w] = value;
-    r->write_accepted[w] = d->ok ? 1U : 0U;
     if (!d->ok) {
       /* ATZ without AT&W reloads EEPROM and discards every RAM change. */
       r->outcome = RFD_OUT_APPLY_FAILED;
@@ -635,7 +595,7 @@ static int run_inner(driver_t *d, const rfd_plan_t *plan, rfd_mode_t mode, rfd_g
   }
   r->data_mode = RFD_DATA_UNKNOWN;
   TRY(read_snapshot(d, plan, &snap));
-  fill_observed(r, plan, &snap);
+  fill_observed(r, &snap);
   bool still = false, unwritten = false;
   for (unsigned p = 0; p < plan->count; p++) {
     const rfd_status_t st = reg_status(plan, &snap, p);
@@ -686,7 +646,6 @@ void rfd_modem_run(const rfd_io_t *io, const rfd_plan_t *plan, rfd_mode_t mode,
   if (out->outcome != RFD_OUT_MATCHED && out->outcome != RFD_OUT_APPLIED) {
     out->flags |= RFD_FLAG_ATTENTION;
   }
-  out->duration_ms = io->now_ms(io->ctx) - d.start;
 }
 
 /* --- flight gate and status block ---------------------------------------- */
@@ -702,16 +661,19 @@ rfd_gate_t rfd_gate_decide(bool restored_known, uint8_t restored_state, bool net
   return rfd_flight_state_safe(network_state) ? RFD_GATE_RUN : RFD_GATE_SKIP;
 }
 
-static uint32_t u16f(int32_t v) { return v == RFD_UNREAD || v < 0 ? 0xFFFFU : (v > 0xFFFE ? 0xFFFEU : (uint32_t)v); }
-static uint32_t u8f(int32_t v) { return v == RFD_UNREAD || v < 0 ? 0xFFU : (v > 0xFE ? 0xFEU : (uint32_t)v); }
+/* Unread (negative) -> all ones; values at or above it -> all ones minus 1. */
+static uint32_t field(int32_t v, uint32_t ones)
+{
+  return v < 0 ? ones : ((uint32_t)v >= ones ? ones - 1U : (uint32_t)v);
+}
 
 void rfd_status_words(const rfd_report_t *r, bool rolled_out, uint32_t words[3])
 {
-  const int32_t rts = r->observed[6];
-  const uint32_t rts_field = (rts == 0 || rts == 1) ? (uint32_t)rts : (rts == RFD_UNREAD ? 3U : 2U);
+  const int32_t *o = r->observed;
+  const uint32_t rts = o[6] < 0 ? 3U : (o[6] > 1 ? 2U : (uint32_t)o[6]);
   words[0] = 1U | ((uint32_t)(r->outcome & 0xFU) << 4) | ((uint32_t)(r->map_source & 3U) << 8) |
-             ((uint32_t)(r->mode & 3U) << 10) | ((rolled_out ? 1U : 0U) << 12) |
-             (rts_field << 13) | ((uint32_t)r->flags << 16) | (u8f(r->observed[3]) << 24);
-  words[1] = u16f(r->observed[1]) | (u16f(r->observed[4]) << 16);
-  words[2] = u16f(r->observed[5]) | (u8f(r->observed[0]) << 16) | (u8f(r->observed[2]) << 24);
+             ((uint32_t)(r->mode & 3U) << 10) | ((rolled_out ? 1U : 0U) << 12) | (rts << 13) |
+             ((uint32_t)r->flags << 16) | (field(o[3], 0xFFU) << 24);
+  words[1] = field(o[1], 0xFFFFU) | (field(o[4], 0xFFFFU) << 16);
+  words[2] = field(o[5], 0xFFFFU) | (field(o[0], 0xFFU) << 16) | (field(o[2], 0xFFU) << 24);
 }

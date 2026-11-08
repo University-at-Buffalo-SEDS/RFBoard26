@@ -50,9 +50,8 @@ extern volatile uint32_t g_flight_state_cache_updates;
 
 /* Read by the simulator from the ELF; also the BOARD_HEALTH block. */
 volatile uint32_t g_rfd_modem_status[3] __attribute__((used, externally_visible));
-/* Radio hold during the check, and boot-to-check wait, in ms. */
+/* Radio hold during the check, in ms. */
 volatile uint32_t g_rfd_modem_hold_ms __attribute__((used, externally_visible));
-volatile uint32_t g_rfd_modem_wait_ms __attribute__((used, externally_visible));
 static uint8_t g_rfd_saved_this_boot;
 
 static uint32_t now_ms(void *ctx)
@@ -103,7 +102,6 @@ static uint8_t g_port_state;
 static bool g_restored_known;
 static uint8_t g_restored;
 static uint32_t g_updates_at_boot;
-static uint32_t g_wait_started_ms;
 
 static void finish(const rfd_report_t *report)
 {
@@ -126,7 +124,6 @@ void rfd_modem_port_poll(void (*service)(void))
     g_restored_known = flight_state_cache_has_value();
     g_restored = flight_state_cache_value();
     g_updates_at_boot = g_flight_state_cache_updates;
-    g_wait_started_ms = now_ms(NULL);
     report.flags = RFD_FLAG_PENDING;
     publish(&report);
     g_port_state = PORT_WAITING;
@@ -143,7 +140,6 @@ void rfd_modem_port_poll(void (*service)(void))
   /* A TX DMA in flight: take the UART on a later pass. */
   if (!radio_uart_set_modem_hold(1U)) return;
   const uint32_t hold_start = now_ms(NULL);
-  g_rfd_modem_wait_ms = hold_start - g_wait_started_ms;
   g_service = service;
   rfd_plan_t plan;
   const rfd_profile_values_t values = {
