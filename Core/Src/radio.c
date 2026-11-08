@@ -305,6 +305,8 @@ static uint32_t g_tx_dma_ack_offset_ms;
 static uint8_t g_tx_dma_ack_frames;
 static volatile uint32_t g_tx_dma_started_at_ms = 0U;
 static volatile uint32_t g_tx_quiet_until_ms = 0U;
+/* Startup modem check owns the UART: no frame TX, and RX bytes go to it. */
+static volatile uint8_t g_radio_modem_hold;
 static volatile uint8_t g_tx_air_budget_active;
 #if !RFBOARD_LORA_SCHEDULER
 static volatile uint8_t g_tx_independent_streak;
@@ -1625,7 +1627,7 @@ HAL_StatusTypeDef radio_uart_send_command_frame(const uint8_t *bytes, size_t len
     g_tx_startup_drops++;
     return HAL_BUSY;
   }
-  if (!radio_e22_ready_for_uart()) {
+  if (g_radio_modem_hold || !radio_e22_ready_for_uart()) {
     return HAL_BUSY;
   }
   if (radio_uart_air_busy()) {
@@ -1666,6 +1668,7 @@ HAL_StatusTypeDef radio_uart_send_command_frame(const uint8_t *bytes, size_t len
 
 uint32_t radio_uart_process_tx(void)
 {
+  if (g_radio_modem_hold) return 0U; /* the modem check owns the UART */
   return radio_uart_process_tx_with_budget(0xFFFFFFFFUL);
 }
 
@@ -2191,6 +2194,7 @@ static inline uint8_t radio_rx_ring_pop_thread(radio_rx_item_t *out)
 void radio_uart_process_rx(void)
 {
   uint32_t processed = 0U;
+  if (g_radio_modem_hold) return;
   radio_uart_sample_rx_pin();
   radio_uart_recover_rx_if_needed();
 
@@ -2293,6 +2297,51 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
   /* HAL has completed its error callback before the service loop rearms RX.
    * A one-shot rearm here can fail while the UART/DMA lock is still busy. */
   g_rx_restart_pending = 1U;
+}
+
+/* Startup modem check (rfd_modem_port.c). While held, queued frames wait
+ * (and age out as on a busy link) and the modem check owns RX and TX. */
+static void radio_rx_ring_clear(void)
+{
+  __disable_irq();
+  g_rx_head = g_rx_tail;
+  g_rx_count = 0U;
+  __enable_irq();
+}
+
+uint8_t radio_uart_set_modem_hold(uint8_t on)
+{
+  if (!g_huart) return 0U;
+  if (on && g_tx_dma_busy) return 0U;
+  g_radio_modem_hold = on ? 1U : 0U;
+  radio_rx_ring_clear();
+  g_frame_len = 0U;
+  g_partial_frame_waiting = 0U;
+  return 1U;
+}
+
+int radio_uart_modem_write(const uint8_t *bytes, size_t len)
+{
+  if (!g_huart || !g_radio_modem_hold || g_tx_dma_busy) return -1;
+  if (len > 64U) len = 64U;
+  /* Polled TX of a short AT command; circular RX DMA stays armed. */
+  return HAL_UART_Transmit(g_huart, (uint8_t *)bytes, (uint16_t)len, 50U) == HAL_OK
+             ? (int)len : -1;
+}
+
+int radio_uart_modem_read(uint8_t *buf, size_t cap)
+{
+  if (!g_radio_modem_hold) return -1;
+  radio_uart_recover_rx_if_needed();
+  size_t n = 0U;
+  __disable_irq();
+  while (n < cap && g_rx_count > 0U) {
+    buf[n++] = g_rx_ring[g_rx_head];
+    g_rx_head = (radio_rx_index_t)((g_rx_head + 1U) % RADIO_UART_RX_RING_BYTES);
+    g_rx_count--;
+  }
+  __enable_irq();
+  return (int)n;
 }
 
 uint32_t board_health_uart_rx_drops(void) { return g_rx_isr_drops; }

@@ -437,6 +437,10 @@ class BuildConfig:
     radio_mode: str = "rfd"
     rfd_profile: Optional[Path] = None
     watchdog: bool = True
+    # Startup RFD modem check: default (fix; skip for simulator builds),
+    # skip, verify or fix. Always passed so a stale cache cannot survive.
+    rfd_modem_check: str = "default"
+    rfd_profile_rolled_out: bool = False
 
     @property
     def build_dir(self) -> Path:
@@ -513,6 +517,10 @@ def configure_and_build(ui: UI, cfg: BuildConfig, target: str | None = None) -> 
     except (ValueError, OSError) as error:
         raise FriendlyError(f"Invalid RFD profile: {error}") from error
     ui.say("info", f"Radio mode: {cfg.radio_mode}; {radio_mode_flag}")
+    profile_flags += [
+        f"-DRFD_MODEM_CHECK={cfg.rfd_modem_check.upper()}",
+        f"-DRFD_PROFILE_ROLLED_OUT={'ON' if cfg.rfd_profile_rolled_out else 'OFF'}",
+    ]
     simulation_flag = (
         "-DSEDS_FIRMWARE_SIM_TEST=ON"
         if os.environ.get("SEDS_FIRMWARE_SIM_TEST") == "1"
@@ -932,7 +940,13 @@ def make_parser() -> argparse.ArgumentParser:
         sp.add_argument("--radio-mode", choices=["rfd", "lora"], default="rfd",
                         help="Radio mode (default: rfd); only lora enables legacy airtime windows and AUX gating.")
         sp.add_argument("--rfd-profile", type=Path,
-                        help="Shared matched ASYNC modem/application profile JSON; does not configure the modem.")
+                        help="Shared matched ASYNC modem/application profile JSON.")
+        sp.add_argument("--rfd-modem-check", choices=["default", "skip", "verify", "fix"],
+                        default="default",
+                        help="Startup check of this board's RFD modem against the profile "
+                             "(default: fix; skip when SEDS_FIRMWARE_SIM_TEST=1).")
+        sp.add_argument("--rfd-profile-rolled-out", action="store_true",
+                        help="The profile is set on GS, RRLS and RF: allow writing link-wide registers.")
         sp.add_argument("--sedsnet-ref", choices=["main", "dev"], default=None,
                         help="SEDSnet branch; current remote commit is fetched, with offline fallback.")
         sp.add_argument("--no-telemetry", action="store_true", help="Configure with -DENABLE_TELEMETRY=OFF")
@@ -1016,6 +1030,8 @@ def build_cfg_from_args(ui: UI, args: argparse.Namespace) -> BuildConfig:
         sedsnet_ref=args.sedsnet_ref or "main",
         radio_mode=args.radio_mode,
         rfd_profile=args.rfd_profile,
+        rfd_modem_check=getattr(args, "rfd_modem_check", "default"),
+        rfd_profile_rolled_out=getattr(args, "rfd_profile_rolled_out", False),
         allocator=args.allocator,
         generator=args.generator,
         toolchain_file=toolchain,

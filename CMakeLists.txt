@@ -62,7 +62,21 @@ if(NOT RFBOARD_LORA_SCHEDULER AND NOT "${RFD_PROFILE_FILE}" STREQUAL "")
         string(JSON RFD_VALUE GET "${RFD_PROFILE_JSON}" cmake "${RFD_KEY}")
         set(${RFD_KEY} "${RFD_VALUE}" CACHE STRING "Selected RFD profile value" FORCE)
     endforeach()
+    # Modem registers the startup modem check enforces on this board's modem.
+    foreach(RFD_KEY serial_baud air_bps max_data_bytes max_retries broadcast_retries
+            serial_break_ms tx_encapsulation rx_encapsulation)
+        string(JSON RFD_VALUE GET "${RFD_PROFILE_JSON}" desired_public_modem_settings "${RFD_KEY}")
+        string(TOUPPER "${RFD_KEY}" RFD_UPPER)
+        list(APPEND RFD_PROFILE_MODEM_DEFINES "RFD_PROFILE_${RFD_UPPER}=${RFD_VALUE}U")
+    endforeach()
 endif()
+# Startup RFD modem check (docs: GroundStation26 docs/backend/rfd-modem-check.md).
+# DEFAULT is fix for operational builds and skip for simulator builds.
+set(RFD_MODEM_CHECK "DEFAULT" CACHE STRING "Startup RFD modem check: DEFAULT, SKIP, VERIFY or FIX")
+set_property(CACHE RFD_MODEM_CHECK PROPERTY STRINGS DEFAULT SKIP VERIFY FIX)
+# ON only after the selected profile is set on GS, RRLS and RF: then RF may
+# write the link-wide registers (S3, S4, S5, S7, S8).
+option(RFD_PROFILE_ROLLED_OUT "Selected RFD profile is rolled out to all three modems" OFF)
 message("Build type: " ${CMAKE_BUILD_TYPE})
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   # Global LTO (Release)
@@ -97,6 +111,32 @@ foreach(RADIO_PROFILE_KEY RADIO_AIR_BIT_RATE_BPS RADIO_AIR_SHARE_PERCENT
 endforeach()
 option(SEDS_FIRMWARE_SIM_TEST
     "Seed deterministic external time for linked firmware qualification" OFF)
+if(SEDS_FIRMWARE_SIM_TEST)
+    set(RFD_MODEM_CHECK_DEFAULT SKIP)
+else()
+    set(RFD_MODEM_CHECK_DEFAULT FIX)
+endif()
+string(TOUPPER "${RFD_MODEM_CHECK}" RFD_MODEM_CHECK_SELECTED)
+if(RFD_MODEM_CHECK_SELECTED STREQUAL "DEFAULT")
+    set(RFD_MODEM_CHECK_SELECTED "${RFD_MODEM_CHECK_DEFAULT}")
+endif()
+if(RFD_MODEM_CHECK_SELECTED STREQUAL "SKIP")
+    set(RFD_MODEM_CHECK_MODE 0)
+elseif(RFD_MODEM_CHECK_SELECTED STREQUAL "VERIFY")
+    set(RFD_MODEM_CHECK_MODE 1)
+elseif(RFD_MODEM_CHECK_SELECTED STREQUAL "FIX")
+    set(RFD_MODEM_CHECK_MODE 2)
+else()
+    message(FATAL_ERROR "RFD_MODEM_CHECK must be DEFAULT, SKIP, VERIFY or FIX")
+endif()
+if(RFBOARD_LORA_SCHEDULER)
+    set(RFD_MODEM_CHECK_MODE 0)
+endif()
+message(STATUS "RFD modem check: ${RFD_MODEM_CHECK_SELECTED} (rolled out: ${RFD_PROFILE_ROLLED_OUT})")
+target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
+    RFD_MODEM_CHECK_MODE=${RFD_MODEM_CHECK_MODE}
+    RFD_PROFILE_ROLLED_OUT=$<BOOL:${RFD_PROFILE_ROLLED_OUT}>
+    ${RFD_PROFILE_MODEM_DEFINES})
 if(SEDS_FIRMWARE_SIM_TEST)
     # Inactive allocator probes are read-only zeroes in TLSF builds; LTO
     # still needs explicit roots so the debugger can resolve their symbols.
@@ -133,6 +173,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_hooks.c>"
     "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_thread.c>"
     "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry.c>"
+    "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/rfd_modem.c>"
+    "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/rfd_modem_port.c>"
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_rate.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/av_bay_underglow.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/flight_state_cache.c

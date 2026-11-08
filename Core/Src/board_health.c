@@ -2,6 +2,7 @@
 #include "board_temperature.h"
 #include "board_uptime.h"
 #include "board_watchdog.h"
+#include "rfd_modem_port.h"
 #include "telemetry.h"
 #include "main.h"
 #include <stdint.h>
@@ -45,6 +46,12 @@ void board_health_poll(SedsRouter *router)
   /* RF-only tagged block in words otherwise used for SD/ADC; flags 16/32/128 stay clear. */
   board_health_radio_tx_timing(&words[16]);
   __set_PRIMASK(saved);
+  /* RF-only RFD modem check result in words 13/15/22; flags 4/32/64 stay clear. */
+  {
+    uint32_t modem[3];
+    rfd_modem_port_status_words(modem);
+    words[13] = modem[0]; words[15] = modem[1]; words[22] = modem[2];
+  }
   words[11] = (uint32_t)seds_memory_admission_rejected();
   words[23] = failures;
   words[1] |= board_temperature_health_flags();

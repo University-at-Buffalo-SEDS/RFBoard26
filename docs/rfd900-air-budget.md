@@ -95,3 +95,17 @@ delivered in order and no FIFO loss. A permanent negative control disables only
 the boundary and reproduces 5.11 seconds. The fixture also runs against Renode's
 actual virtual clock. These raw transport checks complement the real Mesh/SDK
 reliable-command campaign; they do not replace physical command/receipt tests.
+
+## Startup modem check
+
+Once per boot the board checks its own RFD900x against
+`config/rfd-profile.json` and repairs local drift (S6, S11, S13, RTSCTS),
+matching registers by the names the modem reports in `ATI5`. It runs when the
+first FLIGHT_STATE received after boot is Startup, Idle, PreFill or FillTest,
+never after a restored flight phase, and holds the radio only for the check
+itself (about 3 s, about 11 s if it writes, at most 40 s). Link-wide registers
+are written only with `--rfd-profile-rolled-out`. Select the mode with
+`build.py build --rfd-modem-check default|skip|verify|fix` (default: fix;
+skip for `SEDS_FIRMWARE_SIM_TEST=1`). The result is in BOARD_HEALTH words 13,
+15 and 22 and is shown in the ground station's Connectivity → Radio modem
+card. Details: GroundStation26 `docs/backend/rfd-modem-check.md`, phase 2.

@@ -88,6 +88,11 @@ uint8_t radio_uart_current_rx_is_command_frame(void);
 /* Subscribe a callback that is invoked from radio_uart_process_rx() in thread context. */
 HAL_StatusTypeDef radio_uart_subscribe_rx(radio_rx_cb_t cb, void *user);
 void radio_uart_process_rx(void);
+/* Startup modem check: hold frame TX/RX so the check owns the modem UART.
+ * Returns 0 if a TX DMA is in flight. Read/write return < 0 unless held. */
+uint8_t radio_uart_set_modem_hold(uint8_t on);
+int radio_uart_modem_write(const uint8_t *bytes, size_t len);
+int radio_uart_modem_read(uint8_t *buf, size_t cap);
 /* Optional unsubscribe. */
 HAL_StatusTypeDef radio_uart_unsubscribe_rx(radio_rx_cb_t cb, void *user);
 

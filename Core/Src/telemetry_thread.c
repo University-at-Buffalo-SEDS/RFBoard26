@@ -8,6 +8,7 @@
 #include "can_bus.h"
 #include "radio.h"
 #include "main.h"
+#include "rfd_modem_port.h"
 #include <stdio.h>
 
 TX_THREAD telemetry_thread;
@@ -144,6 +145,8 @@ static void telemetry_update_stack_profile(void)
     }
 }
 
+static void telemetry_service_without_radio(void);
+
 void telemetry_thread_entry(ULONG initial_input)
 {
     (void)initial_input;
@@ -164,6 +167,9 @@ void telemetry_thread_entry(ULONG initial_input)
     g_telemetry_init_result = (int32_t)init_telemetry_router();
     g_telemetry_init_stage = 3U;
     for (;;) {
+        /* Once per boot: check and repair this board's RFD modem when the
+         * first FLIGHT_STATE allows it (bounded; never in flight states). */
+        rfd_modem_port_poll(telemetry_service_without_radio);
         board_watchdog_progress(BOARD_WATCHDOG_NETWORK);
         telemetry_update_stack_profile();
         const uint64_t now_ms = radio_window_now_ms();
@@ -196,6 +202,20 @@ void telemetry_thread_entry(ULONG initial_input)
 
         // HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
     }
+}
+
+/* One loop pass without the radio, for the startup modem check: CAN,
+ * routing, time sync and the watchdog keep running while it owns the UART. */
+static void telemetry_service_without_radio(void)
+{
+    board_watchdog_progress(BOARD_WATCHDOG_NETWORK);
+    telemetry_update_stack_profile();
+    can_bus_process_rx();
+    (void)telemetry_poll_discovery();
+    (void)process_all_queues_timeout(TELEMETRY_QUEUE_BUDGET_MS);
+    (void)telemetry_poll_timesync();
+    g_telemetry_loop_completions++;
+    tx_thread_sleep(TELEMETRY_THREAD_SLEEP_TICKS);
 }
 
 UINT create_telemetry_thread(TX_BYTE_POOL *byte_pool)

@@ -37,6 +37,7 @@ uint32_t board_health_can_rx_drops(void){return 31;}
 uint32_t board_health_uart_rx_drops(void){return 32;}
 void board_health_radio_tx_timing(uint32_t w[6]){assert(mask);w[0]=0x31544652U;w[1]=41;w[2]=42;w[3]=43;w[4]=44;w[5]=45;}
 uint32_t board_health_adc_overruns(void){return 33;}
+void rfd_modem_port_status_words(uint32_t w[3]){w[0]=0x0a041021U;w[1]=0x00320f80U;w[2]=0x0a408000U;}
 size_t seds_memory_admission_rejected(void){return 34;}
 void telemetry_lock(void){assert(!mask);++lock_depth;}
 void telemetry_unlock(void){assert(lock_depth==1);--lock_depth;}
@@ -59,7 +60,10 @@ int main(void){
  assert(calls==2&&captured[23]==1&&captured[0]==1&&captured[4]==1000);
  assert(captured[5]==123&&captured[6]==5&&captured[11]==34&&captured[12]==31);
  assert(captured[16]==0x31544652U&&captured[17]==41&&captured[18]==42&&captured[19]==43&&captured[20]==44&&captured[21]==45);
- assert(!(captured[1]&(16U|32U|128U))&&!captured[22]); /* tagged RF block never claims SD/ADC fields */
+ assert(!(captured[1]&(16U|32U|128U))); /* tagged RF block never claims SD/ADC fields */
+ /* RFD modem check block in words 13/15/22; flags 4/32/64 that own them elsewhere stay clear. */
+ assert(captured[13]==0x0a041021U&&captured[15]==0x00320f80U&&captured[22]==0x0a408000U);
+ assert(!(captured[1]&(4U|32U|64U)));
 #ifdef TELEMETRY_USE_TLSF
  assert((captured[1]&1)&&captured[7]==100&&captured[8]==200&&captured[9]==4096&&captured[10]==7);
 #else
