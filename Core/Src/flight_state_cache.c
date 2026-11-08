@@ -22,6 +22,7 @@ volatile uint32_t g_flight_state_cache_restores __attribute__((used, externally_
 volatile uint32_t g_flight_state_cache_writes __attribute__((used, externally_visible)) = 0U;
 volatile uint32_t g_flight_state_cache_updates __attribute__((used, externally_visible)) = 0U;
 volatile uint32_t g_flight_state_cache_errors __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_flight_state_cache_reports_ignored __attribute__((used, externally_visible)) = 0U;
 
 static bool g_restore_attempted;
 static bool g_persist_ready;
@@ -44,6 +45,16 @@ static SedsResult clear_managed_cache(void)
 #endif
 
 #ifdef TELEMETRY_ENABLED
+/* Nonzero for a well-formed report that is not a station write (this board's
+ * own FLIGHT_STATE or the FC's). board_recovery_transport.c owns the
+ * definition; isolated harnesses keep the strict default. */
+__attribute__((weak)) uint8_t
+board_recovery_managed_report_ignorable(const SedsPacketView *packet)
+{
+    (void)packet;
+    return 0U;
+}
+
 __attribute__((weak)) SedsResult
 flight_state_cache_apply_network_update(const SedsPacketView *packet)
 {
@@ -148,6 +159,14 @@ static SedsResult persist_update(const SedsPacketView *packet, void *user)
 
     if (!board_recovery_managed_update_allowed(packet)) {
         (void)clear_managed_cache();
+        /* The SDK runs this callback inside every relay of the FC's
+         * FLIGHT_STATE report. Failing a report that is not a station write
+         * aborted the relay, so the GS never saw an FC flight state. Ignore
+         * it without applying. */
+        if (board_recovery_managed_report_ignorable(packet)) {
+            ++g_flight_state_cache_reports_ignored;
+            return SEDS_OK;
+        }
         ++g_flight_state_cache_errors;
         return SEDS_HANDLER_ERROR;
     }

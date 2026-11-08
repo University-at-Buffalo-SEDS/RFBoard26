@@ -31,6 +31,16 @@ uint8_t board_recovery_managed_update_allowed(const SedsPacketView *packet)
  return recovery_router!=0 && authorized_primary(recovery_router,packet) &&
         !board_recovery_command_is_stale(packet);
 }
+/* A well-formed FLIGHT_STATE whose sender is not the primary station is a
+ * state report (this board's own, or the FC's that the station follows),
+ * never a desired-state write: callers ignore it instead of failing SDK
+ * delivery or relay. */
+uint8_t board_recovery_managed_report_ignorable(const SedsPacketView *packet)
+{
+ return packet!=NULL && packet->ty==SEDS_DT_FLIGHT_STATE && recovery_router!=NULL &&
+        packet->sender!=NULL && packet->sender_len!=0U &&
+        !authorized_primary(recovery_router,packet);
+}
 uint8_t board_recovery_automatic_is_stale(const SedsPacketView *packet)
 {
  return board_recovery_command_is_stale(packet);
