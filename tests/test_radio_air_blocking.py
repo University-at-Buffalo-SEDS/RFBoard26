@@ -30,7 +30,7 @@ class RadioAirBlockingTests(unittest.TestCase):
     def test_profile_disabled_defaults_preserve_both_transports(self):
         radio=(ROOT/'Core/Src/radio.c').read_text()
         defines='\n'.join(default_block(radio,name) for name in ['RADIO_AIR_BIT_RATE_BPS','RADIO_AIR_SHARE_PERCENT'])
-        for scheduler,rate,share in [(0,32000,35),(1,64000,40)]:
+        for scheduler,rate,share in [(0,30000,100),(1,64000,40)]:
             with self.subTest(scheduler=scheduler), tempfile.TemporaryDirectory() as d:
                 exe=str(Path(d)/'defaults')
                 code=f'#define RFBOARD_LORA_SCHEDULER {scheduler}\n'+defines+f'\n_Static_assert(RADIO_AIR_BIT_RATE_BPS=={rate}, "air default");\n_Static_assert(RADIO_AIR_SHARE_PERCENT=={share}, "share default");\nint main(void){{return 0;}}'

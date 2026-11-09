@@ -7,9 +7,9 @@ MODEM = {'serial_baud', 'air_bps', 'max_data_bytes', 'max_retries', 'broadcast_r
          'serial_break_ms', 'tx_encapsulation', 'rx_encapsulation'}
 TRANSPORT = {'usable_air_bps', 'frame_overhead_bytes', 'packet_burst_ms', 'packet_gap_ms',
              'idle_margin_ms', 'rf_share_percent', 'host_default_share_percent'}
-DEFAULTS = {'RADIO_AIR_BIT_RATE_BPS': 32000, 'RADIO_AIR_SHARE_PERCENT': 35,
-            'RADIO_AIR_FRAME_OVERHEAD_BYTES': 16, 'RADIO_PACKET_BURST_MS': 100,
-            'RADIO_PACKET_GAP_MS': 55}
+DEFAULTS = {'RADIO_AIR_BIT_RATE_BPS': 30000, 'RADIO_AIR_SHARE_PERCENT': 100,
+            'RADIO_AIR_FRAME_OVERHEAD_BYTES': 16, 'RADIO_PACKET_BURST_MS': 250,
+            'RADIO_PACKET_GAP_MS': 15}
 
 
 def load(path):
@@ -34,8 +34,9 @@ def load(path):
         raise ValueError('Invalid transport capacity')
     if t['usable_air_bps'] * (1 + m['broadcast_retries']) > m['air_bps']:
         raise ValueError('Usable air rate exceeds what the air carries with every broadcast copy')
-    if t['rf_share_percent'] + max(2 * t['host_default_share_percent'], 50) > 100:
-        raise ValueError('RF and host base shares exceed the shared link')
+    # The modem arbitrates the air itself (ASYNC, LBT, its own copies); host
+    # pacing only keeps its 4 KiB buffer from overflowing, so each host may
+    # pace up to the whole usable rate and the shares need not partition it.
     if not 5 <= t['idle_margin_ms'] <= 100 or t['packet_gap_ms'] < m['serial_break_ms'] + t['idle_margin_ms']:
         raise ValueError('UART idle gap must exceed serial break with a guard margin')
     if (m['serial_baud'] * t['packet_burst_ms'] + 9999) // 10000 + 1028 > m['max_data_bytes']:

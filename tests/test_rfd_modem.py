@@ -7,6 +7,7 @@ that the startup wiring keeps the check skippable and bounded.
 """
 
 import json
+import sys
 import re
 import subprocess
 import tempfile
@@ -47,7 +48,7 @@ class RfdModemCheckTests(unittest.TestCase):
         modem = json.loads(profile)["modem"]
         self.assertEqual(
             (modem["max_data_bytes"], modem["max_retries"], modem["broadcast_retries"],
-             modem["serial_break_ms"]), (3968, 10, 1, 50))
+             modem["serial_break_ms"]), (3968, 10, 1, 10))
         # Byte-identical to the GS embedded default when a sibling checkout exists.
         sibling = ROOT.parent / "GroundStation26/backend/comms/rfd-profile.json"
         if sibling.is_file():
@@ -66,6 +67,103 @@ class RfdModemCheckTests(unittest.TestCase):
             rc = subprocess.run([sys.executable, str(ROOT / "scripts/rfd_profile.py"), "--profile", f.name],
                                 capture_output=True).returncode
             self.assertEqual(rc == 0, ok, value["modem"])
+
+    def test_default_profile_paces_rf_at_the_modem_drain_rate(self):
+        # The modem arbitrates the air (ASYNC, LBT, its own copies): RF pacing
+        # only keeps the 4 KiB modem buffer from overflowing, so RF may use
+        # the whole serial-to-air drain rate, not a fixed share of it.
+        sys.path.insert(0, str(ROOT))
+        from scripts import rfd_profile
+        values = rfd_profile.cmake_values(ROOT / "config/rfd-profile.json")
+        modem = json.loads((ROOT / "config/rfd-profile.json").read_text())["modem"]
+        drain = modem["air_bps"] // (1 + modem["broadcast_retries"])
+        self.assertEqual(values["RADIO_AIR_SHARE_PERCENT"], 100)
+        self.assertLessEqual(values["RADIO_AIR_BIT_RATE_BPS"], drain)
+        self.assertGreaterEqual(values["RADIO_AIR_BIT_RATE_BPS"], drain * 8 // 10)
+
+    def test_heard_air_is_charged_to_rf_pacing_at_most_sixty_percent(self):
+        # Every modem shares one half-duplex channel; RF paces its UART just
+        # under one modem's drain rate. Air RF hears from GS and RRLS is
+        # charged to RF's pacing (at most 60% of it) so both busy hosts stay
+        # under the drain and neither modem's 4 KiB buffer overflows.
+        radio = (ROOT / "Core/Src/radio.c").read_text()
+        start = radio.index("#define RADIO_HEARD_AIR_MAX_PERCENT")
+        end = radio.index("#endif", radio.index("static void radio_uart_note_heard_air(uint32_t bytes)\n{"))
+        self.assertIn("radio_uart_note_heard_air(item.len);", radio)
+        harness = """
+#include <stdint.h>
+#include <stdio.h>
+#define RADIO_AIR_BIT_RATE_BPS 30000U
+#define RADIO_AIR_SHARE_PERCENT 100U
+#define __disable_irq() ((void)0)
+#define __enable_irq() ((void)0)
+static uint32_t g_now;
+static uint32_t radio_now_ms(void) { return g_now; }
+static volatile uint32_t g_tx_quiet_until_ms;
+static volatile uint8_t g_tx_air_budget_active;
+static uint32_t radio_uart_air_ms(uint16_t len) { return (uint32_t)(((uint64_t)len + 16U) * 8000U / 30000U); }
+""" + radio[start:end] + """
+int main(void) {
+  /* One 200-byte packet heard: (200 + 16) * 8 / 30000 s = 57.6 ms. */
+  g_now = 1000U; radio_uart_note_heard_air(200U);
+  printf("%u\\n", (unsigned)(g_tx_quiet_until_ms - g_now));
+  /* A neighbour using the whole channel for 10 s: RF is charged 60%. */
+  g_tx_quiet_until_ms = 0U; g_tx_air_budget_active = 0U;
+  uint32_t charged = 0U;
+  for (g_now = 5000U; g_now < 15000U; g_now += 10U) {
+    const uint32_t before = g_tx_air_budget_active && (int32_t)(g_tx_quiet_until_ms - g_now) > 0 ?
+        g_tx_quiet_until_ms : g_now;
+    radio_uart_note_heard_air(38U);
+    charged += g_tx_quiet_until_ms - before;
+  }
+  printf("%u\\n", (unsigned)charged);
+  return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as d:
+            exe = str(Path(d) / "heard")
+            subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-x", "c", "-", "-o", exe],
+                           input=harness, text=True, check=True)
+            one, saturated = [int(v) for v in subprocess.run([exe], capture_output=True, text=True,
+                                                             check=True).stdout.split()]
+        self.assertIn(one, (57, 58))
+        self.assertGreaterEqual(saturated, 5_500)
+        self.assertLessEqual(saturated, 6_200)
+
+    def test_pacing_follows_the_modems_actual_global_retries(self):
+        # Bench: the modem still read S5=10 (eleven air copies) while the
+        # profile paces for S5=1; RF must pace for what the air carries.
+        radio = (ROOT / "Core/Src/radio.c").read_text()
+        start = radio.index("static uint32_t radio_uart_air_ms(uint16_t len)\n{")
+        end = radio.index("\n}\n", start) + 3
+        harness = """
+#include <stdint.h>
+#include <stdio.h>
+#define RFBOARD_LORA_SCHEDULER 0
+#define RADIO_AIR_BIT_RATE_BPS 30000U
+#define RADIO_AIR_SHARE_PERCENT 100U
+#define RADIO_AIR_FRAME_OVERHEAD_BYTES 16U
+#define RFD_PROFILE_AIR_BPS 64000U
+volatile uint32_t g_rfd_modem_status[3];
+""" + radio[start:end] + """
+int main(void) {
+  /* 984 + 16 bytes: 266 ms at 30000 bit/s, 1463 ms at 5469 bit/s. */
+  printf("%u ", (unsigned)radio_uart_air_ms(984U));           /* no readback */
+  g_rfd_modem_status[0] = 1U | (1U << 24);                    /* S5=1 */
+  printf("%u ", (unsigned)radio_uart_air_ms(984U));
+  g_rfd_modem_status[0] = 1U | (10U << 24);                   /* S5=10 */
+  printf("%u ", (unsigned)radio_uart_air_ms(984U));
+  g_rfd_modem_status[0] = 1U | (0xFFU << 24);                 /* unread */
+  printf("%u", (unsigned)radio_uart_air_ms(984U));
+  return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as d:
+            exe = str(Path(d) / "paced")
+            subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-x", "c", "-", "-o", exe],
+                           input=harness, text=True, check=True)
+            out = subprocess.run([exe], capture_output=True, text=True, check=True).stdout.split()
+        self.assertEqual([int(v) for v in out], [267, 267, 1463, 267])
 
     def test_default_build_applies_the_checked_in_profile(self):
         # The checked-in profile is the deployed configuration of all three

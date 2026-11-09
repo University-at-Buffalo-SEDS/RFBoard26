@@ -34,14 +34,14 @@ if(RFBOARD_LORA_SCHEDULER)
     set(RADIO_AIR_BIT_RATE_DEFAULT "64000")
     set(RADIO_AIR_SHARE_DEFAULT "40")
 else()
-    set(RADIO_AIR_BIT_RATE_DEFAULT "32000")
-    set(RADIO_AIR_SHARE_DEFAULT "35")
+    set(RADIO_AIR_BIT_RATE_DEFAULT "30000")
+    set(RADIO_AIR_SHARE_DEFAULT "100")
 endif()
 set(RADIO_AIR_BIT_RATE_BPS "${RADIO_AIR_BIT_RATE_DEFAULT}" CACHE STRING "Usable RFD air capacity envelope")
 set(RADIO_AIR_SHARE_PERCENT "${RADIO_AIR_SHARE_DEFAULT}" CACHE STRING "RF share of usable radio capacity")
 set(RADIO_AIR_FRAME_OVERHEAD_BYTES "16" CACHE STRING "Conservative air framing overhead")
-set(RADIO_PACKET_BURST_MS "100" CACHE STRING "Maximum UART packet collection interval")
-set(RADIO_PACKET_GAP_MS "55" CACHE STRING "UART packetization idle boundary")
+set(RADIO_PACKET_BURST_MS "250" CACHE STRING "Maximum UART packet collection interval")
+set(RADIO_PACKET_GAP_MS "15" CACHE STRING "UART packetization idle boundary")
 # Read the checked-in profile on every configure, including rebuilds triggered
 # directly through CMake. FORCE prevents a stale custom profile's short gap from
 # surviving a return to the compatible profile. This never programs a modem.

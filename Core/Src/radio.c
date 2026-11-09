@@ -103,10 +103,10 @@ _Static_assert(RADIO_UART_TX_QUEUE_SLOTS > RADIO_UART_TX_CONTROL_RESERVE_SLOTS,
 /* Async transparent modems may wait for a serial idle boundary before
  * emitting a short packet. This is independent of LoRa MAC/AUX gating. */
 #ifndef RADIO_PACKET_GAP_MS
-#define RADIO_PACKET_GAP_MS 55U
+#define RADIO_PACKET_GAP_MS 15U
 #endif
 #ifndef RADIO_PACKET_BURST_MS
-#define RADIO_PACKET_BURST_MS 100U
+#define RADIO_PACKET_BURST_MS 250U
 #endif
 #if RADIO_PACKET_GAP_MS > 1000U || RADIO_PACKET_BURST_MS > 500U
 #error "RFD packet gap/burst bounds exceed supported ranges"
@@ -116,7 +116,7 @@ _Static_assert(RADIO_UART_TX_QUEUE_SLOTS > RADIO_UART_TX_CONTROL_RESERVE_SLOTS,
 #if RFBOARD_LORA_SCHEDULER
 #define RADIO_AIR_BIT_RATE_BPS 64000U
 #else
-#define RADIO_AIR_BIT_RATE_BPS 32000U
+#define RADIO_AIR_BIT_RATE_BPS 30000U
 #endif
 #endif
 
@@ -124,7 +124,7 @@ _Static_assert(RADIO_UART_TX_QUEUE_SLOTS > RADIO_UART_TX_CONTROL_RESERVE_SLOTS,
 #if RFBOARD_LORA_SCHEDULER
 #define RADIO_AIR_SHARE_PERCENT 40U
 #else
-#define RADIO_AIR_SHARE_PERCENT 35U
+#define RADIO_AIR_SHARE_PERCENT 100U
 #endif
 #endif
 
@@ -589,6 +589,9 @@ static uint32_t radio_uart_queue_index_at_offset(uint32_t offset) {
 
 static uint32_t radio_uart_air_ms(uint16_t len);
 static uint32_t radio_now_ms(void);
+#if !RFBOARD_LORA_SCHEDULER
+static void radio_uart_note_heard_air(uint32_t bytes);
+#endif
 static uint8_t radio_uart_independent_control(const uint8_t *data, uint16_t len,
                                              uint8_t priority);
 
@@ -1085,13 +1088,64 @@ static uint32_t radio_now_ms(void)
                     (uint64_t)TX_TIMER_TICKS_PER_SECOND);
 }
 
+#if !RFBOARD_LORA_SCHEDULER
+/* All modems share one half-duplex channel and each host paces only its own
+ * UART, just under one modem's drain rate. Air this board hears from other
+ * modems is charged to its own pacing, so busy hosts together stay under the
+ * drain and the 4 KiB modem buffer (no RTS/CTS) cannot overflow. Heard air
+ * takes at most RADIO_HEARD_AIR_MAX_PERCENT of the pacing, so a busy
+ * neighbour never starves this board. Same rule as the GroundStation. */
+#define RADIO_HEARD_AIR_MAX_PERCENT 60U
+#define RADIO_HEARD_CREDIT_MAX_US 150000U
+static uint32_t g_heard_credit_us = RADIO_HEARD_CREDIT_MAX_US;
+static uint32_t g_heard_pending_us;
+static uint32_t g_heard_at_ms;
+
+static void radio_uart_note_heard_air(uint32_t bytes)
+{
+  const uint32_t now = radio_now_ms();
+  uint64_t credit = (uint64_t)g_heard_credit_us +
+      (uint64_t)(now - g_heard_at_ms) * (10U * RADIO_HEARD_AIR_MAX_PERCENT);
+  g_heard_at_ms = now;
+  if (credit > RADIO_HEARD_CREDIT_MAX_US) credit = RADIO_HEARD_CREDIT_MAX_US;
+  /* Air time those bytes held at this board's pacing rate, with one frame
+   * overhead per received burst. */
+  uint64_t cost_us = (uint64_t)radio_uart_air_ms((uint16_t)(bytes > 0xFFFFU ? 0xFFFFU : bytes)) * 1000ULL;
+  if (cost_us > credit) cost_us = credit;
+  g_heard_credit_us = (uint32_t)(credit - cost_us);
+  g_heard_pending_us += (uint32_t)cost_us;
+  const uint32_t ms = g_heard_pending_us / 1000U;
+  if (ms == 0U) return;
+  g_heard_pending_us %= 1000U;
+  __disable_irq();
+  const uint32_t sampled = radio_now_ms();
+  const uint32_t base = g_tx_air_budget_active &&
+      (int32_t)(g_tx_quiet_until_ms - sampled) > 0 ?
+      g_tx_quiet_until_ms : sampled;
+  g_tx_quiet_until_ms = base + ms;
+  g_tx_air_budget_active = 1U;
+  __enable_irq();
+}
+#endif
+
 static uint32_t radio_uart_air_ms(uint16_t len)
 {
   uint32_t air_bps = (uint32_t)(((uint64_t)RADIO_AIR_BIT_RATE_BPS *
                                RADIO_AIR_SHARE_PERCENT) / 100U);
-  if (air_bps == 0U) {
-    air_bps = 2400U;
+#if defined(RFD_PROFILE_AIR_BPS) && !RFBOARD_LORA_SCHEDULER
+  /* Every broadcast packet holds the air for 1 + S5 (GLOBAL_RETRIES)
+   * copies. While the modem still reads more copies than the profile assumes
+   * (bench: S5=10 against the profile's 1), pace for what the air carries,
+   * from this board's own modem check readback (BOARD_HEALTH word 13). */
+  extern volatile uint32_t g_rfd_modem_status[3];
+  const uint32_t status = g_rfd_modem_status[0];
+  const uint32_t s5 = status >> 24;
+  if ((status & 1U) && s5 != 0xFFU) {
+    const uint32_t carried = (uint32_t)(((uint64_t)RFD_PROFILE_AIR_BPS * 94U) / 100U / (1U + s5));
+    if (carried < air_bps) air_bps = carried;
   }
+#endif
+  if (air_bps == 0U) air_bps = 2400U;
   const uint64_t bytes = (uint64_t)len + (uint64_t)RADIO_AIR_FRAME_OVERHEAD_BYTES;
   return (uint32_t)(((bytes * 8ULL * 1000ULL) + (uint64_t)air_bps - 1ULL) /
                     (uint64_t)air_bps);
@@ -1174,6 +1228,7 @@ static void radio_uart_mark_tx_quiet(uint16_t len)
 #endif
   g_tx_air_budget_active = 1U;
 }
+
 
 #if !RFBOARD_LORA_SCHEDULER
 /* Inspect only an owned SDK canonical plaintext ACK. Its last eight payload
@@ -2187,6 +2242,7 @@ static inline uint8_t radio_rx_ring_pop_thread(radio_rx_item_t *out)
   return have;
 }
 
+
 /**
  * Call this periodically from a THREAD (NOT ISR).
  * This is the ONLY place subscriber callbacks run.
@@ -2203,6 +2259,9 @@ void radio_uart_process_rx(void)
   radio_rx_item_t item;
   while (processed < RADIO_UART_RX_SERVICE_BUDGET &&
          radio_rx_ring_pop_thread(&item)) {
+#if !RFBOARD_LORA_SCHEDULER
+    radio_uart_note_heard_air(item.len);
+#endif
     radio_process_framed_bytes(item.data, (size_t)item.len);
     processed++;
   }

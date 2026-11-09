@@ -53,7 +53,7 @@ class RfdProfileTests(unittest.TestCase):
         cfg = build.build_cfg_from_args(ui, build.make_parser().parse_args(['build', '--release']))
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'profile.json'; path.write_text(json.dumps(profile()))
-            for selected, gap, bps in [(path, 15, 32000), (None, 55, 32000)]:
+            for selected, gap, bps in [(path, 15, 32000), (None, 15, 30000)]:
                 for preset in [True, False]:
                     with mock.patch.object(build, 'run') as execute, mock.patch.object(build, 'assert_embedded_cache'), \
                          mock.patch.object(build, 'pick_elf', return_value=Path('/tmp/profile.elf')):
@@ -74,7 +74,7 @@ class RfdProfileTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             custom = Path(directory) / 'custom.json'
             custom.write_text(json.dumps(profile()))
-            for mode, selected, bps, share in [('rfd', None, 32000, 35),
+            for mode, selected, bps, share in [('rfd', None, 30000, 100),
                                                ('rfd', custom, 32000, 40),
                                                ('lora', None, 64000, 40)]:
                 for preset in [False, True]:
@@ -96,14 +96,14 @@ class RfdProfileTests(unittest.TestCase):
 
     def test_checked_in_rfd_envelope_and_base_conservation(self):
         checked = rfd_profile.load(Path(build.__file__).resolve().parent / 'config/rfd-profile.json')
-        self.assertEqual(checked['transport']['rf_share_percent'], 35)
-        self.assertEqual(checked['transport']['usable_air_bps'], 32000)
+        self.assertEqual(checked['transport']['rf_share_percent'], 100)
+        self.assertEqual(checked['transport']['usable_air_bps'], 30000)
         self.assertEqual(checked['modem']['air_bps'], 64000)
-        self.assertEqual(rfd_profile.cmake_values()['RADIO_AIR_BIT_RATE_BPS'], 32000)
-        self.assertEqual(rfd_profile.cmake_values()['RADIO_AIR_SHARE_PERCENT'], 35)
+        self.assertEqual(rfd_profile.cmake_values()['RADIO_AIR_BIT_RATE_BPS'], 30000)
+        self.assertEqual(rfd_profile.cmake_values()['RADIO_AIR_SHARE_PERCENT'], 100)
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'bad.json'
-            too_large = profile(); too_large['transport']['rf_share_percent'] = 80
+            too_large = profile(); too_large['transport']['rf_share_percent'] = 101
             path.write_text(json.dumps(too_large))
             with self.assertRaises(ValueError): rfd_profile.load(path)
 
