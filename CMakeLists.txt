@@ -74,9 +74,17 @@ endif()
 # DEFAULT is fix for operational builds and skip for simulator builds.
 set(RFD_MODEM_CHECK "DEFAULT" CACHE STRING "Startup RFD modem check: DEFAULT, SKIP, VERIFY or FIX")
 set_property(CACHE RFD_MODEM_CHECK PROPERTY STRINGS DEFAULT SKIP VERIFY FIX)
-# ON only after the selected profile is set on GS, RRLS and RF: then RF may
-# write the link-wide registers (S3, S4, S5, S7, S8).
+# The checked-in config/rfd-profile.json is the deployed configuration of all
+# three modems (GS and RRLS apply the same embedded default automatically), so
+# a default build writes its link-wide registers (S3, S4, S5, S7, S8). Another
+# profile writes them only with RFD_PROFILE_ROLLED_OUT, after it is set on GS,
+# RRLS and RF.
 option(RFD_PROFILE_ROLLED_OUT "Selected RFD profile is rolled out to all three modems" OFF)
+if(RFD_PROFILE_ROLLED_OUT OR "${RFD_PROFILE_FILE}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}/config/rfd-profile.json")
+    set(RFD_PROFILE_LINK_WRITES ON)
+else()
+    set(RFD_PROFILE_LINK_WRITES OFF)
+endif()
 message("Build type: " ${CMAKE_BUILD_TYPE})
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   # Global LTO (Release)
@@ -132,10 +140,10 @@ endif()
 if(RFBOARD_LORA_SCHEDULER)
     set(RFD_MODEM_CHECK_MODE 0)
 endif()
-message(STATUS "RFD modem check: ${RFD_MODEM_CHECK_SELECTED} (rolled out: ${RFD_PROFILE_ROLLED_OUT})")
+message(STATUS "RFD modem check: ${RFD_MODEM_CHECK_SELECTED} (link-wide writes: ${RFD_PROFILE_LINK_WRITES})")
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     RFD_MODEM_CHECK_MODE=${RFD_MODEM_CHECK_MODE}
-    RFD_PROFILE_ROLLED_OUT=$<BOOL:${RFD_PROFILE_ROLLED_OUT}>
+    RFD_PROFILE_ROLLED_OUT=$<BOOL:${RFD_PROFILE_LINK_WRITES}>
     ${RFD_PROFILE_MODEM_DEFINES})
 if(SEDS_FIRMWARE_SIM_TEST)
     # Inactive allocator probes are read-only zeroes in TLSF builds; LTO

@@ -67,6 +67,14 @@ class RfdModemCheckTests(unittest.TestCase):
                                 capture_output=True).returncode
             self.assertEqual(rc == 0, ok, value["modem"])
 
+    def test_default_build_applies_the_checked_in_profile(self):
+        # The checked-in profile is the deployed configuration of all three
+        # modems: a plain Release build writes its link-wide registers
+        # (S5=1) with no --rfd-profile-rolled-out flag.
+        cmake = (ROOT / "CMakeLists.txt").read_text()
+        self.assertRegex(cmake, r'RFD_PROFILE_FILE}" STREQUAL "\$\{CMAKE_CURRENT_SOURCE_DIR}/config/rfd-profile.json"')
+        self.assertIn("RFD_PROFILE_ROLLED_OUT=$<BOOL:${RFD_PROFILE_LINK_WRITES}>", cmake)
+
     def test_startup_wiring_is_gated_and_skippable(self):
         port = (ROOT / "Core/Src/rfd_modem_port.c").read_text()
         thread = (ROOT / "Core/Src/telemetry_thread.c").read_text()
