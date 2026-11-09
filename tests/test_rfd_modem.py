@@ -47,11 +47,25 @@ class RfdModemCheckTests(unittest.TestCase):
         modem = json.loads(profile)["modem"]
         self.assertEqual(
             (modem["max_data_bytes"], modem["max_retries"], modem["broadcast_retries"],
-             modem["serial_break_ms"]), (3968, 10, 10, 50))
+             modem["serial_break_ms"]), (3968, 10, 1, 50))
         # Byte-identical to the GS embedded default when a sibling checkout exists.
         sibling = ROOT.parent / "GroundStation26/backend/comms/rfd-profile.json"
         if sibling.is_file():
             self.assertEqual(profile, sibling.read_bytes())
+
+    def test_usable_air_rate_fits_the_broadcast_copies(self):
+        # Every broadcast packet holds the air for 1 + GLOBAL_RETRIES copies:
+        # S5=10 left 64000/11 bit/s for 32000 bit/s of pacing (GS 707d9cd).
+        import copy, subprocess, sys, tempfile
+        profile = json.loads((ROOT / "config/rfd-profile.json").read_text())
+        bad = copy.deepcopy(profile)
+        bad["modem"]["broadcast_retries"] = 10
+        for value, ok in ((profile, True), (bad, False)):
+            with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+                json.dump(value, f)
+            rc = subprocess.run([sys.executable, str(ROOT / "scripts/rfd_profile.py"), "--profile", f.name],
+                                capture_output=True).returncode
+            self.assertEqual(rc == 0, ok, value["modem"])
 
     def test_startup_wiring_is_gated_and_skippable(self):
         port = (ROOT / "Core/Src/rfd_modem_port.c").read_text()

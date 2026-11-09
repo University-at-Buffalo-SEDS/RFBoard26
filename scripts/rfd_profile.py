@@ -32,6 +32,8 @@ def load(path):
             and 1 <= t['packet_burst_ms'] <= 500 and 1 <= t['packet_gap_ms'] <= 1000
             and 1 <= t['rf_share_percent'] <= 100 and 1 <= t['host_default_share_percent'] <= 100):
         raise ValueError('Invalid transport capacity')
+    if t['usable_air_bps'] * (1 + m['broadcast_retries']) > m['air_bps']:
+        raise ValueError('Usable air rate exceeds what the air carries with every broadcast copy')
     if t['rf_share_percent'] + max(2 * t['host_default_share_percent'], 50) > 100:
         raise ValueError('RF and host base shares exceed the shared link')
     if not 5 <= t['idle_margin_ms'] <= 100 or t['packet_gap_ms'] < m['serial_break_ms'] + t['idle_margin_ms']:
