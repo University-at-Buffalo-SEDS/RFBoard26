@@ -65,6 +65,14 @@ static void print_data_no_telem(void *data, size_t len) {
 #define TELEMETRY_TIMESYNC_REQUEST_INTERVAL_MS 2000U
 #endif
 
+/* RF leads SEDSnet time only from GPS UTC. Its tick runs from the HSI
+ * (about 1%) and is not disciplined by the receiver, so after the last valid
+ * GPS date/time it keeps the source role for at most this long (worst case
+ * about 0.3 s of drift), then yields to the GS as a consumer. */
+#ifndef TELEMETRY_TIMESYNC_GPS_HOLDOVER_MS
+#define TELEMETRY_TIMESYNC_GPS_HOLDOVER_MS 30000U
+#endif
+
 #ifndef COMMAND_TRACE_PRINTS
 #define COMMAND_TRACE_PRINTS 0
 #endif
@@ -125,6 +133,7 @@ static int32_t g_can_side_id = -1;
 static int32_t g_radio_side_id = -1;
 static uint8_t g_local_unix_valid = 0U;
 static uint64_t g_local_unix_ms = 0ULL;
+static uint32_t g_local_unix_set_ms = 0U;
 static uint32_t g_router_retry_after_ms = 0U;
 static uint8_t g_radio_link_seen = 0U;
 
@@ -144,6 +153,8 @@ volatile uint32_t g_rf_memory_snapshot_tick RF_HEALTH_PROBE;
 #endif
 volatile uint32_t g_telemetry_discovery_seen RF_HEALTH_PROBE = 0U;
 volatile uint32_t g_telemetry_timesync_valid RF_HEALTH_PROBE = 0U;
+/* Network clock restarts after it disagreed with the station clock by >60 s. */
+volatile uint32_t g_network_clock_resyncs RF_HEALTH_PROBE = 0U;
 volatile uint32_t g_telemetry_network_ready RF_HEALTH_PROBE = 0U;
 /* Optional router services that failed to start (TELEMETRY_SERVICE_* bits).
  * The CAN<->radio relay, discovery and BOARD_HEALTH keep running; failed
@@ -178,8 +189,10 @@ static UNUSED_FUNCTION uint64_t tx_raw_now_ms(void *user) {
   return tx_raw_now_ms_locked();
 }
 
+/* Without GPS UTC the board is a consumer: a Source announces even without a
+ * date, and its uptime would anchor relayed boards that never correct it. */
 static uint8_t telemetry_timesync_is_source(void) {
-  return (TELEMETRY_TIMESYNC_MASTER_PRIO >= 0) ? 1U : 0U;
+  return (TELEMETRY_TIMESYNC_MASTER_PRIO >= 0 && g_local_unix_valid) ? 1U : 0U;
 }
 
 static uint64_t telemetry_timesync_priority(void) {
@@ -275,6 +288,16 @@ static SedsResult telemetry_configure_timesync_locked(SedsRouter *router) {
     return SEDS_BAD_ARG;
   }
 
+#if SEDS_FIRMWARE_SIM_TEST
+  /* The simulator GPS exercises SPI but does not synthesize an NMEA date.
+   * Seed only qualification builds so the linked firmware must complete the
+   * real SEDSNet time-sync exchange; production still waits for valid GPS. */
+  if (TELEMETRY_TIMESYNC_MASTER_PRIO >= 0 && !g_local_unix_valid) {
+    g_local_unix_ms = 1767225600000ULL + tx_raw_now_ms_locked();
+    g_local_unix_valid = 1U;
+  }
+#endif
+
   result = seds_router_configure_timesync(
       router, true, telemetry_timesync_role(), telemetry_timesync_priority(),
       (uint64_t)TELEMETRY_TIMESYNC_SOURCE_TIMEOUT_MS,
@@ -283,17 +306,6 @@ static SedsResult telemetry_configure_timesync_locked(SedsRouter *router) {
   if (result != SEDS_OK) {
     return result;
   }
-
-
-#if SEDS_FIRMWARE_SIM_TEST
-  /* The simulator GPS exercises SPI but does not synthesize an NMEA date.
-   * Seed only qualification builds so the linked firmware must complete the
-   * real SEDSNet time-sync exchange; production still waits for valid GPS. */
-  if (telemetry_timesync_is_source() && !g_local_unix_valid) {
-    g_local_unix_ms = 1767225600000ULL + tx_raw_now_ms_locked();
-    g_local_unix_valid = 1U;
-  }
-#endif
 
   return telemetry_apply_local_unix_time_locked(router);
 }
@@ -335,12 +347,19 @@ uint64_t telemetry_unix_s(void) { return telemetry_unix_ms() / 1000ULL; }
 uint8_t telemetry_unix_is_valid(void) { return telemetry_unix_ms() != 0ULL ? 1U : 0U; }
 
 static void telemetry_set_unix_time_ms_locked(uint64_t unix_ms) {
+#ifdef TELEMETRY_ENABLED
+  const uint8_t was_source = telemetry_timesync_is_source();
+#endif
   g_local_unix_ms = unix_ms;
   g_local_unix_valid = (unix_ms != 0ULL) ? 1U : 0U;
+  g_local_unix_set_ms = (uint32_t)tx_raw_now_ms_locked();
 
 #ifdef TELEMETRY_ENABLED
   if (g_router.r != NULL) {
-    (void)telemetry_apply_local_unix_time_locked(g_router.r);
+    /* A role change resets SEDSnet time state; configuring re-applies GPS time. */
+    (void)(telemetry_timesync_is_source() != was_source
+               ? telemetry_configure_timesync_locked(g_router.r)
+               : telemetry_apply_local_unix_time_locked(g_router.r));
   }
 #endif
 }
@@ -598,12 +617,29 @@ static void telemetry_update_network_health(SedsRouter *router) {
   uint64_t network_time_ms = 0ULL;
   if (seds_router_get_network_time_ms(router, &network_time_ms) == SEDS_OK) {
     g_telemetry_timesync_valid = 1U;
+    if (board_recovery_network_clock_resync_needed(network_time_ms) &&
+        telemetry_configure_timesync_locked(router) == SEDS_OK) {
+      g_network_clock_resyncs++;
+    }
   }
   if (g_telemetry_discovery_seen != 0U && g_radio_link_seen != 0U &&
       g_telemetry_timesync_valid != 0U) {
     g_telemetry_network_ready = 1U;
   }
 }
+
+/* Bounded GPS holdover: past it, the board drops back to a consumer. The
+ * simulator seed stands in for a permanent fix. */
+#ifdef TELEMETRY_ENABLED
+static void telemetry_expire_gps_time_locked(void) {
+#if !SEDS_FIRMWARE_SIM_TEST
+  if (g_local_unix_valid && (uint32_t)((uint32_t)tx_raw_now_ms_locked() - g_local_unix_set_ms) >
+                                TELEMETRY_TIMESYNC_GPS_HOLDOVER_MS) {
+    telemetry_set_unix_time_ms_locked(0ULL);
+  }
+#endif
+}
+#endif
 
 static SedsResult telemetry_poll_timesync_locked(void) {
 #ifndef TELEMETRY_ENABLED
@@ -612,6 +648,8 @@ static SedsResult telemetry_poll_timesync_locked(void) {
   if (init_telemetry_router() != SEDS_OK) {
     return SEDS_ERR;
   }
+
+  telemetry_expire_gps_time_locked();
 
   bool did_queue = false;
   board_commissioning_service();

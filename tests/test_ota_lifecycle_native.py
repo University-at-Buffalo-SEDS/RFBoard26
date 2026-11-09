@@ -13,7 +13,9 @@ class OtaLifecycleTests(unittest.TestCase):
   text=(ROOT/'Core/Src/board_recovery_transport.c').read_text()
   authority=text[text.index('static SedsRouter *recovery_router;'):text.index('static SedsResult commissioning_status')]
   with tempfile.TemporaryDirectory(prefix='ota-lifecycle-') as tmp:
-   p=Path(tmp);a=p/'authority.c';a.write_text('#include "board_recovery_transport.h"\n#include "board_recovery_floor.h"\n#include "persistent_store.h"\n'+authority)
+   p=Path(tmp);a=p/'authority.c';a.write_text('#include "board_recovery_transport.h"\n#include "board_recovery_floor.h"\n#include "persistent_store.h"\n'
+     # The station clock stays empty here: freshness is the network clock.
+     'typedef unsigned long ULONG;\n#define TX_TIMER_TICKS_PER_SECOND 1000\nstatic ULONG tx_time_get(void){return 1;}\n'+authority)
    cmd=['cc','-std=c11','-DTELEMETRY_ENABLED','-Wall','-Wextra','-Werror','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer','-fno-pie','-no-pie']
    if ROOT.name=='DAQ-Board':cmd+=['-DDATA4_DAQ']
    cmd+=['-I'+str(fixture),'-I'+str(ROOT/'Core/Inc'),'-I'+str(ROOT/'Bootloader'),*[str(ROOT/'Core/Src'/n) for n in ['ota_stream.c','flight_state_cache.c','board_recovery_query.c']],str(a),str(fixture/'harness.c'),'-o',str(p/'test')]

@@ -23,8 +23,14 @@ class TimeSyncPriorityTests(unittest.TestCase):
                     expected = 100 if configured < 0 else configured
                     code = '#include <stdint.h>\n#include <assert.h>\n'
                     code += f'#define TELEMETRY_TIMESYNC_MASTER_PRIO ({configured})\n'
+                    code += 'static uint8_t g_local_unix_valid;\n'
                     code += '\n'.join(functions)
-                    code += f'\nint main(void) {{ assert(telemetry_timesync_priority() == {expected}ULL);'
+                    # Without GPS UTC even a configured source is a
+                    # priority-100 consumer that yields to RF and the GS.
+                    code += '\nint main(void) { assert(!telemetry_timesync_is_source());'
+                    code += ' assert(telemetry_timesync_priority() == 100ULL);'
+                    code += ' g_local_unix_valid = 1U;'
+                    code += f' assert(telemetry_timesync_priority() == {expected}ULL);'
                     if configured < 0:
                         code += ' assert(telemetry_timesync_priority() > 1); assert(telemetry_timesync_priority() > 50);'
                     code += ' return 0; }\n'

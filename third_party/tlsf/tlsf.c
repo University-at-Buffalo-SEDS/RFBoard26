@@ -262,7 +262,9 @@ enum tlsf_private
 ** Set assert macro, if it has not been provided by the user.
 */
 #if !defined (tlsf_assert)
-#define tlsf_assert assert
+/* Board change: a failed invariant still halts as assert would (abort), but
+** without assert's stdio report and file/expression strings (about 2 KB). */
+#define tlsf_assert(x) ((x) ? (void)0 : abort())
 #endif
 
 /*
