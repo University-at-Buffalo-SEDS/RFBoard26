@@ -99,7 +99,13 @@ int main(int argc,char**argv){assert(argc==2);(void)send;(void)response_epoch;
 
   unsigned before_reads=media_reads,before_writes=media_writes,before_replies=app_replies;
   if(!strcmp(argv[1],"authority")){
-   packet.sender="PB";assert(board_recovery_handle(r,&packet,endpoint,123)==SEDS_PERMISSION_DENIED&&app_replies==before_replies);packet.sender="@addr:1234";packet.sender_len=10;
+   /* Refused for good, never applied, yet acknowledged (SEDS_OK) and counted. */
+   uint32_t refused=g_reliable_refusal_count;
+   packet.sender="PB";assert(board_recovery_handle(r,&packet,endpoint,123)==SEDS_OK&&app_replies==before_replies&&g_reliable_refusal_count==refused+1U);packet.sender="GS";
+   assert(board_recovery_handle(r,&packet,endpoint+1U,123)==SEDS_OK&&app_replies==before_replies&&g_reliable_refusal_count==refused+2U);
+   packet.payload_len=31;assert(board_recovery_handle(r,&packet,endpoint,123)==SEDS_OK&&app_replies==before_replies&&g_reliable_refusal_count==refused+3U);packet.payload_len=32;
+   assert(media_reads==before_reads&&media_writes==before_writes);
+   packet.sender="@addr:1234";packet.sender_len=10;
   }
   if(!strcmp(argv[1],"unsupported_idle")){body[2]=1;request(r,&packet,false);assert(response[1]==6&&media_reads==before_reads&&media_writes==before_writes&&response_epoch()==1&&response[2]==1&&!(response[3]&18U));body[2]=0;}
   if(!strcmp(argv[1],"stale")){body[20]=2;request(r,&packet,false);assert(response[1]==4&&media_reads==before_reads&&media_writes==before_writes&&response_epoch()==1&&response[2]==1);return 0;}

@@ -147,11 +147,12 @@ int main(int argc,char **argv) {
  }else if(!strcmp(argv[1],"invalid_packet")){
   uint8_t state=16;SedsPacketView packet={SEDS_DT_FLIGHT_STATE,&state,1};
   assert(callback(NULL,NULL)==SEDS_HANDLER_ERROR);
-  assert(callback(&packet,NULL)==SEDS_HANDLER_ERROR);
-  state=1;packet.payload_len=0;assert(callback(&packet,NULL)==SEDS_HANDLER_ERROR);
-  packet.payload_len=2;assert(callback(&packet,NULL)==SEDS_HANDLER_ERROR);
+  /* A malformed FLIGHT_STATE never succeeds on retry: acknowledged, unapplied. */
+  assert(callback(&packet,NULL)==SEDS_OK);
+  state=1;packet.payload_len=0;assert(callback(&packet,NULL)==SEDS_OK);
+  packet.payload_len=2;assert(callback(&packet,NULL)==SEDS_OK);
   packet.payload_len=1;packet.ty=0;assert(callback(&packet,NULL)==SEDS_HANDLER_ERROR);
-  packet.ty=SEDS_DT_FLIGHT_STATE;packet.payload=NULL;assert(callback(&packet,NULL)==SEDS_HANDLER_ERROR);
+  packet.ty=SEDS_DT_FLIGHT_STATE;packet.payload=NULL;assert(callback(&packet,NULL)==SEDS_OK);
   assert(write_attempts==0 && apply_attempts==0 && !flight_state_cache_has_value());
  }else if(!strcmp(argv[1],"poll")){
   tick=500;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==0);

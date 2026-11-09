@@ -54,6 +54,8 @@ board_recovery_managed_report_ignorable(const SedsPacketView *packet)
     (void)packet;
     return 0U;
 }
+/* Acknowledged refusals; board_recovery_transport.c owns the definition. */
+__attribute__((weak)) volatile uint32_t g_reliable_refusal_count;
 
 __attribute__((weak)) SedsResult
 flight_state_cache_apply_network_update(const SedsPacketView *packet)
@@ -151,24 +153,29 @@ static SedsResult persist_update(const SedsPacketView *packet, void *user)
     {
         /* Public SDK435 caches managed data before invoking this callback.
          * A malformed FSTATE must not poison future ordering/cache reads. */
-        if (packet != NULL && packet->ty == SEDS_DT_FLIGHT_STATE)
-            (void)clear_managed_cache();
+        if (packet == NULL || packet->ty != SEDS_DT_FLIGHT_STATE)
+            return SEDS_HANDLER_ERROR;
+        (void)clear_managed_cache();
         g_flight_state_cache_errors++;
-        return SEDS_HANDLER_ERROR;
+        /* A retry of the same packet can never succeed: acknowledge it. */
+        ++g_reliable_refusal_count;
+        return SEDS_OK;
     }
 
     if (!board_recovery_managed_update_allowed(packet)) {
         (void)clear_managed_cache();
-        /* The SDK runs this callback inside every relay of the FC's
-         * FLIGHT_STATE report. Failing a report that is not a station write
-         * aborted the relay, so the GS never saw an FC flight state. Ignore
-         * it without applying. */
+        /* The SDK runs this callback inside its receive and every relay, and
+         * an error withholds the receipt and the relay. A report that is not
+         * a station write, and a refused (stale or unready) station write,
+         * are deterministic: ignore them without applying, so the station
+         * stops retransmitting and the relay continues. */
         if (board_recovery_managed_report_ignorable(packet)) {
             ++g_flight_state_cache_reports_ignored;
             return SEDS_OK;
         }
         ++g_flight_state_cache_errors;
-        return SEDS_HANDLER_ERROR;
+        ++g_reliable_refusal_count;
+        return SEDS_OK;
     }
     const uint8_t state = packet->payload[0];
     if (!ota_stream_state_begin(state)) {

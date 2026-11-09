@@ -3,6 +3,8 @@
 #include "sedsnet.h"
 #include "sedsnet_config.h"
 void board_recovery_transport_set_router(SedsRouter *router);
+/* Delivered reliable packets refused for good, yet acknowledged. */
+extern volatile uint32_t g_reliable_refusal_count;
 SedsResult board_recovery_handle(SedsRouter *router,const SedsPacketView *packet,
                                 uint32_t local_endpoint,uint32_t uptime_ms);
 /* Application replay floor; SDK stays generic. No current-time/RNG claim. */

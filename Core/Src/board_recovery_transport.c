@@ -8,6 +8,8 @@
 #include "board_recovery.h"
 #include <string.h>
 static SedsRouter *recovery_router;
+/* Delivered reliable packets refused for good and acknowledged (SEDS_OK). */
+volatile uint32_t g_reliable_refusal_count __attribute__((used));
 void board_recovery_transport_set_router(SedsRouter *router) { recovery_router=router; }
 static uint8_t authorized_primary(SedsRouter *router,const SedsPacketView *packet)
 {
@@ -91,12 +93,16 @@ static bool commissioning_reply(void*context,const BoardRecoveryRequest*request,
 SedsResult board_recovery_handle(SedsRouter *router,const SedsPacketView *packet,
                                 uint32_t local_endpoint,uint32_t uptime_ms)
 {
- if (router==0 || packet==0 || packet->ty!=SEDS_DT_BOARD_RECOVERY_REQUEST ||
-     packet->num_endpoints!=1U || packet->endpoints==0 ||
-     packet->endpoints[0]!=local_endpoint) return SEDS_BAD_ARG;
- if (authorized_primary(router,packet)==0U) return SEDS_PERMISSION_DENIED;
+ if (router==0 || packet==0) return SEDS_BAD_ARG;
+ /* A delivered request this board will never act on (wrong type or endpoint,
+  * not from the station, undecodable) is refused for good: acknowledge it so
+  * the sender stops retransmitting, and count it. */
  BoardRecoveryRequest request;
- if (board_recovery_decode_request(packet->payload,packet->payload_len,&request)==0U) return SEDS_BAD_ARG;
+ if (packet->ty!=SEDS_DT_BOARD_RECOVERY_REQUEST || packet->num_endpoints!=1U ||
+     packet->endpoints==0 || packet->endpoints[0]!=local_endpoint ||
+     authorized_primary(router,packet)==0U ||
+     board_recovery_decode_request(packet->payload,packet->payload_len,&request)==0U)
+  {++g_reliable_refusal_count;return SEDS_OK;}
  BoardRecoverySnapshot snapshot={.actual_state=255U};
  uint64_t generation=board_commissioning_query_generation();
  /* Stored MAX is exhaustion; only strict eligible cache may advertiseMAX. */

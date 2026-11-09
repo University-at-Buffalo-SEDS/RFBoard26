@@ -116,7 +116,8 @@ int main(int argc,char **argv){
   fail_invalidate=0;assert(board_recovery_apply_safe(0,1,&out)==0&&out.actual_state==0&&out.abort_epoch==2);
  }else if(!strcmp(argv[1],"stale_retirement")){
   assert(board_recovery_apply_safe(0,1,&out)==0);unsigned w=writes,c=clears;
-  allow_update=0;assert(update(3)==-9&&flight_state_cache_value()==0&&stored==0&&writes==w&&clears==c+1&&callback);
+  /* A refused station write is acknowledged (SEDS_OK), never applied. */
+  allow_update=0;assert(update(3)==0&&flight_state_cache_value()==0&&stored==0&&writes==w&&clears==c+1&&callback);
   allow_update=1;assert(update(1)==0&&flight_state_cache_value()==1&&stored==1);
   assert(board_recovery_apply_safe(0,1,&out)!=0&&writes==w+1);
  }else if(!strcmp(argv[1],"report_ignored")){
@@ -125,7 +126,7 @@ int main(int argc,char **argv){
   assert(board_recovery_apply_safe(0,1,&out)==0);unsigned w=writes,c=clears;
   allow_update=0;report_ignorable=1;
   assert(update(8)==0&&flight_state_cache_value()==0&&stored==0&&writes==w&&clears==c+1);
-  report_ignorable=0;assert(update(8)==-9&&writes==w);
+  report_ignorable=0;assert(update(8)==0&&writes==w&&flight_state_cache_value()==0&&clears==c+2);
  }else if(!strcmp(argv[1],"ordinary_retry")){
   fail_write=1;assert(update(0)==-9&&flight_state_cache_value()==0);
   assert(update(0)==-9&&writes==2);fail_write=0;
@@ -134,7 +135,7 @@ int main(int argc,char **argv){
   fail_apply=1;assert(update(3)==-14&&flight_state_cache_value()==5&&stored==5&&writes==0&&clears==1&&callback);
   fail_apply=0;assert(update(3)==0&&flight_state_cache_value()==3&&stored==3&&writes==1&&clears==1);
  }else if(!strcmp(argv[1],"malformed_retirement")){
-  assert(update(255)==-9&&flight_state_cache_value()==5&&stored==5&&writes==0&&clears==1&&callback);
+  assert(update(255)==0&&flight_state_cache_value()==5&&stored==5&&writes==0&&clears==1&&callback);
  }else assert(!"unknown case");
  puts(argv[1]);return 0;
 }
