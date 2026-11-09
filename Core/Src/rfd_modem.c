@@ -652,13 +652,21 @@ void rfd_modem_run(const rfd_io_t *io, const rfd_plan_t *plan, rfd_mode_t mode,
 
 bool rfd_flight_state_safe(uint8_t state) { return state <= 3U; }
 
-rfd_gate_t rfd_gate_decide(bool restored_known, uint8_t restored_state, bool network_seen,
-                           uint8_t network_state)
+bool rfd_station_at_rest(uint8_t state, uint32_t stable_ms)
 {
-  /* A persisted flight phase (brown-out reboot) skips at once. */
-  if (restored_known && !rfd_flight_state_safe(restored_state)) return RFD_GATE_SKIP;
-  if (!network_seen) return RFD_GATE_WAIT;
-  return rfd_flight_state_safe(network_state) ? RFD_GATE_RUN : RFD_GATE_SKIP;
+  return rfd_flight_state_safe(state) ||
+         (state == RFD_FLIGHT_STATE_ABORTED && stable_ms >= RFD_ABORTED_REST_MS);
+}
+
+rfd_gate_t rfd_gate_decide(bool restored_known, uint8_t restored_state, bool network_seen,
+                           uint8_t network_state, uint32_t stable_ms)
+{
+  if (!network_seen || !rfd_station_at_rest(network_state, stable_ms)) return RFD_GATE_WAIT;
+  /* After a brown-out reboot in flight the network value must have held. */
+  if (restored_known && !rfd_flight_state_safe(restored_state) && stable_ms < RFD_ABORTED_REST_MS) {
+    return RFD_GATE_WAIT;
+  }
+  return RFD_GATE_RUN;
 }
 
 /* Unread (negative) -> all ones; values at or above it -> all ones minus 1. */

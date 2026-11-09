@@ -662,23 +662,33 @@ TEST(plan_policies_follow_rollout_and_flow_control)
   CHECK(named(&plan, "GLOBAL_RETRIES")->expected == 0 && named(&plan, "SER_BREAK")->expected == 20);
 }
 
-TEST(flight_gate_runs_only_on_a_safe_network_flight_state)
+TEST(flight_gate_runs_on_a_safe_or_aborted_at_rest_state_and_defers_otherwise)
 {
+  const uint32_t rest = RFD_ABORTED_REST_MS;
   /* No FLIGHT_STATE yet: wait (the radio keeps running meanwhile). */
-  CHECK(rfd_gate_decide(false, 0, false, 0) == RFD_GATE_WAIT);
-  /* A restored safe state still waits for the network value. */
-  CHECK(rfd_gate_decide(true, 1, false, 0) == RFD_GATE_WAIT);
+  CHECK(rfd_gate_decide(false, 0, false, 0, 0) == RFD_GATE_WAIT);
+  CHECK(rfd_gate_decide(true, 1, false, 0, 0) == RFD_GATE_WAIT);
   for (unsigned s = 0; s <= 15U; s++) {
     const uint8_t st = (uint8_t)s;
     const bool safe = s <= 3U; /* Startup, Idle, PreFill, FillTest */
     CHECK(rfd_flight_state_safe(st) == safe);
-    CHECK(rfd_gate_decide(false, 0, true, st) == (safe ? RFD_GATE_RUN : RFD_GATE_SKIP));
-    CHECK(rfd_gate_decide(true, 0, true, st) == (safe ? RFD_GATE_RUN : RFD_GATE_SKIP));
-    /* A restored flight phase (brown-out reboot) skips at once, even if the
-     * network later says Startup. */
-    if (!safe) CHECK(rfd_gate_decide(true, st, false, 0) == RFD_GATE_SKIP);
-    if (!safe) CHECK(rfd_gate_decide(true, st, true, 0) == RFD_GATE_SKIP);
+    CHECK(rfd_gate_decide(false, 0, true, st, 0) == (safe ? RFD_GATE_RUN : RFD_GATE_WAIT));
+    /* Fill, Armed, flight, Landed and Recovery never run, however long
+     * they last; the check is deferred, never skipped for the boot. */
+    if (s >= 4U && s <= 14U) CHECK(rfd_gate_decide(false, 0, true, st, 10U * rest) == RFD_GATE_WAIT);
+    /* A restored flight phase (brown-out reboot) waits for the network. */
+    if (!safe) CHECK(rfd_gate_decide(true, st, false, 0, 10U * rest) == RFD_GATE_WAIT);
   }
+  /* Bench: the station is Aborted, so the RF modem stayed at S5=10. Aborted
+   * at rest (no change for RFD_ABORTED_REST_MS, past an ABORT's delivery
+   * window; no countdown or launch can run while Aborted) may run. */
+  CHECK(rfd_gate_decide(false, 0, true, 15, rest - 1U) == RFD_GATE_WAIT);
+  CHECK(rfd_gate_decide(false, 0, true, 15, rest) == RFD_GATE_RUN);
+  /* After a brown-out in flight, a safe network state must also have held. */
+  CHECK(rfd_gate_decide(true, 9, true, 1, rest - 1U) == RFD_GATE_WAIT);
+  CHECK(rfd_gate_decide(true, 9, true, 1, rest) == RFD_GATE_RUN);
+  CHECK(rfd_station_at_rest(15, rest) && !rfd_station_at_rest(15, 0) && rfd_station_at_rest(1, 0));
+  CHECK(!rfd_station_at_rest(14, 10U * rest) && !rfd_station_at_rest(6, 10U * rest));
   CHECK(!rfd_flight_state_safe(7) && !rfd_flight_state_safe(255));
 }
 
@@ -732,7 +742,7 @@ int main(void)
   RUN(field_403_layout_writes_flow_control_to_its_named_register);
   RUN(field_403_lbt_rssi_drift_is_reported_at_its_named_register);
   RUN(plan_policies_follow_rollout_and_flow_control);
-  RUN(flight_gate_runs_only_on_a_safe_network_flight_state);
+  RUN(flight_gate_runs_on_a_safe_or_aborted_at_rest_state_and_defers_otherwise);
   RUN(status_words_pack_the_report);
   return 0;
 }

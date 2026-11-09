@@ -2,13 +2,14 @@
  * docs/backend/rfd-modem-check.md, phase 2). Polled once per telemetry loop
  * pass; the check runs at most once per MCU boot:
  *
- *  - a restored (persisted) flight phase, for example after a brown-out
- *    reboot in flight, skips at once;
- *  - otherwise the radio runs normally until the first validated
- *    FLIGHT_STATE arrives. FLIGHT_STATE is written only by the ground
- *    station, so in practice it arrives over the radio itself. Startup, Idle,
- *    PreFill or FillTest runs the check; any other state skips it for this
- *    boot;
+ *  - the radio runs normally until a validated FLIGHT_STATE allows it.
+ *    FLIGHT_STATE is written only by the ground station, so in practice it
+ *    arrives over the radio itself. Startup, Idle, PreFill or FillTest runs
+ *    the check, and so does Aborted at rest (no state change for
+ *    RFD_ABORTED_REST_MS); any other state defers it until the gate opens
+ *    (bench: the station stayed Aborted and the RF modem kept S5=10);
+ *  - after a restored (persisted) flight phase, for example a brown-out
+ *    reboot in flight, the network state must also have held that long;
  *  - only the check itself holds the radio (no frame TX, RX ignored): about
  *    3 s to read, about 11 s if it writes, bounded at 40 s. CAN, routing and
  *    the watchdog keep running, and a FLIGHT_STATE change over CAN closes the
@@ -91,17 +92,34 @@ static void io_sleep(void *ctx, uint32_t ms)
   while (now_ms(ctx) - start < ms) g_service();
 }
 
-static bool gate_open(void *ctx)
-{
-  (void)ctx;
-  return flight_state_cache_has_value() && rfd_flight_state_safe(flight_state_cache_value());
-}
-
 enum { PORT_INIT = 0, PORT_WAITING, PORT_DONE };
 static uint8_t g_port_state;
 static bool g_restored_known;
 static uint8_t g_restored;
 static uint32_t g_updates_at_boot;
+/* The flight state last seen and when it last changed. */
+static uint8_t g_state_seen;
+static bool g_state_seen_valid;
+static uint32_t g_state_since_ms;
+
+static uint32_t state_stable_ms(void)
+{
+  const uint8_t state = flight_state_cache_value();
+  const uint32_t now = now_ms(NULL);
+  if (!g_state_seen_valid || state != g_state_seen) {
+    g_state_seen = state;
+    g_state_seen_valid = true;
+    g_state_since_ms = now;
+  }
+  return now - g_state_since_ms;
+}
+
+static bool gate_open(void *ctx)
+{
+  (void)ctx;
+  return flight_state_cache_has_value() &&
+         rfd_station_at_rest(flight_state_cache_value(), state_stable_ms());
+}
 
 static void finish(const rfd_report_t *report)
 {
@@ -128,9 +146,10 @@ void rfd_modem_port_poll(void (*service)(void))
     publish(&report);
     g_port_state = PORT_WAITING;
   }
+  const bool network_seen = g_flight_state_cache_updates != g_updates_at_boot;
   const rfd_gate_t gate =
-      rfd_gate_decide(g_restored_known, g_restored, g_flight_state_cache_updates != g_updates_at_boot,
-                      flight_state_cache_value());
+      rfd_gate_decide(g_restored_known, g_restored, network_seen, flight_state_cache_value(),
+                      network_seen ? state_stable_ms() : 0U);
   if (gate == RFD_GATE_WAIT) return;
   rfd_report_skipped(&report, mode, RFD_FLAG_GATE_SKIPPED);
   if (gate == RFD_GATE_SKIP) {

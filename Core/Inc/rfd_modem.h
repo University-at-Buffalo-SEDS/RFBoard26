@@ -101,13 +101,20 @@ void rfd_modem_run(const rfd_io_t *io, const rfd_plan_t *plan, rfd_mode_t mode,
                    const rfd_timing_t *timing, rfd_gate_fn gate, void *gate_ctx,
                    bool allow_save, rfd_report_t *out);
 
-/* Flight gate. Startup, Idle, PreFill and FillTest only. The first
- * validated FLIGHT_STATE received after boot decides; a restored (persisted)
- * flight phase skips at once. Until a value arrives the check waits. */
+/* Flight gate. Startup, Idle, PreFill and FillTest, or Aborted at rest:
+ * Aborted with no flight-state change for RFD_ABORTED_REST_MS (past an
+ * ABORT's delivery window; no countdown or launch runs while Aborted). Fill,
+ * Armed, flight, Landed and Recovery never run. A blocked check is deferred
+ * until the gate opens, never skipped for the boot. After a restored
+ * (persisted) flight phase the network state must also have held for
+ * RFD_ABORTED_REST_MS. `stable_ms`: how long the network state has held. */
 typedef enum { RFD_GATE_WAIT = 0, RFD_GATE_RUN = 1, RFD_GATE_SKIP = 2 } rfd_gate_t;
+#define RFD_FLIGHT_STATE_ABORTED 15U
+#define RFD_ABORTED_REST_MS 15000U
 bool rfd_flight_state_safe(uint8_t state);
+bool rfd_station_at_rest(uint8_t state, uint32_t stable_ms);
 rfd_gate_t rfd_gate_decide(bool restored_known, uint8_t restored_state, bool network_seen,
-                           uint8_t network_state);
+                           uint8_t network_state, uint32_t stable_ms);
 
 /* BOARD_HEALTH words 13, 15 and 22 on RF (flags 4/32/64 stay clear):
  * w13: [3:0] version 1, [7:4] outcome, [9:8] map source, [11:10] mode,
