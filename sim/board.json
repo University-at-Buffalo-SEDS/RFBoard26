@@ -34,6 +34,9 @@
     "pins": [],
     "dma_routes": []
   },
+  "dfu_factory_flash": {
+    "handoff_flash_status": 32768
+  },
   "execution": {
     "factory_boot_success_symbol": "_tx_thread_schedule",
     "virtual_time_ms": 250,
@@ -44,6 +47,7 @@
       {"name": "network_ready", "symbol": "g_telemetry_network_ready"},
       {"name": "telemetry_init_stage", "symbol": "g_telemetry_init_stage"},
       {"name": "telemetry_init_result", "symbol": "g_telemetry_init_result"},
+      {"name": "service_faults", "symbol": "g_telemetry_service_faults", "maximum": 0},
       {"name": "peer_mask", "symbol": "g_telemetry_peer_mask"},
       {"name": "radio_egress_peer_mask", "symbol": "g_sim_radio_egress_peer_mask"},
       {"name": "gps_publish_attempts", "symbol": "g_sim_gps_publish_attempts"},

@@ -848,7 +848,7 @@ static SedsResult init_telemetry_router_locked(void) {
     return SEDS_ERR;
   }
   if (seds_router_set_preferred_discovery_master(r, "GS", 2U) != SEDS_OK) {
-    printf("Error: failed to prefer GroundStation discovery master\r\n");
+    printf("Error: GS discovery master\r\n");
     seds_router_free(r);
     return SEDS_ERR;
   }
@@ -890,7 +890,7 @@ static SedsResult init_telemetry_router_locked(void) {
   }
 #if !RFBOARD_LORA_SCHEDULER && defined(SEDS_ENABLE_LATEST_VALUE_EGRESS)
   if (seds_router_set_latest_value_side(r, g_radio_side_id) != SEDS_OK) {
-    printf("Error: failed to configure radio pending-value policy\r\n");
+    printf("Error: radio pending-value side\r\n");
     seds_router_free(r);
     g_router.r = NULL;
     g_router.created = 0U;

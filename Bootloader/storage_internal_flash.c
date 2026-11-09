@@ -39,6 +39,18 @@ static bool writable_range(uint32_t addr, uint32_t len)
 
 static launchcore_storage_status_t storage_init(void) { return LAUNCHCORE_STORAGE_OK; }
 
+/* FLASH_SR error bits are sticky and HAL fails the next erase/program on any
+ * of them. 'dfu-util ... :leave' starts the image without a reset, so the ROM
+ * DFU loader's leftovers (and OPTVERR, which reset can set) reach the first
+ * operation of the boot: the persistent-store provisioning. Each operation
+ * here checks its own result, so bits present before it never describe it. */
+static bool flash_unlock(void)
+{
+    if (HAL_FLASH_Unlock() != HAL_OK) return false;
+    __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_SR_ERRORS);
+    return true;
+}
+
 static void flash_page_for_address(uint32_t addr, uint32_t *bank, uint32_t *page)
 {
 #if defined(FLASH_OPTR_DBANK)
@@ -62,7 +74,7 @@ static launchcore_storage_status_t storage_erase(uint32_t addr, uint32_t len)
         return LAUNCHCORE_STORAGE_ERR_RANGE;
     }
 
-    if (HAL_FLASH_Unlock() != HAL_OK)
+    if (!flash_unlock())
     {
         return LAUNCHCORE_STORAGE_ERR_ERASE;
     }
@@ -92,7 +104,7 @@ static launchcore_storage_status_t storage_write(uint32_t addr, const void *data
     {
         return LAUNCHCORE_STORAGE_ERR_RANGE;
     }
-    if (HAL_FLASH_Unlock() != HAL_OK)
+    if (!flash_unlock())
     {
         return LAUNCHCORE_STORAGE_ERR_WRITE;
     }
