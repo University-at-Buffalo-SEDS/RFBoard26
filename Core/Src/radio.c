@@ -791,11 +791,27 @@ static HAL_StatusTypeDef radio_uart_enqueue_frame(const uint8_t *data, uint16_t 
 
 /* Accepted frames retain owned storage until DMA. Dependent side-transport
  * frames keep FIFO order; independent controls get reserved bounded space.
- * No successful callback admission is later coalesced or evicted. */
-static HAL_StatusTypeDef radio_uart_enqueue_sedsnet_frame(
-    const uint8_t *data, uint16_t len, uint8_t priority) {
-  if (!data || len == 0U || len > RADIO_UART_FRAME_BUF_SIZE) return HAL_ERROR;
+ * No successful callback admission is later coalesced or evicted.
+ *
+ * The frame is assembled from `head` and `body` directly in the free tail of
+ * the owned queue storage and checked there, so the router's TX callback, at
+ * the bottom of its deepest call chain, needs no 1 KiB stack frame copy. A
+ * frame that cannot fit the tail would fail the byte limit below anyway. */
+static HAL_StatusTypeDef radio_uart_enqueue_sedsnet_parts(
+    const uint8_t *head, uint16_t head_len, const uint8_t *body,
+    uint16_t body_len, uint8_t priority) {
+  const uint16_t len = (uint16_t)(head_len + body_len);
+  if (!head || len == 0U || len > RADIO_UART_FRAME_BUF_SIZE ||
+      (body_len != 0U && !body)) return HAL_ERROR;
   if (radio_uart_lock_tx_queue() != HAL_OK) return HAL_ERROR;
+  if (g_tx_queue_bytes_used + len > RADIO_UART_TX_QUEUE_BYTE_CAPACITY) {
+    radio_uart_unlock_tx_queue();
+    g_tx_busy++;
+    return HAL_BUSY;
+  }
+  uint8_t *const data = &g_tx_queue_bytes[g_tx_queue_bytes_used];
+  memcpy(data, head, head_len);
+  if (body_len != 0U) memcpy(data + head_len, body, body_len);
 #if !RFBOARD_LORA_SCHEDULER
   /* Refuse an exact independent retry while its original bytes remain owned
    * by this queue or DMA. SEDSnet retains refused work; HAL_OK here would
@@ -872,7 +888,6 @@ static HAL_StatusTypeDef radio_uart_enqueue_sedsnet_frame(
   queued->control_class = priority >= RADIO_UART_PRIORITY_NETWORK_CONTROL
                               ? RADIO_UART_CLASS_NETWORK_CONTROL
                               : RADIO_UART_CLASS_APPLICATION;
-  memcpy(&g_tx_queue_bytes[g_tx_queue_bytes_used], data, len);
   g_tx_queue_bytes_used += len;
   g_tx_count++;
   radio_uart_note_queue_depth_locked();
@@ -1646,14 +1661,11 @@ HAL_StatusTypeDef radio_uart_send_bytes_priority(const uint8_t *bytes, size_t le
     return HAL_BUSY;
   }
 
-  uint8_t framed[RADIO_UART_FRAME_BUF_SIZE];
-  framed[0] = RADIO_UART_FRAME_SYNC_0;
-  framed[1] = RADIO_UART_FRAME_SYNC_1;
-  framed[2] = (uint8_t)(len & 0xFFU);
-  framed[3] = (uint8_t)((len >> 8U) & 0xFFU);
-  memcpy(&framed[RADIO_UART_FRAME_HEADER_SIZE], bytes, len);
-  return radio_uart_enqueue_sedsnet_frame(
-      framed, (uint16_t)(RADIO_UART_FRAME_HEADER_SIZE + len), priority);
+  const uint8_t header[RADIO_UART_FRAME_HEADER_SIZE] = {
+      RADIO_UART_FRAME_SYNC_0, RADIO_UART_FRAME_SYNC_1,
+      (uint8_t)(len & 0xFFU), (uint8_t)((len >> 8U) & 0xFFU)};
+  return radio_uart_enqueue_sedsnet_parts(header, sizeof(header), bytes,
+                                          (uint16_t)len, priority);
 }
 
 HAL_StatusTypeDef radio_uart_send_plaintext(const uint8_t *bytes, size_t len) {

@@ -262,7 +262,7 @@ class SedsnetMemoryTests(unittest.TestCase):
         )
         send = radio.split("HAL_StatusTypeDef radio_uart_send_bytes_priority", 1)[1]
         send = send.split("HAL_StatusTypeDef radio_uart_send_plaintext", 1)[0]
-        self.assertIn("radio_uart_enqueue_sedsnet_frame", send)
+        self.assertIn("radio_uart_enqueue_sedsnet_parts", send)
         self.assertNotIn("HAL_UART_Transmit(", send)
         self.assertNotIn("radio_uart_enqueue_frame", send)
         self.assertNotIn("radio_uart_air_busy", send)

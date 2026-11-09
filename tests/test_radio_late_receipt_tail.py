@@ -129,14 +129,14 @@ class LateReceiptTailTests(unittest.TestCase):
  uint8_t a[16]={165,90,12,0,'S','D','T',3,0x11};
  uint8_t b[16]={165,90,12,0,'S','D','T',3,0x22};
  radio_tx_item_t first,second;
- assert(radio_uart_enqueue_sedsnet_frame(und,sizeof(und),255)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(a,sizeof(a),254)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(fc,sizeof(fc),255)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(b,sizeof(b),254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(und,sizeof(und),NULL,0U,255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(a,sizeof(a),NULL,0U,254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(fc,sizeof(fc),NULL,0U,255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(b,sizeof(b),NULL,0U,254)==HAL_OK);
  uint8_t third[sizeof(fc)];memcpy(third,fc,sizeof(third));third[sizeof(third)-12]^=1;
  const uint32_t crc=launchcore_crc32(third+4,sizeof(third)-8);
  for(unsigned n=0;n<4;++n)third[sizeof(third)-4+n]=(uint8_t)(crc>>(8*n));
- assert(radio_uart_enqueue_sedsnet_frame(third,sizeof(third),255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(third,sizeof(third),NULL,0U,255)==HAL_OK);
  assert(radio_uart_dequeue_frame_with_budget(&first,2000));
  assert(first.len==sizeof(und)); /* Metadata stops original adjacent coalescing. */
  uint64_t ids[4];assert(radio_uart_ack_contracts(first.data,first.len,first.priority,ids)==1);

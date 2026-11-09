@@ -24,8 +24,8 @@ int main(void){
  radio_tx_item_t out;
  uint8_t sdt[16]={165,90,12,0,'S','D','T',3,0x11};
  /* Two canonical ACKs enqueued 20 ms apart leave in one DMA 100 ms after the first. */
- clock_ms=10;assert(radio_uart_enqueue_sedsnet_frame(und,sizeof(und),255)==HAL_OK);
- clock_ms=30;assert(radio_uart_enqueue_sedsnet_frame(fc,sizeof(fc),255)==HAL_OK);
+ clock_ms=10;assert(radio_uart_enqueue_sedsnet_parts(und,sizeof(und),NULL,0U,255)==HAL_OK);
+ clock_ms=30;assert(radio_uart_enqueue_sedsnet_parts(fc,sizeof(fc),NULL,0U,255)==HAL_OK);
  assert(radio_uart_dequeue_frame_with_budget(&out,2000));
  assert(out.uart_frames==2&&g_tx_dma_ack_frames==2&&g_tx_dma_ack_offset_ms==20);
  complete(&out,110);
@@ -37,9 +37,9 @@ int main(void){
  board_health_radio_tx_timing(w);
  assert(w[1]==0&&w[2]==0&&w[3]==0&&w[4]==0);
  /* Non-ACK traffic is not an ACK sample but still counts toward depth. */
- clock_ms=200;assert(radio_uart_enqueue_sedsnet_frame(sdt,sizeof(sdt),253)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(und,sizeof(und),255)==HAL_OK);
- sdt[8]=0x22;assert(radio_uart_enqueue_sedsnet_frame(sdt,sizeof(sdt),253)==HAL_OK);
+ clock_ms=200;assert(radio_uart_enqueue_sedsnet_parts(sdt,sizeof(sdt),NULL,0U,253)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(und,sizeof(und),NULL,0U,255)==HAL_OK);
+ sdt[8]=0x22;assert(radio_uart_enqueue_sedsnet_parts(sdt,sizeof(sdt),NULL,0U,253)==HAL_OK);
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(und)&&g_tx_dma_ack_frames==1&&!g_tx_dma_ack_offset_ms);
  complete(&out,207);
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&memcmp(out.data+4,"SDT",3)==0&&!g_tx_dma_ack_frames);
@@ -48,7 +48,7 @@ int main(void){
  board_health_radio_tx_timing(w);
  assert(w[1]==1&&w[2]==7&&w[3]==7&&w[4]==3&&w[5]==0);
  /* Ordinary traffic older than the age limit is a stale drop; cumulative. */
- clock_ms=1000;assert(radio_uart_enqueue_sedsnet_frame(sdt,sizeof(sdt),253)==HAL_OK);
+ clock_ms=1000;assert(radio_uart_enqueue_sedsnet_parts(sdt,sizeof(sdt),NULL,0U,253)==HAL_OK);
  board_health_radio_tx_timing(w);assert(w[4]==1);
  board_health_radio_tx_timing(w);assert(w[4]==1); /* still-queued depth carries into the next window */
  clock_ms=1000+1500;radio_uart_drop_stale_locked(clock_ms);
@@ -58,7 +58,7 @@ int main(void){
  board_health_radio_tx_timing(w);
  assert(w[4]==0&&w[5]==1);
  /* The 32-bit millisecond clock may wrap between enqueue and completion. */
- clock_ms=UINT32_MAX-4;assert(radio_uart_enqueue_sedsnet_frame(fc,sizeof(fc),255)==HAL_OK);
+ clock_ms=UINT32_MAX-4;assert(radio_uart_enqueue_sedsnet_parts(fc,sizeof(fc),NULL,0U,255)==HAL_OK);
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&g_tx_dma_ack_frames==1);
  complete(&out,5);
  board_health_radio_tx_timing(w);

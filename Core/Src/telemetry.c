@@ -879,6 +879,13 @@ static SedsResult init_telemetry_router_locked(void) {
   if (result != SEDS_OK) return result;
   tuning.reliable_retransmit_ms = 250U;
   tuning.reliable_max_retries = 17U;
+  /* Never try zstd payload compression on transmit. ZSTD_compress keeps a
+   * 3.8 KiB context on the stack and then mallocs a ~30 KiB workspace from
+   * the newlib heap, which here is under 2 KiB, so every attempt failed and
+   * the payload went out uncompressed anyway. The attempt ran inside the
+   * router's side-TX callback chain and took the telemetry thread to within
+   * 812 B of its 14 KiB stack under full-bay traffic. Receiving is unchanged. */
+  tuning.payload_compress_threshold = SIZE_MAX;
   result = seds_set_runtime_tuning_config(&tuning);
   if (result != SEDS_OK) return result;
 

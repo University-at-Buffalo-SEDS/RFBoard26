@@ -13,7 +13,7 @@ class RadioControlFifoTests(unittest.TestCase):
                           for name in ['radio_tx_item_t', 'radio_tx_queue_item_t'])
         read = source[source.index('static uint8_t radio_read_uleb128('):source.index('static uint32_t radio_uart_flow_id_from_payload(')]
         remove = source[source.index('static void radio_uart_remove_queue_index('):source.index('static void radio_uart_drop_stale_locked(')]
-        start = source.index('static uint8_t radio_uart_independent_control(', source.index('static HAL_StatusTypeDef radio_uart_enqueue_sedsnet_frame('))
+        start = source.index('static uint8_t radio_uart_independent_control(', source.index('static HAL_StatusTypeDef radio_uart_enqueue_sedsnet_parts('))
         independent = source[start:source.index('/* Put an item removed for transmission', start)]
         split = independent.index('#if !RFBOARD_LORA_SCHEDULER')
         dequeue = independent[split:]
@@ -21,7 +21,7 @@ class RadioControlFifoTests(unittest.TestCase):
         from test_radio_funded_packet_boundary import function
         crc = function((ROOT/'tests/radio_crc_reference.h').read_text(), 'uint32_t launchcore_crc32(')
         ack = function(source, 'static uint8_t radio_uart_ack_contract(') + function(source, 'static uint8_t radio_uart_ack_contracts(')
-        start = source.index('static HAL_StatusTypeDef radio_uart_enqueue_sedsnet_frame(')
+        start = source.index('static HAL_StatusTypeDef radio_uart_enqueue_sedsnet_parts(')
         enqueue = source[start:source.index('/* Only canonical packets', start)]
         stale_start = source.index('static void radio_uart_drop_stale_locked(')
         stale = source[stale_start:source.index('static HAL_StatusTypeDef radio_uart_enqueue_frame(', stale_start)]
@@ -99,25 +99,25 @@ static uint32_t radio_uart_air_ms(uint16_t n){return n;}
         self._run_case(frames + r'''int main(void){
  radio_uart_drop_stale_locked(0);
  radio_tx_item_t out;
- assert(radio_uart_enqueue_sedsnet_frame(und,sizeof(und),255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(und,sizeof(und),NULL,0U,255)==HAL_OK);
  for(unsigned i=0;i<18;i++)
-   assert(radio_uart_enqueue_sedsnet_frame(und,sizeof(und),255)==HAL_BUSY);
+   assert(radio_uart_enqueue_sedsnet_parts(und,sizeof(und),NULL,0U,255)==HAL_BUSY);
  assert(g_tx_count==1 && g_tx_queue_bytes_used==sizeof(und));
- assert(radio_uart_enqueue_sedsnet_frame(fc,sizeof(fc),255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(fc,sizeof(fc),NULL,0U,255)==HAL_OK);
  assert(radio_uart_dequeue_frame_with_budget(&out,sizeof(und)));
  assert(out.len==sizeof(und) && memcmp(out.data,und,sizeof(und))==0);
  g_tx_dma_item=out;g_tx_dma_busy=1;
- assert(radio_uart_enqueue_sedsnet_frame(und,sizeof(und),255)==HAL_BUSY);
+ assert(radio_uart_enqueue_sedsnet_parts(und,sizeof(und),NULL,0U,255)==HAL_BUSY);
  assert(g_tx_count==1 && g_tx_queue_bytes_used==sizeof(fc));
  g_tx_dma_busy=0;
- assert(radio_uart_enqueue_sedsnet_frame(und,sizeof(und),255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(und,sizeof(und),NULL,0U,255)==HAL_OK);
  assert(radio_uart_dequeue_frame_with_budget(&out,sizeof(und)));
  assert(out.len==sizeof(fc) && memcmp(out.data,fc,sizeof(fc))==0);
  assert(radio_uart_dequeue_frame_with_budget(&out,sizeof(und)));
  assert(out.len==sizeof(und) && memcmp(out.data,und,sizeof(und))==0);
  uint8_t schema[16]={165,90,12,0,'S','D','T',3};
- assert(radio_uart_enqueue_sedsnet_frame(schema,sizeof(schema),254)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(schema,sizeof(schema),254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(schema,sizeof(schema),NULL,0U,254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(schema,sizeof(schema),NULL,0U,254)==HAL_OK);
  assert(g_tx_count==2 && g_tx_queue_bytes_used==2*sizeof(schema));
  }''')
 
@@ -129,23 +129,23 @@ static uint32_t radio_uart_air_ms(uint16_t n){return n;}
  uint8_t schema[196]={165,90,192,0,'S','D','T',3};
  uint8_t next[16]={165,90,12,0,'S','D','T',3};
  radio_tx_item_t out;
- assert(radio_uart_enqueue_sedsnet_frame(schema,sizeof(schema),254)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(next,sizeof(next),254)==HAL_BUSY);
- assert(radio_uart_enqueue_sedsnet_frame(und,sizeof(und),255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(schema,sizeof(schema),NULL,0U,254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(next,sizeof(next),NULL,0U,254)==HAL_BUSY);
+ assert(radio_uart_enqueue_sedsnet_parts(und,sizeof(und),NULL,0U,255)==HAL_OK);
  assert(radio_uart_dequeue_frame_with_budget(&out,2000));
  assert(out.len==sizeof(und));
  assert(radio_uart_dequeue_frame_with_budget(&out,2000));
  assert(out.len==sizeof(schema));g_tx_dma_item=out;g_tx_dma_busy=1;
- assert(radio_uart_enqueue_sedsnet_frame(next,sizeof(next),254)==HAL_BUSY);
- assert(radio_uart_enqueue_sedsnet_frame(fc,sizeof(fc),255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(next,sizeof(next),NULL,0U,254)==HAL_BUSY);
+ assert(radio_uart_enqueue_sedsnet_parts(fc,sizeof(fc),NULL,0U,255)==HAL_OK);
  g_tx_dma_busy=0;
- assert(radio_uart_enqueue_sedsnet_frame(next,sizeof(next),254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(next,sizeof(next),NULL,0U,254)==HAL_OK);
  assert(g_tx_count==2 && g_tx_drops==0);
  assert(radio_uart_dequeue_frame_with_budget(&out,2000));
  assert(radio_uart_dequeue_frame_with_budget(&out,2000));
  uint8_t large[520]={165,90,4,2,'S','D','T',3};
- assert(radio_uart_enqueue_sedsnet_frame(large,sizeof(large),254)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(next,sizeof(next),254)==HAL_BUSY);
+ assert(radio_uart_enqueue_sedsnet_parts(large,sizeof(large),NULL,0U,254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(next,sizeof(next),NULL,0U,254)==HAL_BUSY);
  assert(g_tx_count==1 && g_tx_queue_bytes_used==sizeof(large));
  }''', lookahead=196)
 
@@ -155,8 +155,8 @@ static uint32_t radio_uart_air_ms(uint16_t n){return n;}
         self._run_case(frames + r'''int main(void){
  radio_uart_drop_stale_locked(0);
  uint8_t schema[16]={165,90,12,0,'S','D','T',3};radio_tx_item_t out;
- assert(radio_uart_enqueue_sedsnet_frame(schema,sizeof(schema),254)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(und,sizeof(und),255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(schema,sizeof(schema),NULL,0U,254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(und,sizeof(und),NULL,0U,255)==HAL_OK);
  unsigned count=g_tx_count,bytes=g_tx_queue_bytes_used;
  g_tx_ack_only_admission=1;g_tx_independent_streak=7;
  assert(!radio_uart_dequeue_frame_with_budget(&out,2000));
@@ -168,7 +168,7 @@ static uint32_t radio_uart_air_ms(uint16_t n){return n;}
  assert(!radio_uart_dequeue_frame_with_budget(&out,2000));
  assert(g_tx_count==1&&g_tx_queue_bytes_used==sizeof(schema));
  uint8_t bad[sizeof(fc)];memcpy(bad,fc,sizeof(bad));bad[sizeof(bad)-1]^=1;
- assert(radio_uart_enqueue_sedsnet_frame(bad,sizeof(bad),255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(bad,sizeof(bad),NULL,0U,255)==HAL_OK);
  count=g_tx_count;bytes=g_tx_queue_bytes_used;
  assert(!radio_uart_dequeue_frame_with_budget(&out,2000));
  assert(g_tx_count==count&&g_tx_queue_bytes_used==bytes);
@@ -194,9 +194,9 @@ int main(void) {
  assert(!radio_uart_independent_control(schema,sizeof(schema),255));
  assert(radio_uart_independent_control(ack,sizeof(ack),255));
  assert(!radio_uart_independent_control(ack,sizeof(ack),16));
- assert(radio_uart_enqueue_sedsnet_frame(schema,sizeof(schema),254)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(schema,sizeof(schema),254)==HAL_BUSY);
- for(unsigned i=1;i<=3;i++){ack[7]=i;assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),255)==HAL_OK);}
+ assert(radio_uart_enqueue_sedsnet_parts(schema,sizeof(schema),NULL,0U,254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(schema,sizeof(schema),NULL,0U,254)==HAL_BUSY);
+ for(unsigned i=1;i<=3;i++){ack[7]=i;assert(radio_uart_enqueue_sedsnet_parts(ack,sizeof(ack),NULL,0U,255)==HAL_OK);}
  assert(g_tx_count==4);
  for(unsigned i=1;i<=3;i++){
   assert(radio_uart_dequeue_frame_with_budget(&out,2000));assert(out.data[7]==i);
@@ -205,15 +205,15 @@ int main(void) {
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.data[7]==10);
  assert(!g_tx_count&&!g_tx_queue_bytes_used);
  reset();
- for(unsigned i=0;i<2;i++){frame(small,sizeof(small),10+i,1);assert(radio_uart_enqueue_sedsnet_frame(small,sizeof(small),254)==HAL_OK);}
- assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),255)==HAL_OK);
+ for(unsigned i=0;i<2;i++){frame(small,sizeof(small),10+i,1);assert(radio_uart_enqueue_sedsnet_parts(small,sizeof(small),NULL,0U,254)==HAL_OK);}
+ assert(radio_uart_enqueue_sedsnet_parts(ack,sizeof(ack),NULL,0U,255)==HAL_OK);
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.data[7]==3);completed(&out);g_radio_tx_ok++;
  for(unsigned i=0;i<2;i++){assert(radio_uart_dequeue_frame_with_budget(&out,2000));assert(out.data[7]==10+i);completed(&out);g_radio_tx_ok++;}
  reset();frame(small,sizeof(small),0,1);
- for(unsigned i=0;i<10;i++)assert(radio_uart_enqueue_sedsnet_frame(small,sizeof(small),254)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(small,sizeof(small),254)==HAL_BUSY);
- for(unsigned i=0;i<2;i++)assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),255)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),255)==HAL_BUSY);
+ for(unsigned i=0;i<10;i++)assert(radio_uart_enqueue_sedsnet_parts(small,sizeof(small),NULL,0U,254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(small,sizeof(small),NULL,0U,254)==HAL_BUSY);
+ for(unsigned i=0;i<2;i++)assert(radio_uart_enqueue_sedsnet_parts(ack,sizeof(ack),NULL,0U,255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(ack,sizeof(ack),NULL,0U,255)==HAL_BUSY);
  g_radio_tx_ok=7;g_tx_independent_streak=7;
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&memcmp(out.data+4,"SDT",3)==0);
  g_radio_tx_ok=8;g_tx_independent_streak=0;
@@ -221,13 +221,13 @@ int main(void) {
  assert(g_tx_count==10);
  reset();
  frame(small,sizeof(small),60,1);
- assert(radio_uart_enqueue_sedsnet_frame(small,sizeof(small),254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(small,sizeof(small),NULL,0U,254)==HAL_OK);
  frame(ack,sizeof(ack),61,0);
- assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),253)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(ack,sizeof(ack),NULL,0U,253)==HAL_OK);
  frame(ack,sizeof(ack),62,0);
- assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(ack,sizeof(ack),NULL,0U,255)==HAL_OK);
  frame(ack,sizeof(ack),63,0);
- assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(ack,sizeof(ack),NULL,0U,255)==HAL_OK);
  /* An ACK must outrank older independent routine traffic; equal priorities
   * retain FIFO order and the encoded SDT history stays intact. */
  for(unsigned marker=62;marker<=63;marker++){
@@ -241,40 +241,40 @@ int main(void) {
   * must not consume the two slots reserved for commands and ACKs. */
  reset(); frame(small,sizeof(small),70,0); small[6]=100;
  assert(radio_uart_independent_control(small,sizeof(small),253));
- for(unsigned i=0;i<10;i++)assert(radio_uart_enqueue_sedsnet_frame(small,sizeof(small),253)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(small,sizeof(small),253)==HAL_BUSY);
+ for(unsigned i=0;i<10;i++)assert(radio_uart_enqueue_sedsnet_parts(small,sizeof(small),NULL,0U,253)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(small,sizeof(small),NULL,0U,253)==HAL_BUSY);
  frame(schema,16,71,1);
- assert(radio_uart_enqueue_sedsnet_frame(schema,16,255)==HAL_BUSY); /* SDT cannot claim reserve. */
+ assert(radio_uart_enqueue_sedsnet_parts(schema,16,NULL,0U,255)==HAL_BUSY); /* SDT cannot claim reserve. */
  frame(ack,sizeof(ack),72,0);
- assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(ack,sizeof(ack),NULL,0U,255)==HAL_OK);
  frame(ack,sizeof(ack),73,0); ack[6]=110;
- assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(ack,sizeof(ack),NULL,0U,254)==HAL_OK);
  assert(g_tx_count==12 && g_tx_queue_bytes_used==10*sizeof(small)+2*sizeof(ack));
- assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),254)==HAL_BUSY);
+ assert(radio_uart_enqueue_sedsnet_parts(ack,sizeof(ack),NULL,0U,254)==HAL_BUSY);
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.data[7]==72);completed(&out);g_radio_tx_ok++;
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.data[7]==73);completed(&out);g_radio_tx_ok++;
  assert(g_tx_count==10);
  /* Byte reservation is independent of slot reservation and has the same
   * classification. Accepted ordinary bytes and SDT order remain owned. */
  reset(); frame(schema,1000,74,1);
- assert(radio_uart_enqueue_sedsnet_frame(schema,1000,253)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(schema,1000,NULL,0U,253)==HAL_OK);
  frame(schema,750,75,0); schema[6]=100;
- assert(radio_uart_enqueue_sedsnet_frame(schema,750,253)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(schema,750,NULL,0U,253)==HAL_OK);
  frame(schema,60,76,0); schema[6]=100;
- assert(radio_uart_enqueue_sedsnet_frame(schema,60,253)==HAL_BUSY);
+ assert(radio_uart_enqueue_sedsnet_parts(schema,60,NULL,0U,253)==HAL_BUSY);
  frame(schema,60,77,1);
- assert(radio_uart_enqueue_sedsnet_frame(schema,60,255)==HAL_BUSY);
+ assert(radio_uart_enqueue_sedsnet_parts(schema,60,NULL,0U,255)==HAL_BUSY);
  frame(ack,sizeof(ack),78,0);
- assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(ack,sizeof(ack),NULL,0U,255)==HAL_OK);
  frame(ack,sizeof(ack),79,0);ack[6]=110;
- assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(ack,sizeof(ack),NULL,0U,254)==HAL_OK);
  assert(g_tx_count==4 && g_tx_queue_bytes_used==1790);
  reset(); clock_ms=1;
  radio_uart_drop_stale_locked(0); /* Keep legacy helper covered, with an empty queue. */
  frame(small,sizeof(small),41,1);
- assert(radio_uart_enqueue_sedsnet_frame(small,sizeof(small),16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(small,sizeof(small),NULL,0U,16)==HAL_OK);
  frame(small,sizeof(small),42,1);
- assert(radio_uart_enqueue_sedsnet_frame(small,sizeof(small),16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(small,sizeof(small),NULL,0U,16)==HAL_OK);
  clock_ms=2000;
  assert(radio_uart_tx_queue_count()==2); /* Observation cannot discard accepted SDT. */
  assert(g_tx_drops==0 && g_tx_drop_stale==0);
@@ -298,10 +298,10 @@ int main(void) {
  uint8_t a[40],b[60],c[120],ack[20],large[300];radio_tx_item_t out;
  radio_uart_drop_stale_locked(0);
  frame(a,sizeof(a),10,1);frame(b,sizeof(b),11,1);frame(c,sizeof(c),12,1);frame(ack,sizeof(ack),13,0);
- assert(radio_uart_enqueue_sedsnet_frame(a,sizeof(a),16)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(b,sizeof(b),16)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(c,sizeof(c),16)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(ack,sizeof(ack),255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(a,sizeof(a),NULL,0U,16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(b,sizeof(b),NULL,0U,16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(c,sizeof(c),NULL,0U,16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(ack,sizeof(ack),NULL,0U,255)==HAL_OK);
  /* An independent ACK keeps its own immediate DMA turn. */
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(ack));
  assert(!memcmp(out.data,ack,sizeof(ack)));completed(&out);g_radio_tx_ok++;
@@ -316,24 +316,24 @@ int main(void) {
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(c));
  assert(!memcmp(out.data,c,sizeof(c))&&!g_tx_count&&!g_tx_queue_bytes_used);
  reset();
- assert(radio_uart_enqueue_sedsnet_frame(a,sizeof(a),16)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(b,sizeof(b),16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(a,sizeof(a),NULL,0U,16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(b,sizeof(b),NULL,0U,16)==HAL_OK);
  /* The actual aggregate air cost must fit the caller's unchanged budget. */
  assert(radio_uart_dequeue_frame_with_budget(&out,90)&&out.len==sizeof(a));
  assert(radio_uart_dequeue_frame_with_budget(&out,90)&&out.len==sizeof(b));
  reset();
- assert(radio_uart_enqueue_sedsnet_frame(a,sizeof(a),16)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(b,sizeof(b),17)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(a,sizeof(a),NULL,0U,16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(b,sizeof(b),NULL,0U,17)==HAL_OK);
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(a));
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(b));
  reset();
  /* Dependent high-priority discovery and independent routine controls stay separate. */
- assert(radio_uart_enqueue_sedsnet_frame(a,sizeof(a),254)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(b,sizeof(b),254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(a,sizeof(a),NULL,0U,254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(b,sizeof(b),NULL,0U,254)==HAL_OK);
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(a));
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(b));
  reset();frame(large,sizeof(large),20,1);
- assert(radio_uart_enqueue_sedsnet_frame(large,sizeof(large),16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(large,sizeof(large),NULL,0U,16)==HAL_OK);
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(large));
  assert(!memcmp(out.data,large,sizeof(large))); /* Existing legal single-frame capacity unchanged. */
 }
@@ -346,8 +346,8 @@ _Static_assert(sizeof(radio_tx_queue_item_t)==16, "queue storage unchanged");
 int main(void) {
  uint8_t a[40]={0},b[60]={0};radio_tx_item_t out;
  radio_uart_drop_stale_locked(0);
- assert(radio_uart_enqueue_sedsnet_frame(a,sizeof(a),16)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(b,sizeof(b),16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(a,sizeof(a),NULL,0U,16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(b,sizeof(b),NULL,0U,16)==HAL_OK);
  assert(radio_uart_air_ms(40)==18 && radio_uart_air_ms(60)==24);
  assert(radio_uart_air_ms(100)==37 && radio_uart_air_ms(196)==67);
  assert(radio_uart_dequeue_frame_with_budget(&out,31)&&out.len==40);
@@ -362,8 +362,8 @@ int main(void) {
 int main(void) {
  uint8_t a[40]={0},b[60]={0};radio_tx_item_t out;
  radio_uart_drop_stale_locked(0);
- assert(radio_uart_enqueue_sedsnet_frame(a,sizeof(a),16)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(b,sizeof(b),16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(a,sizeof(a),NULL,0U,16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(b,sizeof(b),NULL,0U,16)==HAL_OK);
  assert(radio_uart_dequeue_frame_with_budget(&out,100)&&out.len==40);
  assert(radio_uart_dequeue_frame_with_budget(&out,100)&&out.len==60);
  assert(!g_tx_count && !g_tx_queue_bytes_used);
@@ -377,9 +377,9 @@ int main(void) {
 int main(void) {
  uint8_t ordinary[40]={0};radio_tx_item_t out;
  radio_uart_drop_stale_locked(0);g_tx_independent_streak=7;
- assert(radio_uart_enqueue_sedsnet_frame(d1,sizeof(d1),254)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(ordinary,sizeof(ordinary),16)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(d7,sizeof(d7),255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(d1,sizeof(d1),NULL,0U,254)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(ordinary,sizeof(ordinary),NULL,0U,16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(d7,sizeof(d7),NULL,0U,255)==HAL_OK);
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(d1));
  completed(&out);assert(g_tx_independent_streak==0);
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(d7));
@@ -398,8 +398,8 @@ int main(void) {
  radio_uart_drop_stale_locked(0);
  /* Seven completed ordinary frames cannot represent seven control turns. */
  g_radio_tx_ok=7;
- assert(radio_uart_enqueue_sedsnet_frame(ordinary,sizeof(ordinary),16)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(d1,sizeof(d1),255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(ordinary,sizeof(ordinary),NULL,0U,16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(d1,sizeof(d1),NULL,0U,255)==HAL_OK);
  assert(radio_uart_dequeue_frame_with_budget(&out,2000));
  assert(out.len==sizeof(d1)&&!memcmp(out.data,d1,sizeof(d1)));
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(ordinary));
@@ -414,10 +414,10 @@ int main(void) {
 int main(void) {
  uint8_t ordinary[40]={0};radio_tx_item_t out;
  radio_uart_drop_stale_locked(0);
- assert(radio_uart_enqueue_sedsnet_frame(ordinary,sizeof(ordinary),16)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(d1,sizeof(d1),255)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(d7,sizeof(d7),255)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(d8,sizeof(d8),255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(ordinary,sizeof(ordinary),NULL,0U,16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(d1,sizeof(d1),NULL,0U,255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(d7,sizeof(d7),NULL,0U,255)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(d8,sizeof(d8),NULL,0U,255)==HAL_OK);
  g_radio_tx_ok=5;g_tx_independent_streak=5;
  /* Only two control frames remain before the original owed FIFO turn. */
  assert(radio_uart_dequeue_frame_with_budget(&out,2000));
@@ -436,12 +436,12 @@ int main(void) {
 int main(void) {
  uint8_t a[40]={0},b[60]={0},small[16]={0};radio_tx_item_t out;
  radio_uart_drop_stale_locked(0);
- assert(radio_uart_enqueue_sedsnet_frame(a,sizeof(a),16)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(b,sizeof(b),16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(a,sizeof(a),NULL,0U,16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(b,sizeof(b),NULL,0U,16)==HAL_OK);
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==100&&out.uart_frames==2);
  assert(radio_uart_requeue_frame_front(&out)==HAL_OK);
- for(unsigned i=0;i<8;++i)assert(radio_uart_enqueue_sedsnet_frame(small,sizeof(small),16)==HAL_OK);
- assert(radio_uart_enqueue_sedsnet_frame(small,sizeof(small),16)==HAL_BUSY);
+ for(unsigned i=0;i<8;++i)assert(radio_uart_enqueue_sedsnet_parts(small,sizeof(small),NULL,0U,16)==HAL_OK);
+ assert(radio_uart_enqueue_sedsnet_parts(small,sizeof(small),NULL,0U,16)==HAL_BUSY);
  assert(g_tx_count==9); /* Two owned UARTframes share one descriptor, not an extra admission slot. */
 }
 """)
