@@ -20,6 +20,10 @@
 // Globals
 #define NMEA_MAX_SENTENCE_LENGTH    0x52    // NMEA standard max length
 #define NMEA_MAX_FIELD_LENGTH       0x10    // Max length of any single field
+// Two-digit NMEA years accepted as real GPS time. Receivers report placeholder
+// dates (1980, 2080) before a fix.
+#define GPS_MIN_VALID_YEAR          25U
+#define GPS_MAX_VALID_YEAR          79U
 #define NMEA_MAX_IGNORES            0x1F4   // Max number of NMEA sentences to ignore when searching for a valid one
 #define NMEA_MAX_WAIT               0x14    // Max timout for SPI transmition 
 #define NEOM9N_PRECISION            0x4     // Decimal places for lat/lon

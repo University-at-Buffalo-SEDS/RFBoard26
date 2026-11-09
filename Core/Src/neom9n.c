@@ -73,6 +73,14 @@ bool gps_datetime_valid(const NEOM9N_t *packet) {
         return false;
     }
 
+    /* Without a fix the receiver still reports its power-up clock with a
+     * placeholder date. That time would make RF the network time source and
+     * pull every board to RF uptime, so only fixed GPS time is valid. */
+    if (!packet->valid_fix ||
+        packet->year < GPS_MIN_VALID_YEAR || packet->year > GPS_MAX_VALID_YEAR) {
+        return false;
+    }
+
     if (packet->month < 1U || packet->month > 12U ||
         packet->day < 1U || packet->day > 31U ||
         packet->hours > 23U || packet->minutes > 59U ||
