@@ -18,6 +18,7 @@ extern int telemetry_router_enter(void);
 extern int telemetry_router_leave(void);
 extern uint32_t board_health_uart_rx_drops(void);
 extern void board_health_radio_tx_timing(uint32_t words[6]);
+extern volatile uint32_t g_telemetry_service_faults;
 
 void board_health_poll(SedsRouter *router)
 {
@@ -33,7 +34,11 @@ void board_health_poll(SedsRouter *router)
 
   uint32_t words[24] = {1U, 2U, (uint32_t)uptime, (uint32_t)(uptime >> 32U), BOARD_UPTIME_FREQUENCY_HZ};
   const uint32_t saved = __get_PRIMASK(); __disable_irq();
-  words[5] = g_watchdog_reset_flags; words[6] = g_watchdog_missing_mask;
+  words[5] = g_watchdog_reset_flags;
+  /* Watchdog pending mask in bits 0..15; optional router services that failed
+   * to start (telemetry.c TELEMETRY_SERVICE_*) in bits 16..23. */
+  words[6] = (g_watchdog_missing_mask & 0xFFFFU) |
+             ((g_telemetry_service_faults & 0xFFU) << 16U);
 #ifdef TELEMETRY_USE_TLSF
   /* Exact existing occupied-byte counters. Avoid interrupt-disabled heap
    * walks, and do not mislabel occupied headroom as contiguous free space. */

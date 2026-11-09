@@ -110,9 +110,9 @@ class QualificationContractTests(unittest.TestCase):
         startup_prime = telemetry[prime:end]
 
         self.assertIn("seds_router_poll_timesync(r, &did_queue)", startup_prime)
-        self.assertIn(
-            "if (result != SEDS_OK && result != SEDS_IO)", startup_prime
-        )
+        # Relay first: a failed priming poll is repeated by the regular
+        # timesync poll and must never free the published-to-be router.
+        self.assertNotIn("seds_router_free", startup_prime)
         self.assertIn(
             "if (result == SEDS_OK && did_queue) g_telemetry_timesync_queued++",
             startup_prime,

@@ -219,7 +219,7 @@ static uint64_t node_now_since_ms(void*u){(void)u;return clock_ms-g_router.start
 static SedsResult tx_send_with_priority(const uint8_t*p,size_t n,uint8_t priority,void*u){(void)p;(void)n;(void)priority;(void)u;return SEDS_OK;}
 static void telemetry_can_rx(const uint8_t*p,size_t n,void*u){(void)p;(void)n;(void)u;}
 static int can_bus_subscribe_rx(void(*cb)(const uint8_t*,size_t,void*),void*u){assert(cb==telemetry_can_rx&&!u);return HAL_OK;}
-static __attribute__((unused)) SedsResult board_packet_store_init(void){g_gateway_packet_store_init_result=fail_stage==1?SEDS_ERR:SEDS_OK;return g_gateway_packet_store_init_result;}
+static __attribute__((unused)) SedsResult board_packet_store_init(void){g_gateway_packet_store_init_result=fail_stage==1?SEDS_HANDLER_ERROR:SEDS_OK;return g_gateway_packet_store_init_result;}
 static __attribute__((unused)) SedsResult daq_calibration_init(SedsRouter*r){assert(r);return fail_stage==6?SEDS_ERR:SEDS_OK;}
 static __attribute__((unused)) SedsResult daq_log_clock_init(SedsRouter*r){assert(r);return fail_stage==7?SEDS_ERR:SEDS_OK;}
 static __attribute__((unused)) SedsResult sedsnet_hardware_crypto_init(void){return SEDS_OK;}
@@ -229,9 +229,15 @@ static __attribute__((unused)) SedsResult radio_tx_send(const uint8_t*p,size_t n
 static __attribute__((unused)) SedsResult telemetry_uart_tx_send(const uint8_t*p,size_t n,void*u){return tx_send_with_priority(p,n,0,u);}
 static __attribute__((unused)) void telemetry_uart_set_side_id(int32_t id){(void)id;}
 static SedsResult telemetry_configure_timesync_locked(SedsRouter*r){assert(r);return fail_stage==2?SEDS_ERR:SEDS_OK;}
-static __attribute__((unused)) SedsResult av_bay_underglow_init(SedsRouter*r){assert(r);return SEDS_OK;}
+static unsigned underglow_inits;
+static __attribute__((unused)) SedsResult av_bay_underglow_init(SedsRouter*r){assert(r);underglow_inits++;return fail_stage==9?SEDS_ERR:SEDS_OK;}
 static __attribute__((unused)) SedsResult flight_buzzer_init(SedsRouter*r){assert(r);return SEDS_OK;}
-static SedsResult ota_stream_init(SedsRouter*r){assert(r);return fail_stage==3?SEDS_ERR:SEDS_OK;}
+static unsigned ota_inits;
+static SedsResult ota_stream_init(SedsRouter*r){assert(r);ota_inits++;return fail_stage==3?SEDS_ERR:SEDS_OK;}
+/* Optional-service fault state owned by telemetry.c (RF relay-first init). */
+volatile uint32_t g_telemetry_service_faults;
+volatile int32_t g_telemetry_service_last_error;
+static uint32_t g_telemetry_service_retry_ms;
 void board_recovery_transport_set_router(SedsRouter*r){assert(r);}
 #define telemetry_radio_rx inert_radio_rx
 static __attribute__((unused)) void inert_radio_rx(const uint8_t*p,size_t n,void*u){(void)p;(void)n;(void)u;}
@@ -265,6 +271,8 @@ SedsResult init_telemetry_router(void);
 @@HOOK:telemetry_router_leave@@
 @@HOOK:telemetry_lock@@
 @@HOOK:telemetry_unlock@@
+@@TELEMETRY:telemetry_start_services_locked@@
+@@TELEMETRY:telemetry_retry_services_locked@@
 @@TELEMETRY:init_telemetry_router_locked@@
 @@TELEMETRY:init_telemetry_router@@
 @@TELEMETRY:rx_asynchronous_locked@@
@@ -327,21 +335,57 @@ int main(int argc,char**argv){
   assert(init_telemetry_router()==SEDS_OK);
  }else if(!strcmp(argv[2],"rollover")||!strcmp(argv[2],"zero_deadline")){
   bool zero=!strcmp(argv[2],"zero_deadline");clock_ms=zero?UINT32_MAX-499ULL:UINT32_MAX-250ULL;
-  fail_enable=true;assert(init_telemetry_router()==SEDS_HANDLER_ERROR&&allocations==1&&frees==1);
+  /* Only a router/side construction failure frees and retries now. */
+  fail_stage=1;assert(init_telemetry_router()==SEDS_HANDLER_ERROR&&allocations==0&&frees==0);
   uint32_t deadline=g_router_retry_after_ms;assert(deadline==(zero?1U:249U));
   unsigned count=allocations;clock_ms+=499;assert(init_telemetry_router()==SEDS_IO&&allocations==count);
-  clock_ms++;fail_enable=false;
+  clock_ms++;fail_stage=0;
   if(zero){assert(init_telemetry_router()==SEDS_IO&&allocations==count);clock_ms++;}
   assert(init_telemetry_router()==SEDS_OK&&allocations==count+1&&g_router_retry_after_ms==0);
  }else if(!strcmp(argv[2],"leave")||!strcmp(argv[2],"primary_error")){
-  bool primary=!strcmp(argv[2],"primary_error");fail_enable=primary;unlock_failure=1;
+  bool primary=!strcmp(argv[2],"primary_error");fail_stage=primary?1:0;unlock_failure=1;
   assert(init_telemetry_router()==(primary?SEDS_HANDLER_ERROR:SEDS_ERR)&&g_telemetry_lock_put_fail==1);
-  assert(primary?(g_router.r==NULL&&frees==1):(g_router.r==router&&g_router.created==1));
+  assert(primary?(g_router.r==NULL&&frees==0&&allocations==0):(g_router.r==router&&g_router.created==1));
   /* Release the host test kernel resource after injected put failure; this
    * is fixture cleanup, not a claim of automatic firmware lock recovery. */
   unlock_failure=0;assert(!pthread_mutex_unlock(&g_telemetry_mutex.mutex));
  }else{
-  unsigned stage=(unsigned)strtoul(argv[2],NULL,10);assert(stage>=1&&stage<=8);
+  unsigned stage=(unsigned)strtoul(argv[2],NULL,10);assert(stage>=1&&stage<=9);
+  if(stage!=1){
+   /* Relay first: once the router and both sides exist, an optional service
+    * failure (timesync config 2, OTA 3, flight-state enable 4 / callback 5,
+    * priming timesync poll 8, underglow 9) publishes the router, records a
+    * fault and retries in the background. Nothing is freed, so no
+    * DISCOVERY_LEAVE storm and CAN<->radio forwarding keeps running. */
+   uint32_t bit=stage==2?TELEMETRY_SERVICE_TIMESYNC:stage==3?TELEMETRY_SERVICE_OTA:
+     stage==9?TELEMETRY_SERVICE_UNDERGLOW:(stage==4||stage==5)?TELEMETRY_SERVICE_FLIGHT_STATE:0U;
+   fail_stage=(stage==2||stage==3||stage==8||stage==9)?stage:0;fail_enable=stage==4;fail_callback=stage==5;
+   assert(init_telemetry_router()==SEDS_OK&&g_router.created==1&&g_router.r==router);
+   assert(allocations==1&&frees==0&&g_router_retry_after_ms==0);
+   assert(g_telemetry_service_faults==bit);
+   assert(bit!=TELEMETRY_SERVICE_FLIGHT_STATE||g_cache_router==NULL);
+   assert(bit==TELEMETRY_SERVICE_FLIGHT_STATE||g_cache_router==g_router.r);
+   /* Later initializers still ran: one failure never skips the others. */
+   assert(ota_inits==1&&underglow_inits==1&&(stage==4||stage==5||registrations==1));
+   /* The relay is live: frames from a side reach the actual SDK router. */
+   input_size=pack(SEDS_DT_FLIGHT_STATE,0,input,sizeof input);
+   unsigned before=rx_calls;rx_asynchronous(input,(size_t)input_size);
+   assert(rx_calls==before+1&&last_rx_result!=SEDS_BAD_ARG);
+   for(unsigned i=0;i<20;i++)assert(init_telemetry_router()==SEDS_OK&&allocations==1);
+   /* Bounded background retry: nothing before the deadline, then once. */
+   fail_stage=0;fail_enable=fail_callback=false;
+   assert(telemetry_router_enter());telemetry_retry_services_locked();assert(telemetry_router_leave());
+   unsigned starts=ota_inits+underglow_inits+registrations;
+   if(bit){assert(g_telemetry_service_faults==bit&&ota_inits+underglow_inits+registrations==starts);
+    clock_ms+=TELEMETRY_SERVICE_RETRY_MS;
+    assert(telemetry_router_enter());telemetry_retry_services_locked();assert(telemetry_router_leave());
+    assert(ota_inits+underglow_inits+registrations>starts||bit==TELEMETRY_SERVICE_TIMESYNC);}
+   assert(g_telemetry_service_faults==0&&g_cache_router==g_router.r&&frees==0&&allocations==1);
+   assert(ota_inits==1+(bit==TELEMETRY_SERVICE_OTA)&&underglow_inits==1+(bit==TELEMETRY_SERVICE_UNDERGLOW));
+   for(unsigned i=0;i<allocations;i++)if(allocations_list[i]==g_router.r)__real_seds_router_free(allocations_list[i]);
+   printf("PASS %s relay-first service fault=%u\n",argv[2],(unsigned)bit);
+   pthread_mutex_destroy(&g_telemetry_mutex.mutex);pthread_mutexattr_destroy(&attr);return 0;
+  }
   fail_stage=(stage<=3||stage>=6)?stage:0;fail_enable=stage==4;fail_callback=stage==5;
   assert(init_telemetry_router()!=SEDS_OK&&g_router.r==NULL&&g_router.created==0&&g_cache_router==NULL);
   unsigned count=allocations,freed=frees,w=writes;assert(freed==count&&w==0);

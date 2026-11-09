@@ -35,6 +35,7 @@ static int seds_router_announce_discovery(void *r) { assert(r); ++attempts; retu
 static int seds_router_log_bytes(void *r,unsigned ty,const uint8_t *p,size_t n) { assert(r && ty==12 && p && n==0); ++requests; return fail; }
 static int seds_router_poll_discovery(void *r, bool *queued) { assert(r && queued); ++polls; return poll_result; }
 static void board_health_poll(void *r) { assert(r); }
+static void telemetry_retry_services_locked(void) {}
 static void telemetry_update_network_health(void *r) { assert(r); ++health; }
 static void sim_probe_emit_heartbeat(void *r,uint64_t t) { (void)r;(void)t; }
 static int flight_state_cache_poll(void *r) { (void)r;return 0; }
@@ -84,9 +85,13 @@ int main(void) {
             self.assertEqual(result.returncode,0,result.stderr)
             subprocess.run([str(exe)],check=True)
         constructor=function(source,'init_telemetry_router_locked')
-        self.assertLess(constructor.index('g_discovery_schema_announced = 0U;'),constructor.index('flight_state_cache_init(r)'))
-        self.assertLess(constructor.index('g_discovery_schema_retry_ms = 0U;'),constructor.index('flight_state_cache_init(r)'))
-        self.assertLess(constructor.index('flight_state_cache_init(r)'),constructor.index('g_router.r = r;'))
+        # Services (including the flight-state cache) start through
+        # telemetry_start_services_locked before the router is published.
+        services='telemetry_start_services_locked(r, TELEMETRY_SERVICE_ALL)'
+        self.assertIn('flight_state_cache_init}',function(source,'telemetry_start_services_locked'))
+        self.assertLess(constructor.index('g_discovery_schema_announced = 0U;'),constructor.index(services))
+        self.assertLess(constructor.index('g_discovery_schema_retry_ms = 0U;'),constructor.index(services))
+        self.assertLess(constructor.index(services),constructor.index('g_router.r = r;'))
 
 
 if __name__ == '__main__':

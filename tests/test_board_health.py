@@ -22,7 +22,7 @@ typedef int SedsResult;
 uint64_t uptime;
 unsigned calls,lock_depth,mask,refuse;
 uint32_t captured[24];
-volatile uint32_t g_watchdog_reset_flags=123,g_watchdog_missing_mask=5;
+volatile uint32_t g_watchdog_reset_flags=123,g_watchdog_missing_mask=5,g_telemetry_service_faults=0;
 volatile uint32_t g_telemetry_tlsf_live_bytes=100,g_telemetry_tlsf_peak_bytes=200,g_telemetry_tlsf_region_bytes=4096,g_telemetry_tlsf_failures=7;
 volatile uint32_t g_can_tx_rejected=11,g_can_tx_high_water=12,g_gateway_uart_rx_ring_drops=13;
 volatile uint32_t g_sd_raw_records_enqueued_count=0xf00d1234U,g_sd_raw_records_written_count=15,g_sd_raw_records_dropped_count=16,g_sd_raw_records_flushed_count=17,g_sd_raw_records_io_lost_count=18,g_sd_write_error_count=19,g_sd_max_write_ms=20;
@@ -75,6 +75,12 @@ int main(void){
  uptime=(UINT64_C(1)<<42)+UINT32_MAX-2U;board_health_poll(&router);assert(calls==4);
  uptime+=4999;board_health_poll(&router);assert(calls==4);
  ++uptime;board_health_poll(&router);assert(calls==5); /* 32-bit schedule wrap */
+ assert(captured[6]==5);
+ /* Optional-service faults ride in word 6 bits 16..23 beside the watchdog mask. */
+ g_telemetry_service_faults=0x1A;uptime+=5000;board_health_poll(&router);
+ assert(calls==6&&captured[6]==(5U|(0x1AU<<16)));
+ g_telemetry_service_faults=0x1FF;uptime+=5000;board_health_poll(&router);
+ assert(calls==7&&captured[6]==(5U|(0xFFU<<16)));
 #else
  uptime=999999;board_health_poll(&router);assert(!calls);
 #endif

@@ -84,6 +84,12 @@ static uint32_t telemetry_flight_can_id(const uint8_t *bytes, size_t len, uint8_
       TELEMETRY_FLIGHT_HEARTBEAT_CAN_ID);
 }
 #define TELEMETRY_ROUTER_RETRY_MS 500U
+#define TELEMETRY_SERVICE_RETRY_MS 5000U
+#define TELEMETRY_SERVICE_TIMESYNC 0x1U
+#define TELEMETRY_SERVICE_OTA 0x2U
+#define TELEMETRY_SERVICE_UNDERGLOW 0x4U
+#define TELEMETRY_SERVICE_FLIGHT_STATE 0x8U
+#define TELEMETRY_SERVICE_ALL 0xFU
 
 #ifndef RF_SEDSNET_MEMORY_POOL_SIZE
 #define RF_SEDSNET_MEMORY_POOL_SIZE 34816U
@@ -139,6 +145,15 @@ volatile uint32_t g_rf_memory_snapshot_tick RF_HEALTH_PROBE;
 volatile uint32_t g_telemetry_discovery_seen RF_HEALTH_PROBE = 0U;
 volatile uint32_t g_telemetry_timesync_valid RF_HEALTH_PROBE = 0U;
 volatile uint32_t g_telemetry_network_ready RF_HEALTH_PROBE = 0U;
+/* Optional router services that failed to start (TELEMETRY_SERVICE_* bits).
+ * The CAN<->radio relay, discovery and BOARD_HEALTH keep running; failed
+ * services are retried on a bounded schedule and reported in BOARD_HEALTH. */
+volatile uint32_t g_telemetry_service_faults RF_HEALTH_PROBE = 0U;
+volatile int32_t g_telemetry_service_last_error RF_HEALTH_PROBE = 0;
+#ifdef TELEMETRY_ENABLED
+static uint32_t g_telemetry_service_retry_ms = 0U;
+static void telemetry_retry_services_locked(void);
+#endif
 volatile uint32_t g_telemetry_peer_mask RF_HEALTH_PROBE = 0U;
 volatile uint32_t g_sim_heartbeat_attempts RF_HEALTH_PROBE = 0U;
 volatile uint32_t g_sim_heartbeat_ok RF_HEALTH_PROBE = 0U;
@@ -673,6 +688,7 @@ static SedsResult telemetry_poll_discovery_locked(void) {
       }
     }
   }
+  telemetry_retry_services_locked();
   const SedsResult result = seds_router_poll_discovery(g_router.r, &did_queue);
   if (result == SEDS_OK) {
     sim_probe_emit_heartbeat(g_router.r, telemetry_now_ms());
@@ -719,6 +735,46 @@ static const SedsLocalEndpointDesc locals[] = {
           .user = NULL,
       },
 };
+
+#ifdef TELEMETRY_ENABLED
+/* Start the optional services named in `wanted`; returns the still-failed
+ * subset. Each initializer tolerates being repeated after a failure. */
+static uint32_t telemetry_start_services_locked(SedsRouter *r, uint32_t wanted) {
+  /* Bit i of TELEMETRY_SERVICE_* is entry i; kept as one table and one
+   * diagnostic line to stay inside the simulator image's flash budget. */
+  static SedsResult (*const start[4])(SedsRouter *) = {
+      telemetry_configure_timesync_locked, ota_stream_init,
+      av_bay_underglow_init, flight_state_cache_init};
+  uint32_t failed = 0U;
+  for (uint32_t i = 0U; i < 4U; i++) {
+    if ((wanted & (1UL << i)) == 0U) continue;
+    const SedsResult result = start[i](r);
+    if (result != SEDS_OK) {
+      failed |= 1UL << i;
+      g_telemetry_service_last_error = (int32_t)result;
+    }
+    if (i == 0U) telemetry_memory_profile_mark(4U);
+    else if (i == 1U) telemetry_memory_profile_mark(5U);
+  }
+  g_telemetry_service_faults = (g_telemetry_service_faults & ~wanted) | failed;
+  if (failed != 0U) {
+    /* 1 timesync, 2 OTA stream/storage, 4 underglow, 8 flight-state cache. */
+    printf("Error: failed services 0x%lx (%d)\r\n", (unsigned long)failed,
+           (int)g_telemetry_service_last_error);
+    g_telemetry_service_retry_ms =
+        (uint32_t)tx_raw_now_ms_locked() + TELEMETRY_SERVICE_RETRY_MS;
+  }
+  return failed;
+}
+
+/* Bounded background retry of failed optional services (router lock held). */
+static void telemetry_retry_services_locked(void) {
+  if (!g_router.r || g_telemetry_service_faults == 0U) return;
+  const uint32_t now = (uint32_t)tx_raw_now_ms_locked();
+  if ((int32_t)(now - g_telemetry_service_retry_ms) < 0) return;
+  (void)telemetry_start_services_locked(g_router.r, g_telemetry_service_faults);
+}
+#endif
 
 static SedsResult init_telemetry_router_locked(void) {
 #ifndef TELEMETRY_ENABLED
@@ -823,7 +879,7 @@ static SedsResult init_telemetry_router_locked(void) {
     g_radio_side_id = -1;
   }
   if (g_can_side_id < 0 || g_radio_side_id < 0) {
-    printf("Error: failed to configure CAN/radio relay sides\r\n");
+    /* The failing side was printed above; only this path frees the router. */
     seds_router_free(r);
     g_router.r = NULL;
     g_router.created = 0U;
@@ -846,68 +902,27 @@ static SedsResult init_telemetry_router_locked(void) {
 #endif
   telemetry_memory_profile_mark(3U);
 
-  result = telemetry_configure_timesync_locked(r);
-  if (result != SEDS_OK) {
-    printf("Error: failed to configure telemetry timesync: %d\r\n", (int)result);
-    seds_router_free(r);
-    g_router.r = NULL;
-    g_router.created = 0U;
-    g_can_side_id = -1;
-    g_radio_side_id = -1;
-
-    return result;
-  }
-  telemetry_memory_profile_mark(4U);
-
-  result = ota_stream_init(r);
-  if (result != SEDS_OK) {
-    printf("Error: failed to bind OTA stream: %d\r\n", (int)result);
-    seds_router_free(r);
-    g_router.r = NULL;
-    g_router.created = 0U;
-
-    return result;
-  }
-  telemetry_memory_profile_mark(5U);
-
-  result = av_bay_underglow_init(r);
-  if (result != SEDS_OK) {
-    seds_router_free(r);
-
-    return result;
-  }
-
-  /* The normal poll loop sends the initial schema after link startup. */
-  telemetry_memory_profile_mark(6U);
-
+  /* The router and both relay sides exist. Everything below is an optional
+   * service: a failure is recorded and retried in the background, but it
+   * must never free the router. Freeing it here announced DISCOVERY_LEAVE,
+   * dropped every CAN<->radio frame and hid FC/PB from the ground until the
+   * next 500 ms retry, forever, when the failure was persistent. */
   g_discovery_schema_announced = 0U;
   g_discovery_schema_retry_ms = 0U;
+  g_telemetry_service_faults = 0U;
+  (void)telemetry_start_services_locked(r, TELEMETRY_SERVICE_ALL);
+  telemetry_memory_profile_mark(6U);
+
   /* Prime the first source announcement after the router clock and sides are
    * fully live.  This avoids depending on a later scheduler tick to make a
-   * newly booted bay discover a valid network clock. */
+   * newly booted bay discover a valid network clock. A failure here is not
+   * a service fault: the regular timesync poll repeats it. */
   {
     bool did_queue = false;
     result = seds_router_poll_timesync(r, &did_queue);
-    if (result != SEDS_OK && result != SEDS_IO) {
-      seds_router_free(r);
-      g_router.r = NULL;
-      g_router.created = 0U;
-      g_can_side_id = -1;
-      g_radio_side_id = -1;
-
-      return result;
-    }
     if (result == SEDS_OK && did_queue) g_telemetry_timesync_queued++;
   }
 
-  result = flight_state_cache_init(r);
-  if (result != SEDS_OK) {
-    g_can_side_id = -1;
-    g_radio_side_id = -1;
-
-    seds_router_free(r);
-    return result;
-  }
   /* Publish only a complete router. RX and lazy producers share its mutex. */
   board_recovery_transport_set_router(r);
   g_router.r = r;

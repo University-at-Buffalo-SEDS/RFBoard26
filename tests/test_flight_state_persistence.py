@@ -30,7 +30,8 @@ class FlightStatePersistenceContract(unittest.TestCase):
             main.index("flight_state_cache_restore();"),
             main.index("MX_ThreadX_Init();"),
         )
-        self.assertIn("flight_state_cache_init(r)", telemetry)
+        # Started (and retried on failure) from the optional-service table.
+        self.assertIn("av_bay_underglow_init, flight_state_cache_init}", telemetry)
         self.assertIn("flight_state_cache_poll(g_router.r)", telemetry)
         self.assertIn("Core/Src/flight_state_cache.c", cmake)
 
