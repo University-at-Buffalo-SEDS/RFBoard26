@@ -747,32 +747,10 @@ TEST(plan_policies_follow_rollout_and_flow_control)
   CHECK(named(&plan, "GLOBAL_RETRIES")->expected == 0 && named(&plan, "SER_BREAK")->expected == 20);
 }
 
-TEST(flight_gate_runs_only_at_rest_after_the_write_receipt_settles)
+TEST(flight_gate_allows_only_startup_and_idle)
 {
-  const uint32_t settle = RFD_RECEIPT_SETTLE_MS, rest = RFD_RESTORED_REST_MS;
-  /* No FLIGHT_STATE yet: wait (the radio keeps running meanwhile). */
-  CHECK(rfd_gate_decide(false, 0, false, 0, 0) == RFD_GATE_WAIT);
-  CHECK(rfd_gate_decide(true, 1, false, 0, 0) == RFD_GATE_WAIT);
-  for (unsigned s = 0; s <= 15U; s++) {
-    const uint8_t st = (uint8_t)s;
-    const bool safe = s <= 1U; /* Startup, Idle; never PreFill or FillTest */
-    CHECK(rfd_flight_state_safe(st) == safe);
-    /* Sim trace fix5-rfprobe-a2: the hold began on the pass after the
-     * station write was applied, so its ReliableAck never left RF. */
-    CHECK(rfd_gate_decide(false, 0, true, st, 0) == RFD_GATE_WAIT);
-    CHECK(rfd_gate_decide(false, 0, true, st, settle - 1U) == RFD_GATE_WAIT);
-    CHECK(rfd_gate_decide(false, 0, true, st, settle) == (safe ? RFD_GATE_RUN : RFD_GATE_WAIT));
-    /* Aborted, Fill, Armed, flight, Landed and Recovery never run, however
-     * long they last: an Abort or recovery write must never meet a deaf
-     * radio. The check is deferred, never skipped for the boot. */
-    if (!safe) CHECK(rfd_gate_decide(false, 0, true, st, 10U * rest) == RFD_GATE_WAIT);
-    /* A restored flight phase (brown-out reboot) waits for the network. */
-    if (!safe) CHECK(rfd_gate_decide(true, st, false, 0, 10U * rest) == RFD_GATE_WAIT);
-  }
-  /* After a brown-out in flight, a safe network state must also have held. */
-  CHECK(rfd_gate_decide(true, 9, true, 1, rest - 1U) == RFD_GATE_WAIT);
-  CHECK(rfd_gate_decide(true, 9, true, 1, rest) == RFD_GATE_RUN);
-  CHECK(!rfd_flight_state_safe(7) && !rfd_flight_state_safe(255));
+  for (unsigned s = 0; s <= 255U; s++)
+    CHECK(rfd_flight_state_safe((uint8_t)s) == (s <= 1U)); /* never PreFill, FillTest, Aborted */
 }
 
 TEST(status_words_pack_the_report)
@@ -830,7 +808,7 @@ int main(void)
   RUN(field_403_layout_writes_flow_control_to_its_named_register);
   RUN(field_403_lbt_rssi_drift_is_reported_at_its_named_register);
   RUN(plan_policies_follow_rollout_and_flow_control);
-  RUN(flight_gate_runs_only_at_rest_after_the_write_receipt_settles);
+  RUN(flight_gate_allows_only_startup_and_idle);
   RUN(status_words_pack_the_report);
   return 0;
 }

@@ -103,23 +103,11 @@ void rfd_modem_run(const rfd_io_t *io, const rfd_plan_t *plan, rfd_mode_t mode,
                    const rfd_timing_t *timing, rfd_gate_fn gate, void *gate_ctx,
                    bool allow_save, rfd_report_t *out);
 
-/* Flight gate. The check holds the radio (no TX, RX ignored) for 3 to 14 s
- * (RFD_TIMING.overall bounds it, reboots and verify included), so it runs
- * only in Startup and Idle. PreFill, FillTest, Aborted, Fill, Armed, flight,
- * Landed and Recovery never run: an Abort or recovery write must never meet
- * a deaf radio. The gate is polled throughout the check; when it closes the
- * check leaves command mode at once (ATO, or ATZ for unsaved writes). A
- * blocked check is deferred until the gate opens, never skipped for the boot. It also waits RFD_RECEIPT_SETTLE_MS
- * after the last applied station FLIGHT_STATE write, so that write's
- * end-to-end receipt (and any retransmission of it) leaves first. After a
- * restored (persisted) flight phase the network state must have held for
- * RFD_RESTORED_REST_MS. `stable_ms`: time since the last applied write. */
-typedef enum { RFD_GATE_WAIT = 0, RFD_GATE_RUN = 1, RFD_GATE_SKIP = 2 } rfd_gate_t;
-#define RFD_RECEIPT_SETTLE_MS 3000U
-#define RFD_RESTORED_REST_MS 15000U
+/* Flight gate, consulted throughout the check (which runs only at boot,
+ * before the network starts): Startup and Idle only. PreFill, FillTest,
+ * Aborted and every flight phase never run; a closed gate ends the check at
+ * once (ATO, or ATZ for unsaved writes). */
 bool rfd_flight_state_safe(uint8_t state);
-rfd_gate_t rfd_gate_decide(bool restored_known, uint8_t restored_state, bool network_seen,
-                           uint8_t network_state, uint32_t stable_ms);
 
 /* BOARD_HEALTH words 13, 15 and 22 on RF (flags 4/32/64 stay clear):
  * w13: [3:0] version 1, [7:4] outcome, [9:8] map source, [11:10] mode,

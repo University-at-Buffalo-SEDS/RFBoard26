@@ -145,7 +145,7 @@ static void telemetry_update_stack_profile(void)
     }
 }
 
-static void telemetry_service_without_radio(void);
+static void telemetry_boot_service(void);
 
 void telemetry_thread_entry(ULONG initial_input)
 {
@@ -157,6 +157,10 @@ void telemetry_thread_entry(ULONG initial_input)
     // health monitor distinguish a busy relay from a thread that never ran.
     telemetry_update_stack_profile();
 
+    /* Once per boot, before CAN and the router start: check and repair this
+     * board's RFD modem (bounded). No station traffic exists yet to miss. */
+    rfd_modem_port_boot(telemetry_boot_service);
+
     /* The transport must be fully configured before router initialization can
      * emit its initial time-source and discovery traffic. */
     g_telemetry_init_stage = 1U;
@@ -167,9 +171,8 @@ void telemetry_thread_entry(ULONG initial_input)
     g_telemetry_init_result = (int32_t)init_telemetry_router();
     g_telemetry_init_stage = 3U;
     for (;;) {
-        /* Once per boot: check and repair this board's RFD modem when the
-         * first FLIGHT_STATE allows it (bounded; never in flight states). */
-        rfd_modem_port_poll(telemetry_service_without_radio);
+        /* Never holds the radio; only watches a skipped check's link. */
+        rfd_modem_port_poll(NULL);
         board_watchdog_progress(BOARD_WATCHDOG_NETWORK);
         telemetry_update_stack_profile();
         const uint64_t now_ms = radio_window_now_ms();
@@ -206,15 +209,11 @@ void telemetry_thread_entry(ULONG initial_input)
 
 /* One loop pass without the radio, for the startup modem check: CAN,
  * routing, time sync and the watchdog keep running while it owns the UART. */
-static void telemetry_service_without_radio(void)
+/* One tick during the boot-time modem check: the watchdog stays served. */
+static void telemetry_boot_service(void)
 {
     board_watchdog_progress(BOARD_WATCHDOG_NETWORK);
     telemetry_update_stack_profile();
-    can_bus_process_rx();
-    (void)telemetry_poll_discovery();
-    (void)process_all_queues_timeout(TELEMETRY_QUEUE_BUDGET_MS);
-    (void)telemetry_poll_timesync();
-    g_telemetry_loop_completions++;
     tx_thread_sleep(TELEMETRY_THREAD_SLEEP_TICKS);
 }
 

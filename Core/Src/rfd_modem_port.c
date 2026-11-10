@@ -1,27 +1,24 @@
 /* Board side of the startup RFD modem check (spec: GroundStation26
- * docs/backend/rfd-modem-check.md, phase 2). Polled once per telemetry loop
- * pass; the check runs at most once per MCU boot:
+ * docs/backend/rfd-modem-check.md, phase 2). It runs at most once per MCU
+ * boot, and only at boot:
  *
- *  - the radio runs normally until a validated FLIGHT_STATE allows it.
- *    FLIGHT_STATE is written only by the ground station, so in practice it
- *    arrives over the radio itself. Only Startup or Idle runs the check;
- *    PreFill, FillTest, Aborted and every flight phase defer it, and
- *    leaving Startup/Idle mid-check ends it at once;
- *  - it starts RFD_RECEIPT_SETTLE_MS after the last applied station write
- *    and only once radio TX owns no frame, so that write's end-to-end
- *    receipt leaves first (sim: the hold began on the pass after the write
- *    and the station retried into a deaf radio);
- *  - after a restored (persisted) flight phase, for example a brown-out
- *    reboot in flight, the network state must have held RFD_RESTORED_REST_MS;
+ *  - rfd_modem_port_boot runs it before the telemetry thread starts CAN and
+ *    the SEDSnet router, so no station traffic can be missed and no receipt
+ *    stranded while it holds the radio (no frame TX, RX ignored). Run from
+ *    the first applied station FLIGHT_STATE instead, it once started right
+ *    after an operator Abort (G-hitl: Abort 40.25 s, command mode 41.33 s,
+ *    data again only at 48.51 s);
+ *  - it runs only from a restored Startup or Idle, or no restored phase. A
+ *    restored phase past Idle (a reboot during a test or in flight) skips it
+ *    for this boot;
  *  - a check that matched, or applied and verified, this profile is
  *    remembered in flash against this firmware image; later boots of the
- *    same image skip it and never hold the radio. A skipping boot that
- *    hears no radio frame within RFD_LINK_PROBATION_MS forgets it, so a
- *    swapped or reset modem is checked again;
- *  - only the check itself holds the radio (no frame TX, RX ignored): about
- *    3 s to read, 10 to 14 s if it writes, never past RFD_TIMING.overall
- *    (16 s, reboots and verify included). CAN, routing and the watchdog keep
- *    running; a FLIGHT_STATE change over CAN ends the check at once.
+ *    same image skip it. A skipping boot that hears no radio frame within
+ *    RFD_LINK_PROBATION_MS forgets it, so the NEXT boot checks a swapped or
+ *    reset modem; nothing ever holds the radio after boot;
+ *  - the hold lasts about 3 s to read, 10 to 14 s if it writes, never past
+ *    RFD_TIMING.overall (16 s, reboots and verify included). The watchdog
+ *    keeps being served.
  *
  * Result: BOARD_HEALTH words 13, 15 and 22 (rfd_status_words). */
 #include "rfd_modem.h"
@@ -60,7 +57,6 @@
 #error "RADIO_PACKET_GAP_MS must be at least the modem serial break + 5 ms"
 #endif
 
-extern volatile uint32_t g_flight_state_cache_updates;
 extern volatile uint32_t g_radio_rx_frames_ok;
 
 /* A skipping boot with no radio frame by then forgets the marker. */
@@ -95,7 +91,6 @@ static uint32_t verified_marker(void)
 volatile uint32_t g_rfd_modem_status[3] __attribute__((used, externally_visible));
 /* Radio hold during the check, in ms. */
 volatile uint32_t g_rfd_modem_hold_ms __attribute__((used, externally_visible));
-static uint8_t g_rfd_saved_this_boot;
 
 static uint32_t now_ms(void *ctx)
 {
@@ -134,86 +129,42 @@ static void io_sleep(void *ctx, uint32_t ms)
   while (now_ms(ctx) - start < ms) g_service();
 }
 
-enum { PORT_INIT = 0, PORT_WAITING, PORT_PROBATION, PORT_DONE };
-static uint8_t g_port_state;
-static bool g_restored_known;
-static uint8_t g_restored;
-static uint32_t g_updates_at_boot;
-/* Applied station writes last counted, and when the count last moved. */
-static uint32_t g_updates_seen;
-static uint32_t g_update_ms;
+/* Set when a boot skipped the check on its verified marker: the link must
+ * then prove the modem within RFD_LINK_PROBATION_MS. */
+static uint8_t g_probation;
 static uint32_t g_boot_ms;
 
 static bool gate_open(void *ctx)
 {
   (void)ctx;
-  return flight_state_cache_has_value() && rfd_flight_state_safe(flight_state_cache_value());
+  return !flight_state_cache_has_value() || rfd_flight_state_safe(flight_state_cache_value());
 }
 
-static void finish(const rfd_report_t *report)
-{
-  publish(report);
-  g_port_state = PORT_DONE;
-}
-
-void rfd_modem_port_poll(void (*service)(void))
+void rfd_modem_port_boot(void (*service)(void))
 {
   rfd_report_t report;
   const rfd_mode_t mode = (rfd_mode_t)RFD_MODEM_CHECK_MODE;
   uint32_t marker = 0U;
   size_t size = sizeof(marker);
-  if (g_port_state == PORT_DONE) return;
-  const uint32_t now = now_ms(NULL);
-  const uint32_t updates = g_flight_state_cache_updates;
-  if (g_port_state == PORT_INIT) {
-    rfd_report_skipped(&report, mode, 0U);
-    if (mode == RFD_MODE_SKIP || RFBOARD_LORA_SCHEDULER || service == NULL) {
-      finish(&report);
-      return;
-    }
-    /* Taken before any network FLIGHT_STATE can be applied. */
-    g_restored_known = flight_state_cache_has_value();
-    g_restored = flight_state_cache_value();
-    g_updates_at_boot = updates;
-    g_updates_seen = updates;
-    g_boot_ms = now;
-    const bool verified =
-        persistent_store_get(RFD_VERIFIED_KEY, &marker, &size) == LAUNCHCORE_PERSIST_OK &&
-        size == sizeof(marker) && marker == verified_marker();
-    report.flags = verified ? RFD_FLAG_VERIFIED : RFD_FLAG_PENDING;
+  g_boot_ms = now_ms(NULL);
+  rfd_report_skipped(&report, mode, 0U);
+  if (mode == RFD_MODE_SKIP || RFBOARD_LORA_SCHEDULER || service == NULL) {
     publish(&report);
-    g_port_state = verified ? PORT_PROBATION : PORT_WAITING;
-  }
-  if (g_port_state == PORT_PROBATION) {
-    if (g_radio_rx_frames_ok != 0U) {
-      g_port_state = PORT_DONE;
-      return;
-    }
-    if (now - g_boot_ms < RFD_LINK_PROBATION_MS) return;
-    /* No link: the modem may be swapped or reset. Check it this boot. */
-    marker = 0U;
-    (void)persistent_store_set(RFD_VERIFIED_KEY, &marker, sizeof(marker));
-    rfd_report_skipped(&report, mode, RFD_FLAG_PENDING);
-    publish(&report);
-    g_port_state = PORT_WAITING;
-  }
-  if (updates != g_updates_seen) {
-    g_updates_seen = updates;
-    g_update_ms = now;
-  }
-  const bool network_seen = updates != g_updates_at_boot;
-  const rfd_gate_t gate =
-      rfd_gate_decide(g_restored_known, g_restored, network_seen, flight_state_cache_value(),
-                      network_seen ? now - g_update_ms : 0U);
-  if (gate == RFD_GATE_WAIT) return;
-  rfd_report_skipped(&report, mode, RFD_FLAG_GATE_SKIPPED);
-  if (gate == RFD_GATE_SKIP) {
-    finish(&report);
     return;
   }
-  /* Radio TX still owns frames (a receipt among them): a later pass. */
-  if (!radio_uart_set_modem_hold(1U)) return;
-  const uint32_t hold_start = now_ms(NULL);
+  if (persistent_store_get(RFD_VERIFIED_KEY, &marker, &size) == LAUNCHCORE_PERSIST_OK &&
+      size == sizeof(marker) && marker == verified_marker()) {
+    report.flags = RFD_FLAG_VERIFIED;
+    publish(&report);
+    g_probation = 1U;
+    return;
+  }
+  /* The restored phase is the only one known before the network starts. */
+  if (!gate_open(NULL) || !radio_uart_set_modem_hold(1U)) {
+    report.flags = RFD_FLAG_GATE_SKIPPED;
+    publish(&report);
+    return;
+  }
   g_service = service;
   rfd_plan_t plan;
   const rfd_profile_values_t values = {
@@ -230,8 +181,8 @@ void rfd_modem_port_poll(void (*service)(void))
   };
   const rfd_io_t io = {io_write, io_read, now_ms, io_sleep, NULL};
   rfd_plan_init(&plan, &values);
-  rfd_modem_run(&io, &plan, mode, &RFD_TIMING, gate_open, NULL, !g_rfd_saved_this_boot, &report);
-  if (report.save_attempted) g_rfd_saved_this_boot = 1U;
+  const uint32_t hold_start = now_ms(NULL);
+  rfd_modem_run(&io, &plan, mode, &RFD_TIMING, gate_open, NULL, true, &report);
   (void)radio_uart_set_modem_hold(0U);
   g_rfd_modem_hold_ms = now_ms(NULL) - hold_start;
   if ((report.outcome == RFD_OUT_MATCHED || report.outcome == RFD_OUT_APPLIED) &&
@@ -239,7 +190,22 @@ void rfd_modem_port_poll(void (*service)(void))
     marker = verified_marker();
     (void)persistent_store_set(RFD_VERIFIED_KEY, &marker, sizeof(marker));
   }
-  finish(&report);
+  publish(&report);
+}
+
+void rfd_modem_port_poll(void (*service)(void))
+{
+  (void)service;
+  if (!g_probation) return;
+  if (g_radio_rx_frames_ok != 0U) {
+    g_probation = 0U;
+    return;
+  }
+  if (now_ms(NULL) - g_boot_ms < RFD_LINK_PROBATION_MS) return;
+  /* No link: the modem may be swapped or reset. The next boot checks it. */
+  const uint32_t marker = 0U;
+  (void)persistent_store_set(RFD_VERIFIED_KEY, &marker, sizeof(marker));
+  g_probation = 0U;
 }
 
 void rfd_modem_port_status_words(uint32_t words[3])

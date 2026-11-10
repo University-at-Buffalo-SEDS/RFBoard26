@@ -1,4 +1,12 @@
-"""When the startup RFD modem check may take the radio.
+"""When the startup RFD modem check may take the radio: only at boot.
+
+The check holds the radio (no TX, RX ignored) for 3 to 14 s. Run from the
+first applied station FLIGHT_STATE it could still start right after an
+operator Abort: in G-hitl (cohortG, RF 0090d41) the Abort left at 40.25 s,
+RF entered command mode at 41.33 s, before it heard the Aborted
+FLIGHT_STATE, and resumed data only at 48.51 s. It now runs once at boot,
+before CAN and the router start, so no station traffic can be missed and no
+receipt stranded. Earlier, from the station's first write:
 
 The check holds the radio (no TX, RX ignored) for 3 to 14 s. In the faithful
 sim (radio-tx-storm run fix5-rfprobe-a2) RF's last SEDSnet frame left at
@@ -47,18 +55,17 @@ volatile uint32_t g_flight_state_cache_updates, g_radio_rx_frames_ok;
 extern volatile uint32_t g_rfd_modem_status[3];
 static uint32_t image_id = 1U;
 uint32_t rfd_modem_port_image_id(void) { return image_id; }
+/* Older ports had no boot entry: the reproduction case still links. */
+__attribute__((weak)) void rfd_modem_port_boot(void (*service)(void));
 static unsigned long tick;
-static int has_value, tx_owned, holding, holds, runs, sets, have_marker;
+static int has_value, holding, holds, runs, sets, have_marker;
 static uint8_t value;
 static uint32_t marker;
 static uint8_t outcome = RFD_OUT_APPLIED, flags;
 unsigned long tx_time_get(void) { return tick; }
 bool flight_state_cache_has_value(void) { return has_value; }
 uint8_t flight_state_cache_value(void) { return value; }
-uint8_t radio_uart_set_modem_hold(uint8_t on) {
-  if (on && tx_owned) return 0U;
-  holding = on; holds += on; return 1U;
-}
+uint8_t radio_uart_set_modem_hold(uint8_t on) { holding = on; holds += on; return 1U; }
 int radio_uart_modem_write(const uint8_t *b, size_t n) { (void)b; (void)n; return -1; }
 int radio_uart_modem_read(uint8_t *b, size_t n) { (void)b; (void)n; return -1; }
 int persistent_store_get(uint32_t key, void *v, size_t *n) {
@@ -75,9 +82,10 @@ void __wrap_rfd_modem_run(const rfd_io_t *io, const rfd_plan_t *plan, rfd_mode_t
                           rfd_report_t *out) {
   (void)io; (void)plan; (void)t; (void)save;
   assert(holding && gate(ctx));
-  ++runs; rfd_report_skipped(out, mode, 0U); out->outcome = outcome; out->flags = flags;
+  ++runs; tick += 3300U; rfd_report_skipped(out, mode, 0U); out->outcome = outcome; out->flags = flags;
 }
-static void service(void) {}
+static void service(void) { ++tick; }
+static void boot(void) { if (rfd_modem_port_boot) rfd_modem_port_boot(service); }
 static void poll_for(unsigned long ms) {
   for (unsigned long end = tick + ms; tick < end; tick += 5U) rfd_modem_port_poll(service);
 }
@@ -90,50 +98,47 @@ int main(int argc, char **argv) {
   unsigned long boot_marker = 0;                 /* "<n>" or "p<n>": boot with this marker */
   const int marked = sscanf(argv[1] + (argv[1][0] == 'p'), "%lu", &boot_marker) == 1;
   if (marked) { have_marker = 1; marker = (uint32_t)boot_marker; }
-  rfd_modem_port_poll(service);                  /* boot pass: before any write */
-  if (!strcmp(argv[1], "receipt")) {
-    poll_for(5000U); assert(holds == 0);           /* no FLIGHT_STATE yet */
-    station_write(1); rfd_modem_port_poll(service);
-    assert(holds == 0);                            /* the write's receipt is still owned */
-    poll_for(RFD_RECEIPT_SETTLE_MS - 10U); assert(holds == 0);
-    station_write(1);                              /* a retransmission restarts the settle */
-    poll_for(RFD_RECEIPT_SETTLE_MS - 10U); assert(holds == 0);
-    tx_owned = 1; poll_for(2000U); assert(holds == 0 && runs == 0);
-    tx_owned = 0; poll_for(10U); assert(holds == 1 && runs == 1 && !holding);
-    assert(sets == 1);                             /* applied and verified: remembered */
-    station_write(0); poll_for(60000U); assert(holds == 1 && runs == 1); /* once per boot */
-  } else if (!strcmp(argv[1], "states")) {
-    /* PreFill, FillTest, Aborted and flight phases never hold the radio. */
-    const uint8_t never[] = {2, 3, 4, 7, 9, 15};
-    for (unsigned i = 0; i < sizeof never; i++) { station_write(never[i]); poll_for(30000U); }
-    assert(holds == 0);
-    station_write(0); poll_for(RFD_RECEIPT_SETTLE_MS + 10U); assert(holds == 1);
+  if (!strcmp(argv[1], "restored_idle")) { has_value = 1; value = 1; }
+  if (!strcmp(argv[1], "restored_prefill")) { has_value = 1; value = 2; }
+  if (!strcmp(argv[1], "restored_aborted")) { has_value = 1; value = 15; }
+  if (!strcmp(argv[1], "mismatch")) { outcome = RFD_OUT_MISMATCH; flags = RFD_FLAG_ATTENTION; }
+  if (!strcmp(argv[1], "attention")) { outcome = RFD_OUT_MATCHED; flags = RFD_FLAG_ATTENTION | RFD_FLAG_FORWARDING; }
+  boot();
+  const int at_boot = holds;
+  if (!strcmp(argv[1], "abort_after_idle")) {
+    /* G-hitl: the station wrote Idle, the operator's Abort followed 3.1 s
+     * later; RF must never be deaf to it. No hold may follow the boot. */
+    poll_for(2000U); station_write(1); poll_for(3100U); station_write(15);
+    poll_for(60000U); station_write(0); poll_for(60000U);
+    if (holds != at_boot) return 3;
+    assert(at_boot == 1 && runs == 1);           /* the check ran at boot instead */
+  } else if (!strcmp(argv[1], "fresh") || !strcmp(argv[1], "restored_idle")) {
+    assert(at_boot == 1 && runs == 1 && !holding && sets == 1);
+    poll_for(120000U); assert(holds == 1);
+  } else if (!strcmp(argv[1], "restored_prefill") || !strcmp(argv[1], "restored_aborted")) {
+    /* A restored phase past Idle (a reboot in a test or in flight) never
+     * holds the radio; the check waits for a later boot. */
+    assert(at_boot == 0 && runs == 0 && sets == 0);
+    assert(((g_rfd_modem_status[0] >> 16) & 0xFFU) & RFD_FLAG_GATE_SKIPPED);
+    station_write(1); poll_for(120000U); assert(holds == 0);
   } else if (!strcmp(argv[1], "marker_skip")) {
-    /* Learn the image's signature, then run as a fresh boot with it. */
-    station_write(1); poll_for(RFD_RECEIPT_SETTLE_MS + 10U); assert(sets == 1);
-    printf("%u\n", (unsigned)marker); return 0;
+    assert(sets == 1); printf("%u\n", (unsigned)marker); return 0;
   } else if (argv[1][0] == 'p') {
     /* Verified earlier, but no radio frame within the probation: forget the
-     * marker (the modem may be swapped or reset) and check it this boot. */
-    assert(have_marker && marker == (uint32_t)strtoul(argv[1] + 1, NULL, 10));
-    poll_for(59000U); assert(sets == 0 && holds == 0);
+     * marker (the modem may be swapped or reset) so the NEXT boot checks;
+     * never hold the radio at runtime. */
+    assert(at_boot == 0);
+    poll_for(59000U); assert(sets == 0);
     poll_for(1100U); assert(sets == 1 && marker == 0U && holds == 0);
-    assert(((g_rfd_modem_status[0] >> 16) & 0xFFU) == RFD_FLAG_PENDING);
-    station_write(1); poll_for(RFD_RECEIPT_SETTLE_MS + 10U);
-    assert(holds == 1 && runs == 1 && sets == 2 && marker != 0U);
-  } else if (!strcmp(argv[1], "mismatch")) {
-    outcome = RFD_OUT_MISMATCH; flags = RFD_FLAG_ATTENTION;
-    station_write(1); poll_for(RFD_RECEIPT_SETTLE_MS + 10U); assert(runs == 1 && sets == 0);
-  } else if (!strcmp(argv[1], "attention")) {
-    outcome = RFD_OUT_MATCHED; flags = RFD_FLAG_ATTENTION | RFD_FLAG_FORWARDING;
-    station_write(1); poll_for(RFD_RECEIPT_SETTLE_MS + 10U); assert(runs == 1 && sets == 0);
+    station_write(1); poll_for(60000U); assert(holds == 0);
+  } else if (!strcmp(argv[1], "mismatch") || !strcmp(argv[1], "attention")) {
+    assert(at_boot == 1 && runs == 1 && sets == 0);  /* unverified: not remembered */
   } else {
     assert(marked);
-    /* A verified boot of the same image: no hold while the link is up. */
-    poll_for(10000U); g_radio_rx_frames_ok = 1U;
-    station_write(1); poll_for(120000U);
-    if (holds != 0 || runs != 0 || sets != 0) return 3;
-    assert(((g_rfd_modem_status[0] >> 4) & 0xFU) == RFD_OUT_SKIPPED);
+    /* A verified boot of the same image never holds the radio. */
+    if (holds != 0 || runs != 0) return 3;
+    poll_for(10000U); g_radio_rx_frames_ok = 1U; poll_for(120000U);
+    if (holds != 0 || sets != 0) return 3;
     assert(((g_rfd_modem_status[0] >> 16) & 0xFFU) == RFD_FLAG_VERIFIED);
     return 0;
   }
@@ -193,19 +198,22 @@ class RfdModemHoldGateTests(unittest.TestCase):
         return subprocess.run([str(self.port), case], check=True, capture_output=True,
                               text=True).stdout
 
-    def test_hold_waits_for_the_write_receipt_and_owned_tx(self):
-        self.run_port("receipt")
-
-    def test_only_startup_and_idle_hold_the_radio(self):
-        self.run_port("states")
-
-    def test_unverified_outcomes_are_not_remembered(self):
-        self.run_port("mismatch")
-        self.run_port("attention")
-
-    def boot(self, case, image=1):
+    def boot(self, case, image=1, env=None):
         return subprocess.run([str(self.port), case, str(image)], capture_output=True,
                               text=True).returncode
+
+    def test_no_hold_after_boot_even_right_after_an_abort(self):
+        # G-hitl (cohortG, RF 0090d41): Abort at 40.25 s, RF entered command
+        # mode at 41.33 s and resumed data only at 48.51 s.
+        self.assertEqual(self.boot("abort_after_idle"), 0)
+
+    def test_check_runs_at_boot_before_the_network_from_startup_or_idle(self):
+        self.assertEqual(self.boot("fresh"), 0)
+        self.assertEqual(self.boot("restored_idle"), 0)
+
+    def test_restored_phase_past_idle_never_holds_the_radio(self):
+        self.assertEqual(self.boot("restored_prefill"), 0)
+        self.assertEqual(self.boot("restored_aborted"), 0)
 
     def test_verified_profile_skips_the_check_on_later_boots_of_the_same_image(self):
         marker = self.run_port("marker_skip").split()[0]
@@ -213,6 +221,10 @@ class RfdModemHoldGateTests(unittest.TestCase):
         # A new firmware image, or another profile's marker, checks again.
         self.assertNotEqual(self.boot(marker, image=2), 0)
         self.assertNotEqual(self.boot(str((int(marker) + 1) % (1 << 32))), 0)
+
+    def test_unverified_outcomes_are_not_remembered(self):
+        self.assertEqual(self.boot("mismatch"), 0)
+        self.assertEqual(self.boot("attention"), 0)
 
     def test_skipping_boot_without_a_radio_link_forgets_the_marker(self):
         marker = self.run_port("marker_skip").split()[0]

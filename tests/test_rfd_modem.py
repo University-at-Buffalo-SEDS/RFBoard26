@@ -180,10 +180,12 @@ int main(void) {
         port = (ROOT / "Core/Src/rfd_modem_port.c").read_text()
         thread = (ROOT / "Core/Src/telemetry_thread.c").read_text()
         cmake = (ROOT / "CMakeLists.txt").read_text()
-        self.assertIn("rfd_modem_port_poll(telemetry_service_without_radio)", thread)
-        # At most one AT&W per MCU boot.
-        self.assertIn("g_rfd_saved_this_boot", port)
-        self.assertIn("rfd_gate_decide", port)
+        # Once per boot, before CAN and the router start; never at runtime.
+        boot = thread.index("rfd_modem_port_boot(telemetry_boot_service);")
+        self.assertLess(boot, thread.index("can_bus_init(&hfdcan2);"))
+        self.assertLess(boot, thread.index("init_telemetry_router()"))
+        self.assertIn("rfd_modem_port_poll(NULL);", thread)
+        self.assertEqual(port.count("radio_uart_set_modem_hold(1U)"), 1)
         # Simulator builds default to skip; operational builds to fix.
         self.assertRegex(cmake, r"SEDS_FIRMWARE_SIM_TEST\)\s*\n\s*set\(RFD_MODEM_CHECK_DEFAULT SKIP\)")
         self.assertIn("RFD_PROFILE_ROLLED_OUT", cmake)

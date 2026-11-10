@@ -694,18 +694,6 @@ void rfd_modem_run(const rfd_io_t *io, const rfd_plan_t *plan, rfd_mode_t mode,
  * sent over the radio there must never meet a held radio. */
 bool rfd_flight_state_safe(uint8_t state) { return state <= 1U; }
 
-rfd_gate_t rfd_gate_decide(bool restored_known, uint8_t restored_state, bool network_seen,
-                           uint8_t network_state, uint32_t stable_ms)
-{
-  if (!network_seen || !rfd_flight_state_safe(network_state) || stable_ms < RFD_RECEIPT_SETTLE_MS)
-    return RFD_GATE_WAIT;
-  /* After a brown-out reboot in flight the network value must have held. */
-  if (restored_known && !rfd_flight_state_safe(restored_state) && stable_ms < RFD_RESTORED_REST_MS) {
-    return RFD_GATE_WAIT;
-  }
-  return RFD_GATE_RUN;
-}
-
 /* Unread (negative) -> all ones; values at or above it -> all ones minus 1. */
 static uint32_t field(int32_t v, uint32_t ones)
 {
