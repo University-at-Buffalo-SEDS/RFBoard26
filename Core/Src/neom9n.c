@@ -68,6 +68,38 @@ bool gps_has_fix(const NEOM9N_t *packet) {
     return packet->valid_fix;
 }
 
+/**
+ * @brief Pack GPS_STATUS: state, satellites, last-byte age (s), last-fix age (s)
+ *
+ * Ages are -1 when never seen. The station uses this to tell a missing or
+ * unpowered module from a module without sky view from a working fix.
+ */
+void gps_pack_status(const NEOM9N_t *packet, uint32_t now_tick, float status[4]) {
+    uint32_t state = GPS_STATUS_NO_RESPONSE;
+    float satellites = 0.0f;
+
+    if (packet->byte_seen) {
+        if ((uint32_t)(now_tick - packet->last_byte_tick) > GPS_STATUS_SILENT_MS) {
+            state = GPS_STATUS_SILENT;
+        } else if (packet->valid_fix && packet->fix_seen &&
+                   (uint32_t)(now_tick - packet->last_fix_tick) <= GPS_STATUS_STALE_MS) {
+            state = GPS_STATUS_FIX;
+        } else {
+            state = GPS_STATUS_NO_FIX;
+        }
+    }
+    if (state >= GPS_STATUS_NO_FIX && packet->last_satellite_update_tick != 0U &&
+        (uint32_t)(now_tick - packet->last_satellite_update_tick) <= GPS_STATUS_STALE_MS) {
+        satellites = (float)packet->num_satellites;
+    }
+    status[0] = (float)state;
+    status[1] = satellites;
+    status[2] = packet->byte_seen ?
+        (float)(uint32_t)(now_tick - packet->last_byte_tick) / 1000.0f : -1.0f;
+    status[3] = packet->fix_seen ?
+        (float)(uint32_t)(now_tick - packet->last_fix_tick) / 1000.0f : -1.0f;
+}
+
 bool gps_datetime_valid(const NEOM9N_t *packet) {
     if (packet == NULL) {
         return false;
@@ -293,6 +325,8 @@ void parse_time(const uint8_t *field, uint8_t *h, uint8_t *m, uint8_t *s, uint16
  */
 NEOM9N_status_t read_nmea_gga(NEOM9N_t *packet, uint32_t max_wait) {
     NEOM9N_status_t status;
+    bool position_valid = true;
+    float lat = 0.0f, lon = 0.0f;
     
     // Time
     status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
@@ -300,39 +334,62 @@ NEOM9N_status_t read_nmea_gga(NEOM9N_t *packet, uint32_t max_wait) {
         parse_time(packet->field_buffer, &packet->hours, &packet->minutes, &packet->seconds, &packet->milliseconds);
     }
     
+    /* Without a fix the position fields are empty. Keep reading so the
+     * fix quality and satellite count of a no-fix sentence still arrive. */
     // Latt
     status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
-    if (status != NEOM9N_OK) {
+    if (status == NEOM9N_OK) {
+        lat = parse_coord(packet->field_buffer, 2);  // ddmm.mmmm
+    } else if (status == NEOM9N_PARSE_ERR) {
+        position_valid = false;
+    } else {
         packet->valid_fix = false;
         return status;
     }
-    float lat = parse_coord(packet->field_buffer, 2);  // ddmm.mmmm
     
     // N/S
     status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
     if (status == NEOM9N_OK) {
-        packet->lat = (packet->field_buffer[0] == 'N') ? lat : -lat;
+        lat = (packet->field_buffer[0] == 'N') ? lat : -lat;
+    } else if (status != NEOM9N_PARSE_ERR) {
+        packet->valid_fix = false;
+        return status;
     }
     
     // Long
     status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
-    if (status != NEOM9N_OK) {
+    if (status == NEOM9N_OK) {
+        lon = parse_coord(packet->field_buffer, 3);  // dddmm.mmmm
+    } else if (status == NEOM9N_PARSE_ERR) {
+        position_valid = false;
+    } else {
         packet->valid_fix = false;
         return status;
     }
-    float lon = parse_coord(packet->field_buffer, 3);  // dddmm.mmmm
     
     // E/W
     status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
     if (status == NEOM9N_OK) {
-        packet->lon = (packet->field_buffer[0] == 'E') ? lon : -lon;
+        lon = (packet->field_buffer[0] == 'E') ? lon : -lon;
+    } else if (status != NEOM9N_PARSE_ERR) {
+        packet->valid_fix = false;
+        return status;
     }
     
     // Fix qual
     status = read_field(packet, packet->field_buffer, sizeof(packet->field_buffer), max_wait);
     if (status == NEOM9N_OK) {
         uint8_t fix_quality = packet->field_buffer[0] - '0';
-        packet->valid_fix = (fix_quality > 0);
+        packet->valid_fix = (fix_quality > 0) && position_valid;
+    } else if (status == NEOM9N_PARSE_ERR) {
+        packet->valid_fix = false;
+    } else {
+        packet->valid_fix = false;
+        return status;
+    }
+    if (packet->valid_fix) {
+        packet->lat = lat;
+        packet->lon = lon;
     }
     
     // Number of satellites
@@ -442,6 +499,11 @@ NEOM9N_status_t receive_nmea(NEOM9N_t *packet, uint32_t max_wait, uint32_t max_i
             NEOGPS_CS_HIGH();  // End transaction
             return NEOM9N_SPI_ERR;
         }
+        if (byte != 0xFFU && byte != 0x00U) {
+            // Any non-idle byte proves the module is powered and talking.
+            packet->byte_seen = true;
+            packet->last_byte_tick = HAL_GetTick();
+        }
         if (byte == '$') break;
         ignores++;
     }
@@ -489,6 +551,11 @@ NEOM9N_status_t receive_nmea(NEOM9N_t *packet, uint32_t max_wait, uint32_t max_i
     
     if (result == NEOM9N_OK) {
         packet->last_update_tick = HAL_GetTick();
+        packet->last_byte_tick = packet->last_update_tick;
+        if (packet->valid_fix) {
+            packet->fix_seen = true;
+            packet->last_fix_tick = packet->last_update_tick;
+        }
     }
     
     NEOGPS_CS_HIGH();   // End transaction

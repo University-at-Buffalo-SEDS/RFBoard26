@@ -182,6 +182,29 @@ static void gps_emit_satellite_count_if_due(const NEOM9N_t *packet,
 #endif
 }
 
+/* GPS_STATUS goes out every telemetry period whatever the module does, so
+ * the station can tell no module from no fix from no data path. */
+static void gps_emit_status_if_due(const NEOM9N_t *packet,
+                                   uint64_t now_ms,
+                                   uint64_t *next_emit_ms) {
+#if PRODUCTION_MODE
+    float status[4];
+
+    if (now_ms < *next_emit_ms) {
+        return;
+    }
+    gps_pack_status(packet, HAL_GetTick(), status);
+    if (log_telemetry_asynchronous(SEDS_DT_GPS_STATUS, status, 4U,
+                                   sizeof(float)) == SEDS_OK) {
+        *next_emit_ms = now_ms + rf_telemetry_period_ms();
+    }
+#else
+    (void)packet;
+    (void)now_ms;
+    (void)next_emit_ms;
+#endif
+}
+
 static void gps_log_initial_link_warning(void) {
 #if GPS_TEST_MODE
     printf("GPS WARNING: We have not yet established a link\r\n");
@@ -313,9 +336,9 @@ void neom9n_thread_entry(ULONG initial_input)
     uint64_t next_gps_data_log_ms = 0ULL;
 #endif
     uint64_t next_gps_satellite_log_ms = 0ULL;
+    uint64_t next_gps_status_log_ms = 0ULL;
     uint64_t next_gps_error_log_ms[4] = {0ULL, 0ULL, 0ULL, 0ULL};
     uint64_t next_gps_spi_recover_ms = 0ULL;
-    uint32_t last_reported_satellite_update_tick = 0U;
     // HAL_GPIO_WritePin(BLUE_LEDS_GPIO_Port, BLUE_LEDS_Pin, GPIO_PIN_SET);
 
     for michael
@@ -355,19 +378,15 @@ void neom9n_thread_entry(ULONG initial_input)
 #endif
         NEOM9N_status_t status = receive_nmea(&gps_packet, NMEA_MAX_WAIT, NMEA_MAX_IGNORES);
         const uint64_t now_ms = tx_now_ms();
-        const bool fresh_satellite_update =
-            gps_packet.last_satellite_update_tick != 0U &&
-            gps_packet.last_satellite_update_tick != last_reported_satellite_update_tick;
-        bool satellite_count_sent = false;
-
+        /* One count per telemetry period. GGA arrives at 4 Hz with or
+         * without a fix; forcing a send per sentence would quadruple this
+         * stream on the shared radio. */
         gps_emit_satellite_count_if_due(&gps_packet,
                                         now_ms,
                                         &next_gps_satellite_log_ms,
-                                        fresh_satellite_update,
-                                        &satellite_count_sent);
-        if (fresh_satellite_update && satellite_count_sent) {
-            last_reported_satellite_update_tick = gps_packet.last_satellite_update_tick;
-        }
+                                        false,
+                                        NULL);
+        gps_emit_status_if_due(&gps_packet, now_ms, &next_gps_status_log_ms);
 
         if (status == NEOM9N_OK)
         {

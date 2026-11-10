@@ -82,12 +82,25 @@ typedef struct {
     // Status
     bool valid_fix;             // True if GPS has valid fix
     uint32_t last_update_tick;  // HAL tick of last successful update
+    bool byte_seen;             // Module has ever sent a non-idle byte
+    uint32_t last_byte_tick;    // HAL tick of the last non-idle byte
+    bool fix_seen;              // A fix has ever been parsed
+    uint32_t last_fix_tick;     // HAL tick of the last sentence with a fix
      
     // Internal buffers for reduced stack usage
     uint8_t field_buffer[NMEA_MAX_FIELD_LENGTH]; 
 } NEOM9N_t;
 
+// GPS_STATUS module states (element 0)
+#define GPS_STATUS_NO_RESPONSE      0U  // Never heard a byte from the module
+#define GPS_STATUS_SILENT           1U  // Heard before, nothing recently
+#define GPS_STATUS_NO_FIX           2U  // Module alive, no fix
+#define GPS_STATUS_FIX              3U  // Module alive with a fix
+#define GPS_STATUS_SILENT_MS        3000U
+#define GPS_STATUS_STALE_MS         5000U
+
 // Function prototypes
+void gps_pack_status(const NEOM9N_t *packet, uint32_t now_tick, float status[4]);
 void gps_init(NEOM9N_t *packet, SPI_HandleTypeDef *hspi);
 bool gps_has_fix(const NEOM9N_t *packet);
 void pack_gps_data(const NEOM9N_t *packet, float *buffer);
