@@ -78,18 +78,29 @@ uint8_t board_recovery_automatic_is_stale(const SedsPacketView *packet)
  return board_recovery_command_is_stale(packet);
 }
 
-static SedsResult commissioning_status(SedsRouter*router,uint8_t result,const BoardRecoveryRequest*request,uint32_t uptime){
+static SedsResult commissioning_status(SedsRouter*router,uint8_t result,const BoardRecoveryRequest*request,uint32_t uptime,uint8_t extra_flags){
  BoardRecoverySnapshot snapshot={.actual_state=255};
  if(board_recovery_snapshot(&snapshot)!=0)result=BOARD_RECOVERY_RESULT_IO;
  uint64_t generation=board_commissioning_query_generation();
  if(!generation&&!board_commissioning_uncertain_first())snapshot.flags&=(uint8_t)~BOARD_RECOVERY_SUPPORTED;
  if(request->operation==BOARD_RECOVERY_RECOVER&&result==BOARD_RECOVERY_RESULT_OK&&(snapshot.flags&BOARD_RECOVERY_ABORT_LATCHED)&&!board_commissioning_pending())result=BOARD_RECOVERY_RESULT_STALE;
  uint8_t wire[BOARD_RECOVERY_STATUS_SIZE];
- board_recovery_encode_status(wire,result,snapshot.actual_state,(uint8_t)(snapshot.flags|BOARD_RECOVERY_VERIFIED_IMPLEMENTATION),request,generation,snapshot.abort_epoch,uptime,snapshot.actual_outputs_mask);
+ board_recovery_encode_status(wire,result,snapshot.actual_state,(uint8_t)(snapshot.flags|extra_flags|BOARD_RECOVERY_VERIFIED_IMPLEMENTATION),request,generation,snapshot.abort_epoch,uptime,snapshot.actual_outputs_mask);
  return seds_router_log_queue_typed(router,SEDS_DT_BOARD_STATE_STATUS,wire,sizeof wire,1,SEDS_EK_UNSIGNED);
 }
 static uint64_t commissioning_now(void*context){return board_recovery_station_now((SedsRouter*)context);}
-static bool commissioning_reply(void*context,const BoardRecoveryRequest*request,uint8_t result){uint32_t uptime=(uint32_t)(((uint64_t)tx_time_get()*1000U)/TX_TIMER_TICKS_PER_SECOND);return commissioning_status((SedsRouter*)context,result,request,uptime)==SEDS_OK;}
+static bool commissioning_reply(void*context,const BoardRecoveryRequest*request,uint8_t result){uint32_t uptime=(uint32_t)(((uint64_t)tx_time_get()*1000U)/TX_TIMER_TICKS_PER_SECOND);return commissioning_status((SedsRouter*)context,result,request,uptime,0U)==SEDS_OK;}
+/* Issuer of the last valid station QUERY, echoed by the Abort push. */
+static uint64_t last_query_issuer;
+/* Caller holds the router (FLIGHT_STATE callback): one unsolicited status for
+ * an applied change to Aborted, so the station sees it even while its ordered
+ * queries wait. Nonce 0, the last valid QUERY issuer, the QUERY generation. */
+SedsResult board_recovery_push_abort_status(SedsRouter*router){
+ if(!router)return SEDS_BAD_ARG;
+ BoardRecoveryRequest request={0};request.issuer_session=last_query_issuer;
+ return commissioning_status(router,BOARD_RECOVERY_RESULT_OK,&request,
+  (uint32_t)(((uint64_t)tx_time_get()*1000U)/TX_TIMER_TICKS_PER_SECOND),BOARD_RECOVERY_ABORT_LATCHED);
+}
 SedsResult board_recovery_handle(SedsRouter *router,const SedsPacketView *packet,
                                 uint32_t local_endpoint,uint32_t uptime_ms)
 {
@@ -120,6 +131,7 @@ SedsResult board_recovery_handle(SedsRouter *router,const SedsPacketView *packet
  /* Commissioning has its own explicit two-leg path. QUERY only reads boot
   * caches/registers and never provisions or refreshes storage. */
  if(request.operation==BOARD_RECOVERY_QUERY){
+  last_query_issuer=request.issuer_session;
   /* The station's own QUERY time may advance the station clock: the station
    * acts only on a reply to its nonce within its query deadline. */
   board_recovery_observe_station_time(router,packet);
@@ -128,13 +140,13 @@ SedsResult board_recovery_handle(SedsRouter *router,const SedsPacketView *packet
    if(board_commissioning_pending()&&!board_commissioning_note_query(&request,packet->timestamp,commissioning_now(router),snapshot.abort_epoch))result=BOARD_RECOVERY_RESULT_IO;
   }
   
-  return commissioning_status(router,result,&request,uptime_ms);
+  return commissioning_status(router,result,&request,uptime_ms,0U);
  }
  if(result==BOARD_RECOVERY_RESULT_OK){
   int32_t staged=board_commissioning_stage(&request,packet->timestamp,commissioning_now(router),snapshot.abort_epoch,router,commissioning_reply,commissioning_now);
-  if(staged!=-2){if(staged==-1)return SEDS_OK;return commissioning_status(router,(uint8_t)staged,&request,uptime_ms);}
+  if(staged!=-2){if(staged==-1)return SEDS_OK;return commissioning_status(router,(uint8_t)staged,&request,uptime_ms,0U);}
  }
  /* No ordinary fallback may bypass the durable transaction service. Strict
   * unclassified/tombstoned/failed metadata remains observable and inhibited. */
- return commissioning_status(router,result==BOARD_RECOVERY_RESULT_OK?BOARD_RECOVERY_RESULT_IO:result,&request,uptime_ms);
+ return commissioning_status(router,result==BOARD_RECOVERY_RESULT_OK?BOARD_RECOVERY_RESULT_IO:result,&request,uptime_ms,0U);
 }

@@ -15,6 +15,7 @@ extern volatile uint32_t g_telemetry_discovery_seen;
 
 #define FLIGHT_STATE_PERSIST_KEY 0x46535445u
 #define FLIGHT_STATE_MAX_VALUE 15U
+#define FLIGHT_STATE_ABORTED 15U
 #define FLIGHT_STATE_UNSYNCED_RETRY_MS 500U
 /* The station answers a FLIGHT_STATE GET only for a state it has authority
  * for, and pushes that state as a write when it gets one. An unanswered GET
@@ -42,6 +43,8 @@ static uint32_t g_refresh_interval_ms = FLIGHT_STATE_UNSYNCED_RETRY_MS;
 static bool g_persist_pending;
 static uint32_t g_persist_retry_ms;
 static SedsRouter *g_cache_router;
+/* The Abort push the router refused; retried from the poll while Aborted. */
+static bool g_abort_push_retry;
 static SedsResult persist_update(const SedsPacketView *packet, void *user);
 /* SDK 4.3.6 caches inbound data before its callback. Retire only this
  * observation; keep read-only permissions, callbacks and advertisements. */
@@ -70,6 +73,13 @@ __attribute__((weak)) SedsResult
 flight_state_cache_apply_network_update(const SedsPacketView *packet)
 {
     (void)packet;
+    return SEDS_OK;
+}
+/* board_recovery_transport.c owns the definition. */
+__attribute__((weak)) SedsResult
+board_recovery_push_abort_status(SedsRouter *router)
+{
+    (void)router;
     return SEDS_OK;
 }
 
@@ -205,6 +215,9 @@ static SedsResult persist_update(const SedsPacketView *packet, void *user)
         return SEDS_OK;
     }
     const uint8_t state = packet->payload[0];
+    /* An applied change to Aborted pushes one status to the station. */
+    const bool aborting = state == FLIGHT_STATE_ABORTED &&
+        !(g_has_value && g_flight_state_cache_value == FLIGHT_STATE_ABORTED);
     /* Taking the OTA owner applies its inhibition even when busy; busy only
      * means flash is not ours now, so durability waits for the poll. */
     const bool owner = ota_stream_state_begin(state);
@@ -220,6 +233,7 @@ static SedsResult persist_update(const SedsPacketView *packet, void *user)
     g_network_value_seen = true;
     g_flight_state_cache_value = state;
     g_flight_state_cache_updates++;
+    if (aborting) g_abort_push_retry = board_recovery_push_abort_status(g_cache_router) != SEDS_OK;
     if (changed) {
         /* Applied: acknowledge it whatever flash does. An error withholds
          * the receipt and stalls the station's ordered FLIGHT_STATE stream
@@ -255,6 +269,9 @@ SedsResult flight_state_cache_init(SedsRouter *router)
 SedsResult flight_state_cache_poll(SedsRouter *router)
 {
     if (router == NULL) return SEDS_BAD_ARG;
+    if (g_abort_push_retry)
+        g_abort_push_retry = g_flight_state_cache_value == FLIGHT_STATE_ABORTED &&
+            board_recovery_push_abort_status(router) != SEDS_OK;
     const uint32_t now_ms = HAL_GetTick();
     if (g_persist_pending &&
         (uint32_t)(now_ms - g_persist_retry_ms) >= FLIGHT_STATE_PERSIST_RETRY_MS) {
