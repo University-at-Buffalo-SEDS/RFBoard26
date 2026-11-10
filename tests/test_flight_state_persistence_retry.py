@@ -196,11 +196,21 @@ int main(int argc,char **argv) {
   tick=500;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==0);
   g_telemetry_discovery_seen=1;tick=499;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==0);
   tick=500;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==1);
-  tick=999;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==1);
-  tick=1000;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==2);
+  /* The station does not answer a GET for a state it has no authority for,
+   * so unanswered GETs back off 0.5 -> 1 -> 2 -> 4 s instead of 2 Hz forever. */
+  tick=1000;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==1);
+  tick=1499;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==1);
+  tick=1500;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==2);
+  tick=3499;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==2);
+  tick=3500;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==3);
+  tick=7499;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==3);
+  tick=7500;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==4);
+  tick=11500;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==5);
+  tick=15499;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==5);
+  tick=15500;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==6);
   write_failed=1;assert(update(1)==SEDS_OK);
   /* A seen value stops the GET; only the durability retry continues. */
-  tick=2000;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==2 && write_attempts==2);
+  tick=17000;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==6 && write_attempts==2);
  }else assert(!"unknown test case");
  printf("flight-state-cache %s passed\n",argv[1]);return 0;
 }
@@ -254,7 +264,7 @@ class FlightStatePersistenceRetryTests(unittest.TestCase):
     def test_invalid_packet_never_applies_or_writes(self):
         self.run_case("invalid_packet")
 
-    def test_original_discovery_and_500ms_poll_contract_is_unchanged(self):
+    def test_unanswered_get_starts_at_500ms_after_discovery_and_backs_off(self):
         self.run_case("poll")
 
 if __name__ == "__main__":

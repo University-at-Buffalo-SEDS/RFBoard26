@@ -16,6 +16,10 @@ extern volatile uint32_t g_telemetry_discovery_seen;
 #define FLIGHT_STATE_PERSIST_KEY 0x46535445u
 #define FLIGHT_STATE_MAX_VALUE 15U
 #define FLIGHT_STATE_UNSYNCED_RETRY_MS 500U
+/* The station answers a FLIGHT_STATE GET only for a state it has authority
+ * for, and pushes that state as a write when it gets one. An unanswered GET
+ * therefore backs off to this cap instead of repeating at 2 Hz on the radio. */
+#define FLIGHT_STATE_UNSYNCED_RETRY_MAX_MS 4000U
 #define FLIGHT_STATE_PERSIST_RETRY_MS 1000U
 
 volatile uint32_t g_flight_state_cache_value __attribute__((used, externally_visible)) = 0U;
@@ -33,6 +37,7 @@ static bool g_network_value_seen;
 /* UINT8_MAX cannot be a valid state; volatile application is not flash durability. */
 static uint8_t g_persisted_state = UINT8_MAX;
 static uint32_t g_last_refresh_ms;
+static uint32_t g_refresh_interval_ms = FLIGHT_STATE_UNSYNCED_RETRY_MS;
 /* An applied value not yet durable; retried from the poll. */
 static bool g_persist_pending;
 static uint32_t g_persist_retry_ms;
@@ -142,6 +147,7 @@ int32_t flight_state_cache_reset_startup(void)
     g_persist_pending = false;
     g_network_value_seen = false;
     g_last_refresh_ms = HAL_GetTick();
+    g_refresh_interval_ms = FLIGHT_STATE_UNSYNCED_RETRY_MS;
 #endif
     g_flight_state_cache_value = startup;
     g_has_value = true;
@@ -242,6 +248,7 @@ SedsResult flight_state_cache_init(SedsRouter *router)
     if (result != SEDS_OK) { ++g_flight_state_cache_errors; return result; }
     g_cache_router = router;
     g_last_refresh_ms = HAL_GetTick();
+    g_refresh_interval_ms = FLIGHT_STATE_UNSYNCED_RETRY_MS;
     return SEDS_OK;
 }
 
@@ -262,8 +269,13 @@ SedsResult flight_state_cache_poll(SedsRouter *router)
     if (g_network_value_seen) return SEDS_OK;
     if (g_telemetry_discovery_seen == 0U) return SEDS_OK;
     if ((uint32_t)(now_ms - g_last_refresh_ms) <
-        FLIGHT_STATE_UNSYNCED_RETRY_MS) return SEDS_OK;
+        g_refresh_interval_ms) return SEDS_OK;
     g_last_refresh_ms = now_ms;
+    if (g_refresh_interval_ms < FLIGHT_STATE_UNSYNCED_RETRY_MAX_MS / 2U) {
+        g_refresh_interval_ms *= 2U;
+    } else {
+        g_refresh_interval_ms = FLIGHT_STATE_UNSYNCED_RETRY_MAX_MS;
+    }
     return seds_router_request_managed_variable(router, SEDS_DT_FLIGHT_STATE);
 }
 
