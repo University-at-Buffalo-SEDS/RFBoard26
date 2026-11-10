@@ -871,14 +871,16 @@ static SedsResult init_telemetry_router_locked(void) {
   result = board_packet_store_init();
   if (result != SEDS_OK) return result;
 
-  /* Match GroundStation's short-frame radio retry cadence. A 500 ms replay
-   * gate cannot recover a lost downstream receipt inside a 500 ms target.
-   * Keep the same 4.5-second total retry window and all queue/memory limits. */
+  /* Size the retransmit interval to the radio ACK round trip. On the
+   * faithful RFD900x2 model with carrier sense the RF->GS reliable ACK round
+   * trip measured p50 239 ms, p95 505 ms, p99 574 ms; at 250 ms about half of
+   * all reliable frames went out again before their ACK could return. Keep
+   * the same ~4.5-second total retry window and all queue/memory limits. */
   SedsRuntimeTuningConfig tuning;
   result = seds_get_runtime_tuning_config(&tuning);
   if (result != SEDS_OK) return result;
-  tuning.reliable_retransmit_ms = 250U;
-  tuning.reliable_max_retries = 17U;
+  tuning.reliable_retransmit_ms = 550U;
+  tuning.reliable_max_retries = 8U;
   /* Never try zstd payload compression on transmit. ZSTD_compress keeps a
    * 3.8 KiB context on the stack and then mallocs a ~30 KiB workspace from
    * the newlib heap, which here is under 2 KiB, so every attempt failed and
