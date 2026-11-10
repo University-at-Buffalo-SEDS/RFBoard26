@@ -128,9 +128,11 @@ int main(int argc,char **argv){
   assert(update(8)==0&&flight_state_cache_value()==0&&stored==0&&writes==w&&clears==c+1);
   report_ignorable=0;assert(update(8)==0&&writes==w&&flight_state_cache_value()==0&&clears==c+2);
  }else if(!strcmp(argv[1],"ordinary_retry")){
-  fail_write=1;assert(update(0)==-9&&flight_state_cache_value()==0);
-  assert(update(0)==-9&&writes==2);fail_write=0;
-  assert(update(0)==0&&writes==3&&stored==0);assert(update(0)==0&&writes==3&&clears==2); /* Both failed persistence owners retire SDK cache; volatile apply/retry counts unchanged. */
+  /* An applied value is acknowledged; durability is retried, and the SDK
+   * cache (which holds the applied value) is never retired for it. */
+  fail_write=1;assert(update(0)==0&&flight_state_cache_value()==0);
+  assert(update(0)==0&&writes==2);fail_write=0;
+  assert(update(0)==0&&writes==3&&stored==0);assert(update(0)==0&&writes==3&&clears==0);
  }else if(!strcmp(argv[1],"apply_failure")){
   fail_apply=1;assert(update(3)==-14&&flight_state_cache_value()==5&&stored==5&&writes==0&&clears==1&&callback);
   fail_apply=0;assert(update(3)==0&&flight_state_cache_value()==3&&stored==3&&writes==1&&clears==1);

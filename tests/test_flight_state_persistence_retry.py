@@ -1,4 +1,11 @@
-"""Compile the actual cache callback and fault-inject its NVM/apply boundaries."""
+"""Compile the actual cache callback and fault-inject its NVM/apply boundaries.
+
+Once a station FLIGHT_STATE write is applied it is acknowledged (SEDS_OK)
+even when flash or the OTA owner is unavailable: an error withholds the
+end-to-end receipt, so the station's ordered FLIGHT_STATE stream stalls and
+newer writes, Aborted among them, queue behind it. Durability is retried
+from flight_state_cache_poll at most once per second.
+"""
 from pathlib import Path
 import subprocess
 import tempfile
@@ -6,7 +13,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 HEADERS = {
-    "ota_stream.h": '#pragma once\n#include <stdbool.h>\n#include <stdint.h>\n/* This legacy fixture isolates cache/router/persistence semantics. OTA owner\n * is an explicit permit/no-op boundary; real OTA admission is tested by\n * test_ota_lifecycle_native and the integrated strict recovery fixture. */\nstatic inline bool ota_stream_state_begin(uint8_t phase){(void)phase;return true;}\nstatic inline void ota_stream_state_end(void){}\nstatic inline void ota_stream_recovery_complete(uint32_t epoch){(void)epoch;}\n',
+    "ota_stream.h": '#pragma once\n#include <stdbool.h>\n#include <stdint.h>\n/* This fixture isolates cache/router/persistence semantics. The OTA owner\n * is a fault-injected permit; real OTA admission is tested by\n * test_ota_lifecycle_native and the integrated strict recovery fixture. */\nbool ota_stream_state_begin(uint8_t phase);\nvoid ota_stream_state_end(void);\nstatic inline void ota_stream_recovery_complete(uint32_t epoch){(void)epoch;}\n',
     "board_recovery_transport.h": '#pragma once\n#include "sedsnet.h"\nuint8_t board_recovery_managed_update_allowed(const SedsPacketView*);\n',
     "sedsnet.h": r'''
 #pragma once
@@ -55,11 +62,17 @@ extern volatile uint32_t g_flight_state_cache_updates;
 extern volatile uint32_t g_flight_state_cache_errors;
 static SedsResult (*callback)(const SedsPacketView*,void*);
 static unsigned write_attempts, apply_attempts, requests;
-static int init_failed, write_failed, have_stored;
+static int init_failed, write_failed, have_stored, ota_busy, ota_owned;
 static uint8_t stored, applied;
 static uint32_t tick;
 static SedsResult apply_result = SEDS_OK;
 uint32_t HAL_GetTick(void) { return tick; }
+bool ota_stream_state_begin(uint8_t phase) {
+ assert(phase<=15U && !ota_owned);
+ if(ota_busy)return false;
+ ota_owned=1;return true;
+}
+void ota_stream_state_end(void) { assert(ota_owned);ota_owned=0; }
 int persistent_store_init(void) { return init_failed ? LAUNCHCORE_PERSIST_STORAGE_ERROR : LAUNCHCORE_PERSIST_OK; }
 int persistent_store_get(uint32_t key,void *value,size_t *size) {
  assert(key==0x46535445u && *size==1);
@@ -69,6 +82,7 @@ int persistent_store_get(uint32_t key,void *value,size_t *size) {
 int persistent_store_set(uint32_t key,const void *value,size_t size) {
  assert(key==0x46535445u && size==1);
  assert(applied==*(const uint8_t*)value); /* Preserve apply-before-flash behavior. */
+ assert(ota_owned); /* Flash is written only while the OTA owner is held. */
  ++write_attempts;
  if(write_failed)return LAUNCHCORE_PERSIST_STORAGE_ERROR;
  stored=*(const uint8_t*)value;have_stored=1;return LAUNCHCORE_PERSIST_OK;
@@ -100,8 +114,10 @@ uint8_t board_recovery_managed_update_allowed(const SedsPacketView *packet) {
 }
 static SedsResult update(uint8_t state) {
  SedsPacketView packet={SEDS_DT_FLIGHT_STATE,&state,1};
- assert(callback);return callback(&packet,NULL);
+ assert(callback);SedsResult r=callback(&packet,NULL);assert(!ota_owned);return r;
 }
+static SedsRouter poll_router;
+static void poll_at(uint32_t at) { tick=at;assert(flight_state_cache_poll(&poll_router)==SEDS_OK && !ota_owned); }
 int main(int argc,char **argv) {
  assert(argc==2);SedsRouter router=0;
  if(!strcmp(argv[1],"restore")){have_stored=1;stored=5;}
@@ -111,28 +127,39 @@ int main(int argc,char **argv) {
  if(!strcmp(argv[1],"changed_retry")){
   assert(update(1)==SEDS_OK && write_attempts==1 && stored==1);
   assert(update(1)==SEDS_OK && write_attempts==1);
-  write_failed=1;
-  assert(update(0)==SEDS_HANDLER_ERROR && write_attempts==2 && stored==1);
+  write_failed=1;tick=10000;
+  /* Applied and acknowledged; durability is retried, not the receipt. */
+  assert(update(0)==SEDS_OK && write_attempts==2 && stored==1);
   assert(applied==0 && flight_state_cache_has_value() && flight_state_cache_value()==0);
-  assert(update(0)==SEDS_HANDLER_ERROR && write_attempts==3 && stored==1);
+  poll_at(10999);assert(write_attempts==2);              /* at most once per second */
+  poll_at(11000);assert(write_attempts==3 && stored==1);
+  poll_at(11500);assert(write_attempts==3);
   write_failed=0;
-  assert(update(0)==SEDS_OK && write_attempts==4 && stored==0);
+  poll_at(11999);assert(write_attempts==3);
+  poll_at(12000);assert(write_attempts==4 && stored==0);
+  poll_at(20000);assert(write_attempts==4);              /* nothing pending */
   assert(update(0)==SEDS_OK && write_attempts==4);
-  assert(g_flight_state_cache_writes==2 && g_flight_state_cache_errors==2 && apply_attempts==6);
+  assert(g_flight_state_cache_writes==2 && g_flight_state_cache_errors==2 && apply_attempts==4);
+ }else if(!strcmp(argv[1],"newer_value_while_pending")){
+  write_failed=1;tick=1000;
+  assert(update(1)==SEDS_OK && write_attempts==1);
+  assert(update(2)==SEDS_OK && write_attempts==2);       /* a newer write still tries now */
+  write_failed=0;poll_at(2000);
+  assert(write_attempts==3 && stored==2);                 /* the latest applied value */
+  write_failed=1;assert(update(2)==SEDS_OK && write_attempts==3);
  }else if(!strcmp(argv[1],"missing_zero")){
-  assert(!flight_state_cache_has_value());write_failed=1;
-  assert(update(0)==SEDS_HANDLER_ERROR && write_attempts==1);
-  assert(update(0)==SEDS_HANDLER_ERROR && write_attempts==2);
-  write_failed=0;assert(update(0)==SEDS_OK && write_attempts==3 && stored==0);
+  assert(!flight_state_cache_has_value());write_failed=1;tick=1000;
+  assert(update(0)==SEDS_OK && write_attempts==1);
+  assert(update(0)==SEDS_OK && write_attempts==2);       /* still pending: a retry writes */
+  write_failed=0;poll_at(2000);assert(write_attempts==3 && stored==0);
   assert(update(0)==SEDS_OK && write_attempts==3);
  }else if(!strcmp(argv[1],"restore")){
   assert(flight_state_cache_has_value() && flight_state_cache_value()==5 && g_flight_state_cache_restores==1);
   assert(update(5)==SEDS_OK && write_attempts==0);
-  write_failed=1;
-  assert(update(6)==SEDS_HANDLER_ERROR && write_attempts==1 && stored==5);
+  write_failed=1;tick=1000;
+  assert(update(6)==SEDS_OK && write_attempts==1 && stored==5);
   assert(flight_state_cache_value()==6 && applied==6);
-  assert(update(6)==SEDS_HANDLER_ERROR && write_attempts==2);
-  write_failed=0;assert(update(6)==SEDS_OK && write_attempts==3 && stored==6);
+  write_failed=0;poll_at(2000);assert(write_attempts==2 && stored==6);
  }else if(!strcmp(argv[1],"invalid_restore")){
   assert(!flight_state_cache_has_value() && g_flight_state_cache_errors==1);
   assert(update(0)==SEDS_OK && write_attempts==1 && stored==0);
@@ -141,9 +168,20 @@ int main(int argc,char **argv) {
   assert(update(2)==SEDS_BAD_ARG && write_attempts==1 && flight_state_cache_value()==1);
   apply_result=SEDS_OK;assert(update(2)==SEDS_OK && write_attempts==2 && stored==2);
  }else if(!strcmp(argv[1],"init_error")){
-  assert(update(1)==SEDS_HANDLER_ERROR && write_attempts==0);
-  assert(update(1)==SEDS_HANDLER_ERROR && write_attempts==0);
-  assert(applied==1 && flight_state_cache_value()==1 && g_flight_state_cache_errors==3);
+  tick=1000;
+  assert(update(1)==SEDS_OK && write_attempts==0);
+  assert(applied==1 && flight_state_cache_value()==1 && g_flight_state_cache_errors==2);
+  poll_at(2000);assert(write_attempts==0 && g_flight_state_cache_errors==3);
+  init_failed=0;poll_at(2500);assert(write_attempts==0);
+  poll_at(3000);assert(write_attempts==1 && stored==1);
+  assert(update(1)==SEDS_OK && write_attempts==1);
+ }else if(!strcmp(argv[1],"ota_busy")){
+  ota_busy=1;tick=1000;
+  /* The OTA owner holds flash: apply and acknowledge, never write now. */
+  assert(update(3)==SEDS_OK && write_attempts==0 && applied==3 && flight_state_cache_value()==3);
+  poll_at(2000);assert(write_attempts==0 && g_flight_state_cache_errors==2);
+  ota_busy=0;poll_at(2999);assert(write_attempts==0);
+  poll_at(3000);assert(write_attempts==1 && stored==3);
  }else if(!strcmp(argv[1],"invalid_packet")){
   uint8_t state=16;SedsPacketView packet={SEDS_DT_FLIGHT_STATE,&state,1};
   assert(callback(NULL,NULL)==SEDS_HANDLER_ERROR);
@@ -160,8 +198,9 @@ int main(int argc,char **argv) {
   tick=500;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==1);
   tick=999;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==1);
   tick=1000;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==2);
-  write_failed=1;assert(update(1)==SEDS_HANDLER_ERROR);
-  tick=2000;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==2);
+  write_failed=1;assert(update(1)==SEDS_OK);
+  /* A seen value stops the GET; only the durability retry continues. */
+  tick=2000;assert(flight_state_cache_poll(&router)==SEDS_OK && requests==2 && write_attempts==2);
  }else assert(!"unknown test case");
  printf("flight-state-cache %s passed\n",argv[1]);return 0;
 }
@@ -188,7 +227,7 @@ class FlightStatePersistenceRetryTests(unittest.TestCase):
     def run_case(self, name):
         subprocess.run([str(self.executable), name], check=True)
 
-    def test_failed_changed_value_retries_while_volatile_application_stays_immediate(self):
+    def test_failed_write_is_acknowledged_and_retried_once_per_second(self):
         self.run_case("changed_retry")
 
     def test_missing_default_zero_is_not_false_durability(self):
@@ -203,8 +242,14 @@ class FlightStatePersistenceRetryTests(unittest.TestCase):
     def test_apply_failure_preserves_existing_order_and_error(self):
         self.run_case("apply_error")
 
-    def test_storage_initialization_failure_never_yields_false_success(self):
+    def test_storage_initialization_failure_is_retried_after_the_receipt(self):
         self.run_case("init_error")
+
+    def test_busy_ota_owner_defers_flash_but_not_the_receipt(self):
+        self.run_case("ota_busy")
+
+    def test_newer_value_while_pending_persists_the_latest(self):
+        self.run_case("newer_value_while_pending")
 
     def test_invalid_packet_never_applies_or_writes(self):
         self.run_case("invalid_packet")

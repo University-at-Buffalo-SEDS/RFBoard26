@@ -50,7 +50,9 @@ static SedsResult data(const uint8_t*p,size_t n){event.kind=SEDS_P2P_STREAM_DATA
 static void phase(uint8_t p){SedsPacketView packet={.ty=SEDS_DT_FLIGHT_STATE,.sender="GS",.sender_len=2,.payload=&p,.payload_len=1,.timestamp=clock_ms};assert(cache_callback(&packet,0)==0);BoardRecoverySnapshot out;assert(board_recovery_snapshot(&out)==0&&out.actual_state==p);}
 
 static SedsResult phase_raw(uint8_t p){SedsPacketView packet={.ty=SEDS_DT_FLIGHT_STATE,.sender="GS",.sender_len=2,.payload=&p,.payload_len=1,.timestamp=clock_ms};return cache_callback(&packet,0);}
-static void observed_launch(void){lc_hook=0;assert(physical&&!irq_mask);assert(phase_raw(7)==SEDS_HANDLER_ERROR);}
+/* A launch observed while OTA owns flash is applied and acknowledged (its
+ * inhibition is immediate); only its persistence waits for the owner. */
+static void observed_launch(void){lc_hook=0;assert(physical&&!irq_mask);assert(phase_raw(7)==0&&flight_state_cache_value()==7);}
 void reset_from_hook(void){event.kind=SEDS_P2P_STREAM_RESET;assert(ota_callback(&event,0)==0);}
 SedsResult flight_state_cache_apply_network_update(const SedsPacketView*p){(void)p;if(cancel_during_apply){cancel_during_apply=false;reset_from_hook();}return 0;}
 static void accept(void){event.kind=SEDS_P2P_STREAM_ACCEPTED;assert(ota_callback(&event,0)==0);}

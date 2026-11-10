@@ -66,8 +66,9 @@ int main(void) {
         body = function(text[start:], 'persist_update')
         denied = body.index('if (!board_recovery_managed_update_allowed(packet))')
         ignored = body.index('board_recovery_managed_report_ignorable(packet)', denied)
-        self.assertLess(ignored, body.index('return SEDS_HANDLER_ERROR;', denied))
-        self.assertIn('return SEDS_OK;', body[ignored:body.index('return SEDS_HANDLER_ERROR;', denied)])
+        # Past the malformed check nothing withholds the receipt.
+        self.assertNotIn('return SEDS_HANDLER_ERROR;', body[denied:])
+        self.assertIn('return SEDS_OK;', body[ignored:body.index('const uint8_t state', denied)])
         header = (ROOT / 'Core/Inc/board_recovery_transport.h').read_text()
         self.assertIn('board_recovery_managed_report_ignorable(const SedsPacketView *packet);', header)
 

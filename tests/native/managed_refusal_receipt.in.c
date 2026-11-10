@@ -118,15 +118,16 @@ int main(int argc, char **argv)
   assert(r == SEDS_OK && receipts == 3U && flight_state_cache_value() == 3U && writes == 1U);
   assert(g_reliable_refusal_count > after_refused);
 
-  /* Transient: the OTA owner is busy. No receipt, so the station retries. */
+  /* The OTA owner is busy: applied and acknowledged now, never written
+   * while OTA owns flash; durability is retried afterwards. */
   ota_busy = 1;
   r = deliver("GS", 4U);
-  printf("transient result=%d receipts=%u value=%u\n", r, receipts, flight_state_cache_value());
-  assert(r != SEDS_OK && receipts == 3U && flight_state_cache_value() == 3U);
+  printf("busy result=%d receipts=%u value=%u writes=%u\n", r, receipts, flight_state_cache_value(), writes);
+  assert(r == SEDS_OK && receipts == 4U && flight_state_cache_value() == 4U && writes == 1U);
   ota_busy = 0;
-  assert(deliver("GS", 4U) == SEDS_OK && receipts == 4U && flight_state_cache_value() == 4U && writes == 2U);
+  assert(deliver("GS", 4U) == SEDS_OK && receipts == 5U && flight_state_cache_value() == 4U && writes == 2U);
 
   seds_router_free(board);
-  puts("PASS refused and malformed FLIGHT_STATE acknowledged and relayed without applying; transient refusal retried");
+  puts("PASS refused and malformed FLIGHT_STATE acknowledged and relayed without applying; busy OTA owner still acknowledged");
   return 0;
 }
