@@ -2,8 +2,8 @@
 #define RFD_MODEM_PORT_H
 #include <stdint.h>
 
-/* Every telemetry loop pass. Runs the modem check once per boot, after the
- * first FLIGHT_STATE says Startup, Idle, PreFill or FillTest. While the check
+/* Every telemetry loop pass. Runs the modem check at most once per boot,
+ * after a station FLIGHT_STATE of Startup or Idle has settled. While the check
  * owns the UART, `service` runs one CAN/routing/watchdog pass without the
  * radio and sleeps one tick. */
 void rfd_modem_port_poll(void (*service)(void));

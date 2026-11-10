@@ -32,13 +32,16 @@ class RfdModemCheckTests(unittest.TestCase):
                 check=True,
             )
             result = subprocess.run([executable], check=True, capture_output=True, text=True)
-            self.assertGreaterEqual(result.stdout.count("ok "), 26, result.stdout)
+            self.assertGreaterEqual(result.stdout.count("ok "), 31, result.stdout)
 
     def test_constants_match_the_groundstation_check(self):
         source = (ROOT / "Core/Src/rfd_modem.c").read_text()
+        # Same protocol timing as the GS check. The overall bound is RF's own:
+        # RF's radio is deaf for the whole check, so it is capped at 16 s
+        # (reboot and verify included) instead of the GS 40 s.
         for field, value in [("guard", 1100), ("plus_reply", 2500), ("command", 1000),
                              ("idle", 150), ("save", 2000), ("reboot", 4000),
-                             ("overall", 40000)]:
+                             ("overall", 16000)]:
             self.assertRegex(source, rf"\.{field} = {value}U")
         self.assertIn('"RTSCTS"', source)
         self.assertIn('SER_BRK_DETMS', source)

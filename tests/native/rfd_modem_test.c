@@ -45,7 +45,7 @@ typedef struct {
   int pluses;
   char line[128];
   size_t line_len;
-  unsigned air_bytes, eeprom_writes, written;
+  unsigned air_bytes, eeprom_writes, written, commands;
   /* faults */
   int dead, garbage, ato_error, save_does_not_persist, no_ati5_names, noise;
   int refuse_reg;
@@ -136,6 +136,7 @@ static void tick(modem_t *m)
 static void execute(modem_t *m, const char *cmd)
 {
   char out[2048];
+  m->commands++;
   if (m->garbage) {
     say(m, "\x7f#%\r\nZ9q\r\n");
     return;
@@ -252,11 +253,20 @@ static void io_sleep(void *ctx, uint32_t ms)
 
 static bool gate_open(void *ctx) { (void)ctx; return true; }
 static bool gate_closed(void *ctx) { (void)ctx; return false; }
-/* Opens for the first n calls, then closes (flight state changed mid-check). */
-static bool gate_countdown(void *ctx)
+/* The flight state leaves Startup/Idle mid-check: after the modem has run
+ * `after_commands` commands, or at virtual time `at_us`. Records when. */
+typedef struct {
+  modem_t *m;
+  unsigned after_commands;
+  uint64_t at_us, closed_us;
+} closing_gate_t;
+static bool gate_closing(void *ctx)
 {
-  int *n = ctx;
-  return (*n)-- > 0;
+  closing_gate_t *g = ctx;
+  const bool closed = (g->after_commands && g->m->commands >= g->after_commands) ||
+                      (g->at_us && g->m->now_us >= g->at_us);
+  if (closed && !g->closed_us) g->closed_us = g->m->now_us;
+  return !closed;
 }
 
 static rfd_profile_values_t profile(bool rolled_out)
@@ -352,24 +362,99 @@ TEST(skip_mode_and_closed_gate_send_nothing)
   free(m);
 }
 
-TEST(gate_closing_after_the_read_prevents_every_write)
+/* An abort over the radio must not wait out the check: leaving Startup/Idle
+ * ends it within one poll and leaves command mode without waiting. */
+#define EXIT_BOUND_US 25000U /* one simulated 20 ms poll plus the exit bytes */
+
+TEST(gate_closing_before_any_byte_sends_nothing)
+{
+  modem_t *m = modem_new();
+  closing_gate_t g = {.m = m, .at_us = m->now_us + 500000U};
+  rfd_report_t r = check_full(m, profile(false), RFD_MODE_FIX, gate_closing, &g, true);
+  CHECK(r.outcome == RFD_OUT_SKIPPED && (r.flags & RFD_FLAG_GATE_SKIPPED));
+  CHECK(!(r.flags & RFD_FLAG_ATTENTION) && r.data_mode == RFD_DATA_UNTOUCHED);
+  CHECK(m->written == 0 && m->now_us - g.closed_us <= EXIT_BOUND_US);
+  free(m);
+}
+
+TEST(gate_closing_after_plus_cancels_the_escape)
+{
+  modem_t *m = modem_new();
+  /* "+++" goes out after the 1.1 s guard and 0.2 s drain; close 0.5 s later. */
+  closing_gate_t g = {.m = m, .at_us = m->now_us + 1800000U};
+  rfd_report_t r = check_full(m, profile(false), RFD_MODE_FIX, gate_closing, &g, true);
+  CHECK(r.outcome == RFD_OUT_MISMATCH && (r.flags & RFD_FLAG_GATE_SKIPPED));
+  CHECK(m->now_us - g.closed_us <= EXIT_BOUND_US);
+  io_sleep(m, 3000U);
+  CHECK(m->state == DATA && m->commands == 0); /* never entered command mode */
+  free(m);
+}
+
+TEST(gate_closing_in_command_mode_resumes_data_at_once)
 {
   modem_t *m = modem_new();
   set_reg(m, 6, NULL, 20);
-  int opens = 1; /* allowed to start, closed at the first-write check */
-  rfd_report_t r = check_full(m, profile(false), RFD_MODE_FIX, gate_countdown, &opens, true);
+  closing_gate_t g = {.m = m, .after_commands = 4}; /* AT, ATI, ATI5, AT+F? */
+  rfd_report_t r = check_full(m, profile(false), RFD_MODE_FIX, gate_closing, &g, true);
   CHECK(r.outcome == RFD_OUT_MISMATCH && (r.flags & RFD_FLAG_GATE_SKIPPED));
   CHECK(r.write_count == 0 && m->nset == 0 && m->eeprom_writes == 0);
-  CHECK(m->state == DATA);
-  /* Closing between the writes and AT&W discards the RAM change. */
+  CHECK(m->state == DATA && m->now_us - g.closed_us <= EXIT_BOUND_US);
   free(m);
+}
+
+TEST(gate_closing_after_a_write_discards_it_with_atz)
+{
+  modem_t *m = modem_new();
+  set_reg(m, 6, NULL, 20);
+  closing_gate_t g = {.m = m, .after_commands = 5}; /* ... ATS6=50 */
+  rfd_report_t r = check_full(m, profile(false), RFD_MODE_FIX, gate_closing, &g, true);
+  CHECK(r.outcome == RFD_OUT_MISMATCH && (r.flags & RFD_FLAG_GATE_SKIPPED));
+  CHECK(m->nset == 1 && m->eeprom_writes == 0 && (r.flags & RFD_FLAG_REBOOTED));
+  CHECK(m->state == REBOOTING && m->now_us - g.closed_us <= EXIT_BOUND_US);
+  io_sleep(m, 2000U);
+  CHECK(m->state == DATA && reg(m, 6)->ram == 20 && reg(m, 6)->eeprom == 20);
+  free(m);
+}
+
+TEST(gate_closing_during_the_post_save_reboot_skips_the_verify)
+{
+  modem_t *m = modem_new();
+  set_reg(m, 6, NULL, 20);
+  closing_gate_t g = {.m = m, .after_commands = 7}; /* ... AT&W, ATZ */
+  rfd_report_t r = check_full(m, profile(false), RFD_MODE_FIX, gate_closing, &g, true);
+  /* Saved but not verified: never reported (or remembered) as applied. */
+  CHECK(r.outcome == RFD_OUT_VERIFY_FAILED && (r.flags & RFD_FLAG_GATE_SKIPPED));
+  CHECK((r.flags & RFD_FLAG_SAVED) && reg(m, 6)->eeprom == 50 && m->commands == 7);
+  CHECK(m->now_us - g.closed_us <= EXIT_BOUND_US);
+  free(m);
+}
+
+TEST(overall_bound_covers_reboots_and_the_verify)
+{
+  /* The slowest healthy path (unnamed ATI5: every register read one by
+   * one, twice) still fits the bound, which includes the 4 s reboot. */
+  CHECK(RFD_TIMING.overall <= 16000U);
+  modem_t *m = modem_new();
+  m->no_ati5_names = 1;
+  set_reg(m, 6, NULL, 20);
+  uint64_t t0 = m->now_us;
+  rfd_report_t r = check(m, RFD_MODE_FIX);
+  CHECK(r.outcome == RFD_OUT_APPLIED && m->now_us - t0 < RFD_TIMING.overall * 1000ULL);
+  free(m);
+  /* A modem that answers slowly cannot hold the radio past the bound. */
   m = modem_new();
   set_reg(m, 6, NULL, 20);
-  opens = 2;
-  r = check_full(m, profile(false), RFD_MODE_FIX, gate_countdown, &opens, true);
-  CHECK(r.outcome == RFD_OUT_MISMATCH && (r.flags & RFD_FLAG_GATE_SKIPPED));
-  CHECK(r.write_count == 1 && m->eeprom_writes == 0);
-  CHECK((r.flags & RFD_FLAG_REBOOTED) && reg(m, 6)->ram == 20 && reg(m, 6)->eeprom == 20);
+  m->ato_error = 1;
+  m->no_ati5_names = 1;
+  t0 = m->now_us;
+  r = check_full(m, profile(false), RFD_MODE_FIX, gate_open, NULL, true);
+  CHECK(m->now_us - t0 <= (RFD_TIMING.overall + 25U) * 1000ULL);
+  free(m);
+  m = modem_new();
+  m->garbage = 1;
+  t0 = m->now_us;
+  r = check(m, RFD_MODE_FIX);
+  CHECK(m->now_us - t0 <= (RFD_TIMING.overall + 25U) * 1000ULL);
   free(m);
 }
 
@@ -405,7 +490,7 @@ TEST(modem_that_never_answers_is_bounded_by_the_overall_limit)
   const uint64_t t0 = m->now_us;
   rfd_report_t r = check(m, RFD_MODE_FIX);
   CHECK(r.outcome != RFD_OUT_APPLIED && r.write_count == 0 && m->eeprom_writes == 0);
-  CHECK(m->now_us - t0 < (RFD_TIMING.overall + 5000U) * 1000ULL);
+  CHECK(m->now_us - t0 <= (RFD_TIMING.overall + 25U) * 1000ULL);
   free(m);
 }
 
@@ -662,33 +747,31 @@ TEST(plan_policies_follow_rollout_and_flow_control)
   CHECK(named(&plan, "GLOBAL_RETRIES")->expected == 0 && named(&plan, "SER_BREAK")->expected == 20);
 }
 
-TEST(flight_gate_runs_on_a_safe_or_aborted_at_rest_state_and_defers_otherwise)
+TEST(flight_gate_runs_only_at_rest_after_the_write_receipt_settles)
 {
-  const uint32_t rest = RFD_ABORTED_REST_MS;
+  const uint32_t settle = RFD_RECEIPT_SETTLE_MS, rest = RFD_RESTORED_REST_MS;
   /* No FLIGHT_STATE yet: wait (the radio keeps running meanwhile). */
   CHECK(rfd_gate_decide(false, 0, false, 0, 0) == RFD_GATE_WAIT);
   CHECK(rfd_gate_decide(true, 1, false, 0, 0) == RFD_GATE_WAIT);
   for (unsigned s = 0; s <= 15U; s++) {
     const uint8_t st = (uint8_t)s;
-    const bool safe = s <= 3U; /* Startup, Idle, PreFill, FillTest */
+    const bool safe = s <= 1U; /* Startup, Idle; never PreFill or FillTest */
     CHECK(rfd_flight_state_safe(st) == safe);
-    CHECK(rfd_gate_decide(false, 0, true, st, 0) == (safe ? RFD_GATE_RUN : RFD_GATE_WAIT));
-    /* Fill, Armed, flight, Landed and Recovery never run, however long
-     * they last; the check is deferred, never skipped for the boot. */
-    if (s >= 4U && s <= 14U) CHECK(rfd_gate_decide(false, 0, true, st, 10U * rest) == RFD_GATE_WAIT);
+    /* Sim trace fix5-rfprobe-a2: the hold began on the pass after the
+     * station write was applied, so its ReliableAck never left RF. */
+    CHECK(rfd_gate_decide(false, 0, true, st, 0) == RFD_GATE_WAIT);
+    CHECK(rfd_gate_decide(false, 0, true, st, settle - 1U) == RFD_GATE_WAIT);
+    CHECK(rfd_gate_decide(false, 0, true, st, settle) == (safe ? RFD_GATE_RUN : RFD_GATE_WAIT));
+    /* Aborted, Fill, Armed, flight, Landed and Recovery never run, however
+     * long they last: an Abort or recovery write must never meet a deaf
+     * radio. The check is deferred, never skipped for the boot. */
+    if (!safe) CHECK(rfd_gate_decide(false, 0, true, st, 10U * rest) == RFD_GATE_WAIT);
     /* A restored flight phase (brown-out reboot) waits for the network. */
     if (!safe) CHECK(rfd_gate_decide(true, st, false, 0, 10U * rest) == RFD_GATE_WAIT);
   }
-  /* Bench: the station is Aborted, so the RF modem stayed at S5=10. Aborted
-   * at rest (no change for RFD_ABORTED_REST_MS, past an ABORT's delivery
-   * window; no countdown or launch can run while Aborted) may run. */
-  CHECK(rfd_gate_decide(false, 0, true, 15, rest - 1U) == RFD_GATE_WAIT);
-  CHECK(rfd_gate_decide(false, 0, true, 15, rest) == RFD_GATE_RUN);
   /* After a brown-out in flight, a safe network state must also have held. */
   CHECK(rfd_gate_decide(true, 9, true, 1, rest - 1U) == RFD_GATE_WAIT);
   CHECK(rfd_gate_decide(true, 9, true, 1, rest) == RFD_GATE_RUN);
-  CHECK(rfd_station_at_rest(15, rest) && !rfd_station_at_rest(15, 0) && rfd_station_at_rest(1, 0));
-  CHECK(!rfd_station_at_rest(14, 10U * rest) && !rfd_station_at_rest(6, 10U * rest));
   CHECK(!rfd_flight_state_safe(7) && !rfd_flight_state_safe(255));
 }
 
@@ -722,7 +805,12 @@ int main(void)
   RUN(local_drift_is_written_saved_rebooted_and_verified_once);
   RUN(verify_mode_never_writes);
   RUN(skip_mode_and_closed_gate_send_nothing);
-  RUN(gate_closing_after_the_read_prevents_every_write);
+  RUN(gate_closing_before_any_byte_sends_nothing);
+  RUN(gate_closing_after_plus_cancels_the_escape);
+  RUN(gate_closing_in_command_mode_resumes_data_at_once);
+  RUN(gate_closing_after_a_write_discards_it_with_atz);
+  RUN(gate_closing_during_the_post_save_reboot_skips_the_verify);
+  RUN(overall_bound_covers_reboots_and_the_verify);
   RUN(silent_modem_gives_up_and_leaves_the_link);
   RUN(serial_failure_mid_check_is_bounded);
   RUN(modem_that_never_answers_is_bounded_by_the_overall_limit);
@@ -742,7 +830,7 @@ int main(void)
   RUN(field_403_layout_writes_flow_control_to_its_named_register);
   RUN(field_403_lbt_rssi_drift_is_reported_at_its_named_register);
   RUN(plan_policies_follow_rollout_and_flow_control);
-  RUN(flight_gate_runs_on_a_safe_or_aborted_at_rest_state_and_defers_otherwise);
+  RUN(flight_gate_runs_only_at_rest_after_the_write_receipt_settles);
   RUN(status_words_pack_the_report);
   return 0;
 }

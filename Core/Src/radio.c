@@ -2383,7 +2383,9 @@ static void radio_rx_ring_clear(void)
 uint8_t radio_uart_set_modem_hold(uint8_t on)
 {
   if (!g_huart) return 0U;
-  if (on && g_tx_dma_busy) return 0U;
+  /* Never go deaf with an owned frame (a receipt, a relayed command) in
+   * the queue or on the wire: it would wait out the whole modem check. */
+  if (on && (g_tx_dma_busy || g_tx_count != 0U)) return 0U;
   g_radio_modem_hold = on ? 1U : 0U;
   radio_rx_ring_clear();
   g_frame_len = 0U;

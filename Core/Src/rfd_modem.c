@@ -9,7 +9,7 @@
 
 const rfd_timing_t RFD_TIMING = {
     .guard = 1100U, .plus_reply = 2500U, .command = 1000U, .idle = 150U,
-    .save = 2000U, .reboot = 4000U, .overall = 40000U,
+    .save = 2000U, .reboot = 4000U, .overall = 16000U,
 };
 
 #define BROADCAST_DESTID 32768
@@ -202,7 +202,7 @@ static rfd_status_t reg_status(const rfd_plan_t *plan, const snapshot_t *s, unsi
 
 /* --- driver -------------------------------------------------------------- */
 
-enum { ABORT_IO = -1, ABORT_DEADLINE = -2 };
+enum { ABORT_IO = -1, ABORT_DEADLINE = -2, ABORT_GATE = -3 };
 #define TRY(expr) do { const int rc_ = (expr); if (rc_ < 0) return rc_; } while (0)
 
 typedef void (*line_fn)(void *ctx, const char *line, size_t len);
@@ -210,10 +210,14 @@ typedef void (*line_fn)(void *ctx, const char *line, size_t len);
 typedef struct {
   const rfd_io_t *io;
   const rfd_timing_t *t;
+  rfd_gate_fn gate;
+  void *gate_ctx;
   uint32_t start;
   char line[LINE_MAX];
   size_t line_len;
   bool saw_plus_ok;
+  /* What a fast exit must undo: "+++" sent, command mode, unsaved writes. */
+  bool plus_sent, in_command, ram_dirty;
   /* answer */
   bool ok, error;
   unsigned lines;
@@ -221,19 +225,27 @@ typedef struct {
 
 static uint32_t now(driver_t *d) { return d->io->now_ms(d->io->ctx); }
 
+/* Every wait passes here: the overall bound covers reboots and the verify,
+ * and a closed flight gate stops the check within one poll. */
 static int left(driver_t *d, uint32_t *remaining)
 {
   const uint32_t elapsed = now(d) - d->start;
   if (elapsed >= d->t->overall) return ABORT_DEADLINE;
+  if (!d->gate(d->gate_ctx)) return ABORT_GATE;
   if (remaining) *remaining = d->t->overall - elapsed;
   return 0;
 }
 
 static int dsleep(driver_t *d, uint32_t ms)
 {
-  uint32_t rem;
-  TRY(left(d, &rem));
-  d->io->sleep_ms(d->io->ctx, ms < rem ? ms : rem);
+  while (ms) {
+    uint32_t rem;
+    TRY(left(d, &rem));
+    uint32_t step = ms < 20U ? ms : 20U;
+    if (step > rem) step = rem;
+    d->io->sleep_ms(d->io->ctx, step);
+    ms -= step;
+  }
   return 0;
 }
 
@@ -364,6 +376,7 @@ static int enter_command_mode(driver_t *d)
   for (int attempt = 0; attempt < 2; attempt++) {
     TRY(dsleep(d, d->t->guard));
     TRY(drain(d, 200U));
+    d->plus_sent = true;
     TRY(write_all(d, "+++", 3));
     int got;
     TRY(got = wait_for_plus_ok(d));
@@ -371,14 +384,14 @@ static int enter_command_mode(driver_t *d)
       d->saw_plus_ok = true;
       /* Air data can contain "OK"; in command mode this answer is clean. */
       TRY(command(d, "AT", d->t->command, NULL, NULL));
-      if (d->ok) return 1;
+      if (d->ok) return d->in_command = true;
     }
     if (attempt == 0) {
       /* Already in command mode: "+++" was just text. */
       TRY(write_all(d, "\r", 1));
       TRY(drain(d, 200U));
       TRY(command(d, "AT", d->t->command, NULL, NULL));
-      if (d->ok) return 1;
+      if (d->ok) return d->in_command = true;
     }
   }
   return 0;
@@ -388,10 +401,10 @@ static int reboot(driver_t *d, rfd_report_t *r)
 {
   TRY(write_all(d, "ATZ\r", 4));
   /* ATZ does not answer; the modem restarts in data mode. */
-  d->io->sleep_ms(d->io->ctx, d->t->reboot);
+  d->plus_sent = d->in_command = d->ram_dirty = false;
   r->flags |= RFD_FLAG_REBOOTED;
   r->data_mode = RFD_DATA_REBOOTED;
-  return 0;
+  return dsleep(d, d->t->reboot);
 }
 
 /* ATO usually prints nothing; only ERROR means it failed. Fallback: ATZ. */
@@ -400,13 +413,29 @@ static void exit_command_mode(driver_t *d, rfd_report_t *r)
   for (int i = 0; i < 2; i++) {
     if (command(d, "ATO", 300U, NULL, NULL) < 0) break;
     if (!d->error) {
+      d->plus_sent = d->in_command = false;
       r->data_mode = RFD_DATA_RESUMED;
       r->flags |= RFD_FLAG_RESUMED;
       return;
     }
   }
   r->flags |= RFD_FLAG_ATTENTION;
-  if (reboot(d, r) < 0) r->data_mode = RFD_DATA_UNKNOWN;
+  (void)reboot(d, r);
+}
+
+/* Bound or flight gate hit: leave at once, without waiting for an answer.
+ * Unsaved writes are discarded by ATZ; otherwise "\r" cancels a pending
+ * "+++" inside its guard time and ATO leaves command mode. */
+static void fast_exit(driver_t *d, rfd_report_t *r)
+{
+  if (d->in_command && d->ram_dirty) {
+    if (d->io->write(d->io->ctx, (const uint8_t *)"ATZ\r", 4U) == 4) {
+      r->flags |= RFD_FLAG_REBOOTED;
+      r->data_mode = RFD_DATA_REBOOTED;
+    }
+  } else if (d->plus_sent) {
+    (void)d->io->write(d->io->ctx, (const uint8_t *)"\rATO\r", 5U);
+  }
 }
 
 typedef struct {
@@ -566,6 +595,7 @@ static int run_inner(driver_t *d, const rfd_plan_t *plan, rfd_mode_t mode, rfd_g
     const uint8_t number = snap.number[p];
     const uint16_t value = (uint16_t)plan->regs[p].expected;
     fmt_write(cmd, number, value);
+    d->ram_dirty = true;
     TRY(command(d, cmd, d->t->command, NULL, NULL));
     const unsigned w = r->write_count++;
     r->write_number[w] = number;
@@ -587,6 +617,7 @@ static int run_inner(driver_t *d, const rfd_plan_t *plan, rfd_mode_t mode, rfd_g
     return reboot(d, r);
   }
   r->flags |= RFD_FLAG_SAVED;
+  d->ram_dirty = false;
   TRY(reboot(d, r));
   TRY(entered = enter_command_mode(d));
   if (!entered) {
@@ -635,35 +666,41 @@ void rfd_modem_run(const rfd_io_t *io, const rfd_plan_t *plan, rfd_mode_t mode,
   memset(&d, 0, sizeof(d));
   d.io = io;
   d.t = timing;
+  d.gate = gate;
+  d.gate_ctx = gate_ctx;
   d.start = io->now_ms(io->ctx);
   out->outcome = RFD_OUT_FAILED;
   const int rc = run_inner(&d, plan, mode, gate, gate_ctx, allow_save, out);
   if (rc < 0) {
+    const bool touched = d.plus_sent || d.in_command || (out->flags & RFD_FLAG_REBOOTED);
+    if (rc != ABORT_IO) fast_exit(&d, out);
     out->outcome = (out->flags & RFD_FLAG_SAVED) ? RFD_OUT_VERIFY_FAILED : RFD_OUT_FAILED;
-    out->flags |= RFD_FLAG_ATTENTION;
-    if (out->data_mode == RFD_DATA_UNTOUCHED) out->data_mode = RFD_DATA_UNKNOWN;
+    if (rc == ABORT_GATE) {
+      out->flags |= RFD_FLAG_GATE_SKIPPED;
+      if (!(out->flags & RFD_FLAG_SAVED))
+        out->outcome = touched ? RFD_OUT_MISMATCH : RFD_OUT_SKIPPED;
+    }
+    if (out->data_mode == RFD_DATA_UNTOUCHED && touched) out->data_mode = RFD_DATA_UNKNOWN;
   }
-  if (out->outcome != RFD_OUT_MATCHED && out->outcome != RFD_OUT_APPLIED) {
+  if (out->outcome != RFD_OUT_MATCHED && out->outcome != RFD_OUT_APPLIED &&
+      out->outcome != RFD_OUT_SKIPPED) {
     out->flags |= RFD_FLAG_ATTENTION;
   }
 }
 
 /* --- flight gate and status block ---------------------------------------- */
 
-bool rfd_flight_state_safe(uint8_t state) { return state <= 3U; }
-
-bool rfd_station_at_rest(uint8_t state, uint32_t stable_ms)
-{
-  return rfd_flight_state_safe(state) ||
-         (state == RFD_FLIGHT_STATE_ABORTED && stable_ms >= RFD_ABORTED_REST_MS);
-}
+/* Startup and Idle only: PreFill and FillTest are hazardous, and an Abort
+ * sent over the radio there must never meet a held radio. */
+bool rfd_flight_state_safe(uint8_t state) { return state <= 1U; }
 
 rfd_gate_t rfd_gate_decide(bool restored_known, uint8_t restored_state, bool network_seen,
                            uint8_t network_state, uint32_t stable_ms)
 {
-  if (!network_seen || !rfd_station_at_rest(network_state, stable_ms)) return RFD_GATE_WAIT;
+  if (!network_seen || !rfd_flight_state_safe(network_state) || stable_ms < RFD_RECEIPT_SETTLE_MS)
+    return RFD_GATE_WAIT;
   /* After a brown-out reboot in flight the network value must have held. */
-  if (restored_known && !rfd_flight_state_safe(restored_state) && stable_ms < RFD_ABORTED_REST_MS) {
+  if (restored_known && !rfd_flight_state_safe(restored_state) && stable_ms < RFD_RESTORED_REST_MS) {
     return RFD_GATE_WAIT;
   }
   return RFD_GATE_RUN;
