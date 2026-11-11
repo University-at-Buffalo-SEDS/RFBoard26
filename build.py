@@ -604,6 +604,49 @@ class OtaLayout:
     secondary_size: int = 0
 
 
+# What a persistent-store erase wipes on this board. The bootloader, the
+# application slot and LaunchCore metadata are separate pages and stay.
+PERSIST_CONTENTS = ("every LaunchCore persistent record: the cached flight state, boot identity, "
+                    "recovery floor and commissioning record, the underglow setting and the "
+                    "RFD modem check marker")
+
+
+@dataclass(frozen=True)
+class PersistRegion:
+    base: int
+    size: int
+    page_size: int
+    flash_base: int
+
+    @property
+    def pages(self) -> range:
+        first = (self.base - self.flash_base) // self.page_size
+        return range(first, first + self.size // self.page_size)
+
+
+def persist_region(repo_root: Path) -> PersistRegion:
+    region = PersistRegion(board_macro(repo_root, "PERSIST_BASE"), board_macro(repo_root, "PERSIST_SIZE"),
+                           board_macro(repo_root, "FLASH_ERASE_SIZE"),
+                           board_macro(repo_root, "INTERNAL_FLASH_BASE"))
+    if (region.size <= 0 or region.base < region.flash_base or
+            (region.base - region.flash_base) % region.page_size or region.size % region.page_size):
+        raise FriendlyError("The persistent store region is not whole flash pages: check board_config.h")
+    return region
+
+
+def describe_persist_erase(region: PersistRegion) -> str:
+    return (f"Erasing the persistent store 0x{region.base:08X}-0x{region.base + region.size - 1:08X} "
+            f"({region.size // 1024} KiB, pages {region.pages.start}-{region.pages.stop - 1}): "
+            f"{PERSIST_CONTENTS}. Pass --keep-persist to keep them.")
+
+
+def persist_erase_selected(args: argparse.Namespace, kind: str) -> bool:
+    """Factory flashes erase the store by default; app-only flashes keep it."""
+    if args.keep_persist:
+        return False
+    return bool(args.erase_persist) or kind == "factory"
+
+
 def board_macro_optional(repo_root: Path, suffix: str) -> int | None:
     text = (repo_root / "Bootloader" / "board_config.h").read_text(encoding="utf-8")
     matches = re.findall(
@@ -731,7 +774,7 @@ def build_selected_artifact(
 # Flashing
 # ---------------------------
 
-def flash_dfu(ui: UI, bin_path: Path, addr: str) -> None:
+def flash_dfu(ui: UI, bin_path: Path, addr: str, erase: Optional[PersistRegion] = None) -> None:
     if which("dfu-util") is None:
         raise FriendlyError("dfu-util not found.\n"
                             "Install it (e.g., apt-get install dfu-util, brew install dfu-util) "
@@ -739,7 +782,17 @@ def flash_dfu(ui: UI, bin_path: Path, addr: str) -> None:
     # STM32's DfuSe extension remains in the system-memory DFU loader unless
     # the address carries the `leave` modifier.  A successful download without
     # this modifier therefore looks like a boot failure until a manual reset.
-    dfuse_address = addr if ":" in addr else f"{addr}:leave"
+    if erase is not None:
+        # dfu-util cannot erase a page range alone: mass-erase the chip, then
+        # write the factory image (bootloader, application and metadata).
+        if ":" in addr or int(addr, 0) != erase.flash_base:
+            raise FriendlyError("A DFU persistent-store erase mass-erases the chip, so it needs the "
+                                "factory image at the flash base. Use --keep-persist, or flash the "
+                                "factory image.")
+        ui.say("warn", describe_persist_erase(erase) + " DFU erases the whole chip first.")
+        dfuse_address = f"{addr}:mass-erase:force:leave"
+    else:
+        dfuse_address = addr if ":" in addr else f"{addr}:leave"
     cmd = ["dfu-util", "-a", "0", "-s", dfuse_address, "-D", str(bin_path)]
     ui.say("run", " ".join(shlex.quote(part) for part in cmd))
     try:
@@ -792,12 +845,27 @@ def flash_dfu(ui: UI, bin_path: Path, addr: str) -> None:
         raise FriendlyError(f"Command failed (exit {returncode}): dfu-util")
 
 
-def flash_st_flash(ui: UI, bin_path: Path, addr: str, reset: bool) -> None:
+def st_flash_version(exe: str) -> tuple[int, ...]:
+    probe = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=10)
+    found = re.search(r"v?(\d+)\.(\d+)\.(\d+)", probe.stdout + probe.stderr)
+    return tuple(int(part) for part in found.groups()) if found else ()
+
+
+def flash_st_flash(ui: UI, bin_path: Path, addr: str, reset: bool,
+                   erase: Optional[PersistRegion] = None) -> None:
     # st-flash comes from stlink tools
-    if which("st-flash") is None:
+    exe = which("st-flash")
+    if exe is None:
         raise FriendlyError("st-flash not found.\n"
                             "Install STLink tools (stlink). On Ubuntu: apt-get install stlink-tools. "
                             "On macOS: brew install stlink.")
+    if erase is not None:
+        # A range erase needs stlink 1.8.0; an older st-flash erases the whole chip.
+        if st_flash_version(exe) < (1, 8, 0):
+            raise FriendlyError("st-flash 1.8.0 or newer is needed to erase only the persistent "
+                                "store. Update stlink, use --method stm32prog-cli, or pass --keep-persist.")
+        ui.say("warn", describe_persist_erase(erase))
+        run(ui, ["st-flash", "erase", f"0x{erase.base:08x}", str(erase.size)])
     cmd = ["st-flash"]
     if reset:
         cmd.append("--reset")
@@ -824,6 +892,7 @@ def flash_stm32prog_cli(
     stm32prog_cli: str | None,
     connect: str,
     extra_args: list[str],
+    erase: Optional[PersistRegion] = None,
 ) -> None:
     exe = (
         stm32prog_cli
@@ -836,11 +905,56 @@ def flash_stm32prog_cli(
                             "Install STM32CubeProgrammer and add it to PATH, "
                             "or pass --stm32prog-cli /path/to/STM32_Programmer_CLI.")
     verify_stm32_target(exe, connect)
-    cmd = [exe, "-c", connect, "-w", str(bin_path), addr, "-v"]
+    cmd = [exe, "-c", connect]
+    if erase is not None:
+        ui.say("warn", describe_persist_erase(erase))
+        cmd += ["-e", *[str(page) for page in erase.pages]]
+    cmd += ["-w", str(bin_path), addr, "-v"]
     if reset:
         cmd.append("-rst")
     cmd += extra_args
     run(ui, cmd)
+
+
+def flash_selected(ui: UI, repo_root: Path, args: argparse.Namespace, artifact: BuiltArtifact) -> None:
+    method = args.method
+    addr = args.addr or artifact.address
+    erase = persist_region(repo_root) if persist_erase_selected(args, artifact.kind) else None
+    if erase is not None and method in ("st-util", "stlink-gdbserver"):
+        raise FriendlyError(f"--method {method} cannot erase the persistent store. Use dfu, st-flash or "
+                            "stm32prog-cli, or pass --keep-persist.")
+
+    if method == "dfu":
+        flash_dfu(ui, artifact.path, addr, erase=erase)
+    elif method == "st-flash":
+        flash_st_flash(ui, artifact.path, addr, reset=(not args.no_reset), erase=erase)
+    elif method == "st-util":
+        port = args.port or 4242
+        st_args = shlex.split(args.st_util_args) if args.st_util_args else []
+        flash_st_util(ui, artifact.path, addr, args.gdb, args.host, port, st_args)
+    elif method == "stlink-gdbserver":
+        # Reasonable default port used by some gdbservers (override with --port).
+        port = args.port or 61234
+        gs_args = shlex.split(args.gdbserver_args) if args.gdbserver_args else []
+        # If user didn't specify port in args, try to nudge server via args when possible.
+        # We won't guess vendor-specific flags; user can pass them in --gdbserver-args.
+        flash_stlink_gdbserver(ui, artifact.path, addr, args.gdb, args.host, port, args.gdbserver, gs_args)
+    elif method == "stm32prog-cli":
+        sp_args = shlex.split(args.stm32prog_args) if args.stm32prog_args else []
+        flash_stm32prog_cli(
+            ui,
+            artifact.path,
+            addr,
+            reset=(not args.no_reset),
+            stm32prog_cli=args.stm32prog_cli,
+            connect=args.stm32prog_connect,
+            extra_args=sp_args,
+            erase=erase,
+        )
+    else:
+        raise FriendlyError(f"Unknown method: {method}")
+
+    ui.say("ok", f"Flashed using method: {method}")
 
 
 def flash_binary_via_gdb(
@@ -977,6 +1091,13 @@ def make_parser() -> argparse.ArgumentParser:
     f.add_argument("--addr", default=None, help="Override the BSP-derived flash address.")
     f.add_argument("--no-reset", action="store_true", help="Do not reset after flash (st-flash/stm32prog-cli).")
     f.add_argument("--app-only", action="store_true", help="Deprecated alias for --image firmware.")
+    persist = f.add_mutually_exclusive_group()
+    persist.add_argument("--erase-persist", action="store_true",
+                         help="Erase the LaunchCore persistent store (cached flight state, boot identity, "
+                              "recovery floor and other stored settings) with this flash. "
+                              "Default for factory images.")
+    persist.add_argument("--keep-persist", action="store_true",
+                         help="Keep the persistent store on a factory flash.")
 
     t = sub.add_parser("test", help="Run unit tests and optional full firmware simulation")
     add_mode_and_common(t)
@@ -1154,39 +1275,7 @@ def main() -> None:
                 "address-flashable. Upload the generated .seds artifact instead."
             )
 
-        method = args.method
-        addr = args.addr or artifact.address
-
-        if method == "dfu":
-            flash_dfu(ui, artifact.path, addr)
-        elif method == "st-flash":
-            flash_st_flash(ui, artifact.path, addr, reset=(not args.no_reset))
-        elif method == "st-util":
-            port = args.port or 4242
-            st_args = shlex.split(args.st_util_args) if args.st_util_args else []
-            flash_st_util(ui, artifact.path, addr, args.gdb, args.host, port, st_args)
-        elif method == "stlink-gdbserver":
-            # Reasonable default port used by some gdbservers (override with --port).
-            port = args.port or 61234
-            gs_args = shlex.split(args.gdbserver_args) if args.gdbserver_args else []
-            # If user didn't specify port in args, try to nudge server via args when possible.
-            # We won't guess vendor-specific flags; user can pass them in --gdbserver-args.
-            flash_stlink_gdbserver(ui, artifact.path, addr, args.gdb, args.host, port, args.gdbserver, gs_args)
-        elif method == "stm32prog-cli":
-            sp_args = shlex.split(args.stm32prog_args) if args.stm32prog_args else []
-            flash_stm32prog_cli(
-                ui,
-                artifact.path,
-                addr,
-                reset=(not args.no_reset),
-                stm32prog_cli=args.stm32prog_cli,
-                connect=args.stm32prog_connect,
-                extra_args=sp_args,
-            )
-        else:
-            raise FriendlyError(f"Unknown method: {method}")
-
-        ui.say("ok", f"Flashed using method: {method}")
+        flash_selected(ui, cfg.repo_root, args, artifact)
         return
 
     raise FriendlyError("No command provided. Use 'build' or 'flash'.")

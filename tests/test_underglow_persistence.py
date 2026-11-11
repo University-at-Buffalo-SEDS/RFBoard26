@@ -1,4 +1,9 @@
-"""Exercise actual cosmetic-setting callbacks against transient flash failures."""
+"""Underglow is cosmetic: kept in RAM and written to flash only after it settles.
+
+Bench, 2026-11-10: one flash record per toggle filled the FC store with about
+210 underglow records. A toggle must drive the LEDs and be acknowledged at once,
+and reach flash at most once a minute, only after the value has settled.
+"""
 from pathlib import Path
 import subprocess
 import tempfile
@@ -54,23 +59,44 @@ static int seds_router_request_managed_variable(SedsRouter *r,int ty) { (void)r;
 '''
 TEST = r'''
 static SedsResult update(uint8_t value){SedsPacketView p={SEDS_DT_AV_BAY_UNDERGLOW,&value,1};return callback(&p,NULL);}
+static void at(uint32_t ms){SedsRouter r=0;tick=ms;assert(av_bay_underglow_poll(&r)==SEDS_OK);}
 int main(void){
  (void)irq_mask;
  SedsRouter router=0;assert(av_bay_underglow_init(&router)==SEDS_OK);assert(callback);
- assert(update(1)==SEDS_OK);assert(writes==1&&stored==1&&pin==1);
- assert(update(1)==SEDS_OK);assert(writes==1); /* avoid successful-value flash wear */
- fail_write=1;
- assert(update(0)==SEDS_HANDLER_ERROR);assert(writes==2&&stored==1&&pin==0);
- assert(update(0)==SEDS_HANDLER_ERROR);assert(writes==3&&stored==1); /* no false receipt */
- fail_write=0;
- assert(update(0)==SEDS_OK);assert(writes==4&&stored==0); /* identical retry repairs flash */
- assert(update(0)==SEDS_OK);assert(writes==4);
- assert(g_av_bay_underglow_persist_errors==2&&g_av_bay_underglow_persist_writes==2);
+ /* A toggle drives the LEDs and is acknowledged at once; flash waits for it to settle. */
+ tick=1000;assert(update(1)==SEDS_OK&&pin==1&&writes==0);
+ at(1000+UNDERGLOW_PERSIST_SETTLE_MS-1U);assert(writes==0);
+ at(1000+UNDERGLOW_PERSIST_SETTLE_MS);assert(writes==1&&stored==1);
+ assert(update(1)==SEDS_OK);at(tick+UNDERGLOW_PERSIST_SETTLE_MS);assert(writes==1); /* unchanged: no wear */
+ /* Five thousand bench toggles, 10 ms apart: no flash write while they run. */
+ uint32_t t0=tick;
+ for(unsigned i=1;i<=5000;i++){tick=t0+i*10U;assert(update((uint8_t)(i&1U))==SEDS_OK&&pin==(int)(i&1U));at(tick);}
+ assert(writes==1&&stored==1&&pin==0);
+ /* The final value is written once it settles, at most once a minute. */
+ assert(update(0)==SEDS_OK&&pin==0);uint32_t last=tick;
+ at(last+UNDERGLOW_PERSIST_SETTLE_MS);
+ const uint32_t first_write=1000+UNDERGLOW_PERSIST_SETTLE_MS;
+ if(last+UNDERGLOW_PERSIST_SETTLE_MS<first_write+UNDERGLOW_PERSIST_MIN_INTERVAL_MS){
+  assert(writes==1);at(first_write+UNDERGLOW_PERSIST_MIN_INTERVAL_MS-1U);assert(writes==1);
+  at(first_write+UNDERGLOW_PERSIST_MIN_INTERVAL_MS);
+ }
+ assert(writes==2&&stored==0);
+ /* An hour of toggles every 3 s: bounded by the minute rate, not one per toggle. */
+ t0=tick;const unsigned before=writes;
+ for(unsigned i=1;i<=1200;i++){tick=t0+i*3000U;assert(update((uint8_t)(i&1U))==SEDS_OK);at(tick);at(tick+UNDERGLOW_PERSIST_SETTLE_MS);}
+ assert(writes-before<=61U&&writes-before>=1U);
+ /* A failed write is acknowledged and retried later, never from the callback. */
+ at(tick+UNDERGLOW_PERSIST_MIN_INTERVAL_MS);const unsigned settled=writes;const uint8_t target=stored==1?0:1;
+ fail_write=1;tick+=UNDERGLOW_PERSIST_MIN_INTERVAL_MS;assert(update(target)==SEDS_OK&&writes==settled);
+ at(tick+UNDERGLOW_PERSIST_SETTLE_MS);assert(writes==settled+1U&&stored!=target&&g_av_bay_underglow_persist_errors==1);
+ fail_write=0;at(tick+UNDERGLOW_PERSIST_MIN_INTERVAL_MS-1U);assert(writes==settled+1U);
+ at(tick+UNDERGLOW_PERSIST_MIN_INTERVAL_MS);assert(writes==settled+2U&&stored==target);
+ assert(g_av_bay_underglow_persist_writes==writes-1U);
 }
 '''
 
 class UnderglowPersistenceTests(unittest.TestCase):
-    def test_failed_changed_write_retries_until_durable(self):
+    def test_toggles_reach_flash_only_after_settling_and_rate_limited(self):
         source = (ROOT / 'Core/Src/av_bay_underglow.c').read_text()
         source = '\n'.join(line for line in source.splitlines()
                            if not line.startswith('#include "'))

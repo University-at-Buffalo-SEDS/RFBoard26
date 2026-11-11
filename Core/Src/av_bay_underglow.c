@@ -11,6 +11,15 @@ extern volatile uint32_t g_telemetry_discovery_seen;
 
 #define UNDERGLOW_PERSIST_KEY 0x55474C57u
 #define NETWORK_VARIABLE_UNSYNCED_RETRY_MS 500U
+/* Underglow is cosmetic: it lives in RAM and reaches flash only once a new
+ * value has held for UNDERGLOW_PERSIST_SETTLE_MS, and at most once per
+ * UNDERGLOW_PERSIST_MIN_INTERVAL_MS. A toggle never writes flash itself. */
+#ifndef UNDERGLOW_PERSIST_SETTLE_MS
+#define UNDERGLOW_PERSIST_SETTLE_MS 2000U
+#endif
+#ifndef UNDERGLOW_PERSIST_MIN_INTERVAL_MS
+#define UNDERGLOW_PERSIST_MIN_INTERVAL_MS 60000U
+#endif
 
 volatile uint32_t g_av_bay_underglow_enabled = 0U;
 volatile uint32_t g_av_bay_underglow_updates = 0U;
@@ -19,7 +28,14 @@ volatile uint32_t g_av_bay_underglow_persist_writes = 0U;
 volatile uint32_t g_av_bay_underglow_persist_errors = 0U;
 
 static bool g_persist_ready = false;
-static bool g_persist_has_value = false;
+/* The value durable in flash; UINT8_MAX until one is read or written. */
+static uint8_t g_persisted = UINT8_MAX;
+#ifdef TELEMETRY_ENABLED
+static bool g_persist_pending = false;
+static bool g_persist_attempted = false;
+static uint32_t g_changed_ms = 0U;
+static uint32_t g_attempt_ms = 0U;
+#endif
 static bool g_restore_attempted = false;
 #ifdef TELEMETRY_ENABLED
 static bool g_network_value_seen = false;
@@ -59,7 +75,7 @@ void av_bay_underglow_restore(void)
         return;
     }
 
-    g_persist_has_value = true;
+    g_persisted = enabled;
     g_av_bay_underglow_persist_restores++;
     drive_underglow(enabled != 0U);
 }
@@ -75,31 +91,35 @@ static SedsResult apply_underglow(const SedsPacketView *packet, void *user)
     }
 
     const bool enabled = packet->payload[0] != 0U;
-    const bool needs_persist = !g_persist_has_value ||
-                               g_av_bay_underglow_enabled != (uint32_t)enabled;
+    if (g_av_bay_underglow_enabled != (uint32_t)enabled) g_changed_ms = HAL_GetTick();
     drive_underglow(enabled);
     g_network_value_seen = true;
     g_av_bay_underglow_updates++;
-
-    if (needs_persist)
-    {
-        const uint8_t stored = enabled ? 1U : 0U;
-        const launchcore_persist_status_t status = g_persist_ready
-            ? persistent_store_set(UNDERGLOW_PERSIST_KEY, &stored,
-                                   sizeof(stored))
-            : LAUNCHCORE_PERSIST_STORAGE_ERROR;
-        if (status != LAUNCHCORE_PERSIST_OK)
-        {
-            /* GPIO already changed; an identical delivery must retry the
-             * failed flash write before reporting durable success. */
-            g_persist_has_value = false;
-            g_av_bay_underglow_persist_errors++;
-            return SEDS_HANDLER_ERROR;
-        }
-        g_persist_has_value = true;
-        g_av_bay_underglow_persist_writes++;
-    }
+    /* Acknowledged now; flash follows from the poll once the value settles. */
+    g_persist_pending = (uint8_t)enabled != g_persisted;
     return SEDS_OK;
+}
+
+/* A failed write is retried at the same rate, never by withholding a receipt. */
+static void persist_settled(void)
+{
+    const uint32_t now_ms = HAL_GetTick();
+    if (!g_persist_pending ||
+        (uint32_t)(now_ms - g_changed_ms) < UNDERGLOW_PERSIST_SETTLE_MS ||
+        (g_persist_attempted &&
+         (uint32_t)(now_ms - g_attempt_ms) < UNDERGLOW_PERSIST_MIN_INTERVAL_MS)) return;
+    g_persist_attempted = true;
+    g_attempt_ms = now_ms;
+    const uint8_t stored = g_av_bay_underglow_enabled != 0U ? 1U : 0U;
+    if (!g_persist_ready ||
+        persistent_store_set(UNDERGLOW_PERSIST_KEY, &stored, sizeof(stored)) != LAUNCHCORE_PERSIST_OK)
+    {
+        g_av_bay_underglow_persist_errors++;
+        return;
+    }
+    g_persisted = stored;
+    g_persist_pending = false;
+    g_av_bay_underglow_persist_writes++;
 }
 
 SedsResult av_bay_underglow_init(SedsRouter *router)
@@ -121,6 +141,7 @@ SedsResult av_bay_underglow_init(SedsRouter *router)
 SedsResult av_bay_underglow_poll(SedsRouter *router)
 {
     if (router == NULL) return SEDS_BAD_ARG;
+    persist_settled();
     if (g_network_value_seen) return SEDS_OK;
     if (g_telemetry_discovery_seen == 0U) return SEDS_OK;
     const uint32_t now_ms = HAL_GetTick();
