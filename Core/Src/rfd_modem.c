@@ -464,7 +464,15 @@ static void on_identity(void *ctx, const char *line, size_t len)
   if (c->identity_seen) return;
   c->identity_seen = true;
   for (size_t i = 0; i + 5 <= len; i++) {
-    if (line_is(&line[i], 5, "ASYNC")) c->async_identity = true;
+    if (!line_is(&line[i], 5, "ASYNC")) continue;
+    /* The V1.1 manual's numbering (Table 3-2) is the asynchronous 2.x
+     * firmware's. ASYNC 4.03 on RFD900x2 numbers differently above S5
+     * (S17 DUTY_CYCLE, S18 LBT_RSSI, S19 RTSCTS), so a 4.x modem that lists
+     * no ATI5 names is never fingerprinted: a V1.1-numbered RTSCTS write
+     * would land on its LBT_RSSI. */
+    size_t j = i + 5;
+    while (j < len && line[j] == ' ') j++;
+    c->async_identity = !(j + 1 < len && line[j] == '4' && line[j + 1] == '.');
   }
 }
 

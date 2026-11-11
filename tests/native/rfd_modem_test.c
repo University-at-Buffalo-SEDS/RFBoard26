@@ -48,6 +48,7 @@ typedef struct {
   unsigned air_bytes, eeprom_writes, written, commands;
   /* faults */
   int dead, garbage, ato_error, save_does_not_persist, no_ati5_names, noise;
+  const char *identity; /* ATI line; NULL = RFD ASYNC 4.03 on RFD900X2 */
   int refuse_reg;
   size_t max_write;
   long write_error_after;
@@ -145,7 +146,7 @@ static void execute(modem_t *m, const char *cmd)
   if (!strcmp(cmd, "AT")) {
     strcpy(out, "OK\r\n");
   } else if (!strcmp(cmd, "ATI")) {
-    strcpy(out, "RFD ASYNC 4.03 on RFD900X2\r\n");
+    snprintf(out, sizeof(out), "%s\r\n", m->identity ? m->identity : "RFD ASYNC 4.03 on RFD900X2");
   } else if (!strcmp(cmd, "ATI5")) {
     size_t k = 0;
     for (int i = 0; i < m->nregs; i++) {
@@ -432,10 +433,12 @@ TEST(gate_closing_during_the_post_save_reboot_skips_the_verify)
 TEST(overall_bound_covers_reboots_and_the_verify)
 {
   /* The slowest healthy path (unnamed ATI5: every register read one by
-   * one, twice) still fits the bound, which includes the 4 s reboot. */
+   * one, twice) still fits the bound, which includes the 4 s reboot. Only
+   * an asynchronous 2.x modem is fingerprinted and written that way. */
   CHECK(RFD_TIMING.overall <= 16000U);
   modem_t *m = modem_new();
   m->no_ati5_names = 1;
+  m->identity = "RFD ASYNC 2.69 on RFD900X";
   set_reg(m, 6, NULL, 20);
   uint64_t t0 = m->now_us;
   rfd_report_t r = check(m, RFD_MODE_FIX);
@@ -593,12 +596,28 @@ TEST(unknown_register_names_block_writes)
 
 TEST(unnamed_ati5_falls_back_to_a_v1_1_fingerprint)
 {
+  /* Only an asynchronous 2.x modem: the firmware the V1.1 manual describes. */
   modem_t *m = modem_new();
   m->no_ati5_names = 1;
+  m->identity = "RFD ASYNC 2.69 on RFD900X";
   set_reg(m, 6, NULL, 20);
   rfd_report_t r = check(m, RFD_MODE_FIX);
   CHECK(r.map_source == RFD_MAP_FINGERPRINT && r.outcome == RFD_OUT_APPLIED);
   CHECK(reg(m, 6)->eeprom == 50);
+  free(m);
+}
+
+TEST(an_async_4_modem_without_register_names_is_never_fingerprinted)
+{
+  /* ASYNC 4.03 numbers LBT_RSSI as S18 and RTSCTS as S19: the V1.1 numbers
+   * must not be used to write it when ATI5 lists no names. */
+  modem_t *m = modem_new();
+  m->no_ati5_names = 1;
+  set_reg(m, 6, NULL, 20);
+  rfd_report_t r = check(m, RFD_MODE_FIX);
+  CHECK(r.map_source == RFD_MAP_UNCONFIRMED);
+  CHECK(m->nset == 0 && m->eeprom_writes == 0);
+  CHECK(reg(m, 6)->eeprom == 20);
   free(m);
 }
 
@@ -800,6 +819,7 @@ int main(void)
   RUN(rolled_out_profile_writes_link_wide_registers_but_never_s2_or_s17);
   RUN(unknown_register_names_block_writes);
   RUN(unnamed_ati5_falls_back_to_a_v1_1_fingerprint);
+  RUN(an_async_4_modem_without_register_names_is_never_fingerprinted);
   RUN(modem_left_in_command_mode_is_recovered);
   RUN(streaming_air_data_with_a_decoy_ok_is_handled);
   RUN(used_save_budget_blocks_writes);
