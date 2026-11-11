@@ -15,6 +15,9 @@
 #define RECOVERY_PROFILE_FLOW_CONTROL 1U
 #define RECOVERY_PROFILE_LORA_SCHEDULER 2U
 #define RECOVERY_PROFILE_UART_FORMAT_MISMATCH 4U
+/* The link takes air turns (profile transport.turn_period_ms); compared like
+ * the rest of the tuple, so GS, RRLS and RF ship it together. */
+#define RECOVERY_PROFILE_TURN_CADENCE 8U
 
 typedef struct {
   uint32_t serial_baud;
@@ -91,7 +94,8 @@ static inline int recovery_profile_build_reply(
       config->packet_gap_ms == 0U || config->packet_gap_ms > 1000U ||
       (config->flags & ~(RECOVERY_PROFILE_FLOW_CONTROL |
                          RECOVERY_PROFILE_LORA_SCHEDULER |
-                         RECOVERY_PROFILE_UART_FORMAT_MISMATCH)) != 0U)
+                         RECOVERY_PROFILE_UART_FORMAT_MISMATCH |
+                         RECOVERY_PROFILE_TURN_CADENCE)) != 0U)
     return 0;
   reply[0] = 'R'; reply[1] = 'R'; reply[2] = 1U;
   reply[3] = RECOVERY_PROFILE_KIND; reply[4] = 1U; reply[5] = 1U;

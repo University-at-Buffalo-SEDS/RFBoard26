@@ -57,6 +57,7 @@ class RecoveryProfile(unittest.TestCase):
 #define RADIO_AIR_FRAME_OVERHEAD_BYTES 16U
 #define RADIO_PACKET_BURST_MS 100U
 #define RADIO_PACKET_GAP_MS 55U
+#define RADIO_TURN_PERIOD_MS 0U
 #define RADIO_UART_FRAME_HEADER_SIZE 4U
 #define RADIO_UART_COMMAND_SYNC_0 0xa6U
 #define RADIO_UART_COMMAND_SYNC_1 0x5bU
@@ -125,7 +126,9 @@ int main(void) {
   assert(recovery_profile_build_reply(query,26,1,&mismatch,out) && out[30]==40);
   mismatch=config;mismatch.flags=4;
   assert(recovery_profile_build_reply(query,26,1,&mismatch,out) && out[37]==4);
-  mismatch.flags=8;assert(!recovery_profile_build_reply(query,26,1,&mismatch,out));
+  /* Bit 3 declares the air turn cadence; higher bits stay unknown. */
+  mismatch.flags=8;assert(recovery_profile_build_reply(query,26,1,&mismatch,out) && out[37]==8);
+  mismatch.flags=16;assert(!recovery_profile_build_reply(query,26,1,&mismatch,out));
   telemetry_radio_rx(query,sizeof(query),NULL);
   assert(accepted==1 && !memcmp(captured+4,expected,42));
   assert(!observed && !routed && !initialized && !g_radio_link_seen && !g_telemetry_discovery_seen);

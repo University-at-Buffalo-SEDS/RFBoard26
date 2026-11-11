@@ -311,6 +311,43 @@ static volatile uint8_t g_tx_air_budget_active;
 #if !RFBOARD_LORA_SCHEDULER
 static volatile uint8_t g_tx_independent_streak;
 static volatile uint32_t g_tx_packet_started_ms;
+#ifndef RADIO_TURN_PERIOD_MS
+#define RADIO_TURN_PERIOD_MS 0U
+#endif
+#if RADIO_TURN_PERIOD_MS > 0 && !RFBOARD_LORA_SCHEDULER
+/* Air turns (profile transport.turn_period_ms; GroundStation26
+ * docs/backend/rfd-modem-check.md "Turn-taking"). Two ASYNC modems that
+ * transmit at once both lose their packets (bench: 97-99% lost when both
+ * ends sent 20 packets/s). RF writes one burst per turn, frames queued
+ * meanwhile coalesce into it, and the station answers in the gap after it. */
+/* 30% of the period: the AV bay's telemetry (about 1.4-1.5 KB/s) must fit in
+ * five bursts a second. At 15% (about 345 B per burst at 115200 baud) RF's
+ * queue grew without bound in the faithful fullnet and AV-bay data reached
+ * the station 7.5 s late. A 60 ms burst is about 90 ms on air, which leaves
+ * the station its 20 ms quiet gap and write well inside the 200 ms turn. */
+#define RADIO_TURN_BURST_MS ((RADIO_TURN_PERIOD_MS * 30U) / 100U)
+static volatile uint32_t g_tx_turn_started_ms;
+static volatile uint8_t g_tx_turn_open;
+/* A frame starts on the UART: it opens a turn unless one is open. */
+static void radio_uart_turn_note_start(uint32_t now)
+{
+  if (!g_tx_turn_open) {
+    g_tx_turn_started_ms = now;
+    g_tx_turn_open = 1U;
+  }
+}
+/* Milliseconds before another frame may start: none inside the turn's
+ * burst, then quiet until the turn's period has passed. */
+static uint32_t radio_uart_turn_remaining_ms(uint32_t now)
+{
+  if (!g_tx_turn_open) return 0U;
+  const uint32_t elapsed = now - g_tx_turn_started_ms;
+  if (elapsed < RADIO_TURN_BURST_MS) return 0U;
+  if (elapsed < RADIO_TURN_PERIOD_MS) return RADIO_TURN_PERIOD_MS - elapsed;
+  g_tx_turn_open = 0U;
+  return 0U;
+}
+#endif
 static volatile uint32_t g_tx_packet_until_ms;
 static volatile uint8_t g_tx_packet_active;
 static volatile uint32_t g_tx_last_forced_boundary_ms;
@@ -1220,6 +1257,9 @@ static void radio_uart_mark_tx_quiet(uint16_t len)
   quiet_ms += RADIO_TX_COOLDOWN_MS;
 #else
   const uint32_t now = radio_now_ms();
+#if RADIO_TURN_PERIOD_MS > 0
+  radio_uart_turn_note_start(now);
+#endif
   if (!(g_tx_packet_active & RADIO_PACKET_ACTIVE) ||
       (int32_t)(now - g_tx_packet_until_ms) >= 0) {
     g_tx_packet_started_ms = now;
@@ -1387,6 +1427,12 @@ static uint32_t radio_uart_quiet_remaining_ms(void)
 {
   const uint32_t now = radio_now_ms();
   uint32_t remaining = 0U;
+#if RADIO_TURN_PERIOD_MS > 0 && !RFBOARD_LORA_SCHEDULER
+  /* The turn replaces burst/gap and per-frame airtime pacing: a turn's frames
+   * must leave back to back (closer than S6) to share one air packet, and
+   * one burst of 30% of the period per period already bounds the rate. */
+  return radio_uart_turn_remaining_ms(now);
+#endif
   if (g_tx_air_budget_active && (int32_t)(g_tx_quiet_until_ms - now) > 0) {
     remaining = g_tx_quiet_until_ms - now;
   }
@@ -1587,6 +1633,8 @@ uint8_t radio_uart_handle_profile_request(const uint8_t *data, size_t len,
       g_huart->Init.StopBits != UART_STOPBITS_1 ||
       g_huart->Init.Parity != UART_PARITY_NONE)
     flags |= RECOVERY_PROFILE_UART_FORMAT_MISMATCH;
+  if (RADIO_TURN_PERIOD_MS > 0U && !RFBOARD_LORA_SCHEDULER)
+    flags |= RECOVERY_PROFILE_TURN_CADENCE;
   const recovery_profile_config_t config = {
     .serial_baud = g_huart->Init.BaudRate,
     .usable_air_bps = RADIO_AIR_BIT_RATE_BPS,
@@ -1795,6 +1843,11 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
 #if RFBOARD_LORA_SCHEDULER
     return 0U;
 #else
+#if RADIO_TURN_PERIOD_MS > 0
+    /* Out of turn nothing borrows the air, ACKs included: they wait for the
+     * next turn instead of colliding with the station's answer. */
+    if (radio_uart_turn_remaining_ms(radio_now_ms()) != 0U) return 0U;
+#endif
     const uint32_t now = radio_now_ms();
     const uint32_t remaining = g_tx_quiet_until_ms - now;
     /* One canonical ACK group may use an idle UART during an ordinary

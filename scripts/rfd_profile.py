@@ -7,9 +7,11 @@ MODEM = {'serial_baud', 'air_bps', 'max_data_bytes', 'max_retries', 'broadcast_r
          'serial_break_ms', 'tx_encapsulation', 'rx_encapsulation'}
 TRANSPORT = {'usable_air_bps', 'frame_overhead_bytes', 'packet_burst_ms', 'packet_gap_ms',
              'idle_margin_ms', 'rf_share_percent', 'host_default_share_percent'}
+# Optional: air turn-taking period, 0 = off (GS docs/backend/rfd-modem-check.md).
+OPTIONAL_TRANSPORT = {'turn_period_ms'}
 DEFAULTS = {'RADIO_AIR_BIT_RATE_BPS': 30000, 'RADIO_AIR_SHARE_PERCENT': 100,
             'RADIO_AIR_FRAME_OVERHEAD_BYTES': 16, 'RADIO_PACKET_BURST_MS': 250,
-            'RADIO_PACKET_GAP_MS': 15}
+            'RADIO_PACKET_GAP_MS': 15, 'RADIO_TURN_PERIOD_MS': 0}
 
 
 def load(path):
@@ -19,9 +21,12 @@ def load(path):
     if type(value['version']) is not int or value['version'] != 1 or not isinstance(value['name'], str) or not 1 <= len(value['name'].encode('utf-8')) <= 80:
         raise ValueError('Unsupported or unnamed RFD profile')
     m, t = value['modem'], value['transport']
-    for obj, keys in [(m, MODEM), (t, TRANSPORT)]:
-        if not isinstance(obj, dict) or set(obj) != keys or any(type(v) is not int for v in obj.values()):
+    for obj, keys, optional in [(m, MODEM, set()), (t, TRANSPORT, OPTIONAL_TRANSPORT)]:
+        if (not isinstance(obj, dict) or not keys <= set(obj) <= keys | optional
+                or any(type(v) is not int for v in obj.values())):
             raise ValueError('Unknown, missing or non-integer RFD setting')
+    if t.get('turn_period_ms', 0) != 0 and not 100 <= t['turn_period_ms'] <= 1000:
+        raise ValueError('Air turn period must be 0 (off) or 100..1000 ms')
     if m['serial_baud'] != 115200 or m['air_bps'] != 64000:
         raise ValueError('This profile supports raw ASYNC at 115200 UART / 64000 air bps')
     if not 1028 <= m['max_data_bytes'] <= 4068 or not 1 <= m['max_retries'] <= 100 or not 0 <= m['broadcast_retries'] <= 100:
@@ -49,7 +54,8 @@ def cmake_values(path=None):
         return dict(DEFAULTS)
     t = load(path)['transport']
     return dict(zip(DEFAULTS, [t['usable_air_bps'], t['rf_share_percent'],
-                              t['frame_overhead_bytes'], t['packet_burst_ms'], t['packet_gap_ms']]))
+                              t['frame_overhead_bytes'], t['packet_burst_ms'], t['packet_gap_ms'],
+                              t.get('turn_period_ms', 0)]))
 
 
 def audit(profile, snapshots):

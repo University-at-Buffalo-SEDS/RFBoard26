@@ -30,6 +30,21 @@ def readbacks():
 
 
 class RfdProfileTests(unittest.TestCase):
+    def test_air_turn_period_is_optional_and_bounded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'profile.json'
+            path.write_text(json.dumps(profile()))
+            self.assertEqual(rfd_profile.cmake_values(path)['RADIO_TURN_PERIOD_MS'], 0, 'absent means off')
+            for period in (0, 100, 200, 1000):
+                candidate = profile(); candidate['transport']['turn_period_ms'] = period
+                path.write_text(json.dumps(candidate))
+                self.assertEqual(rfd_profile.cmake_values(path)['RADIO_TURN_PERIOD_MS'], period)
+            for period in (50, 1001, -1, True):
+                candidate = profile(); candidate['transport']['turn_period_ms'] = period
+                path.write_text(json.dumps(candidate))
+                with self.subTest(period=period), self.assertRaises(ValueError):
+                    rfd_profile.load(path)
+
     def test_numeric_and_framing_contracts(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'profile.json'

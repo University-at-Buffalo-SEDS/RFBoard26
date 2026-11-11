@@ -42,6 +42,7 @@ set(RADIO_AIR_SHARE_PERCENT "${RADIO_AIR_SHARE_DEFAULT}" CACHE STRING "RF share 
 set(RADIO_AIR_FRAME_OVERHEAD_BYTES "16" CACHE STRING "Conservative air framing overhead")
 set(RADIO_PACKET_BURST_MS "250" CACHE STRING "Maximum UART packet collection interval")
 set(RADIO_PACKET_GAP_MS "15" CACHE STRING "UART packetization idle boundary")
+set(RADIO_TURN_PERIOD_MS "0" CACHE STRING "Air turn-taking period, 0 = off")
 # Read the checked-in profile on every configure, including rebuilds triggered
 # directly through CMake. FORCE prevents a stale custom profile's short gap from
 # surviving a return to the compatible profile. This never programs a modem.
@@ -58,7 +59,8 @@ if(NOT RFBOARD_LORA_SCHEDULER AND NOT "${RFD_PROFILE_FILE}" STREQUAL "")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${RFD_PROFILE_FILE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/scripts/rfd_profile.py")
     foreach(RFD_KEY RADIO_AIR_BIT_RATE_BPS RADIO_AIR_SHARE_PERCENT
-            RADIO_AIR_FRAME_OVERHEAD_BYTES RADIO_PACKET_BURST_MS RADIO_PACKET_GAP_MS)
+            RADIO_AIR_FRAME_OVERHEAD_BYTES RADIO_PACKET_BURST_MS RADIO_PACKET_GAP_MS
+            RADIO_TURN_PERIOD_MS)
         string(JSON RFD_VALUE GET "${RFD_PROFILE_JSON}" cmake "${RFD_KEY}")
         set(${RFD_KEY} "${RFD_VALUE}" CACHE STRING "Selected RFD profile value" FORCE)
     endforeach()
@@ -110,7 +112,8 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     RFBOARD_LORA_SCHEDULER=$<BOOL:${RFBOARD_LORA_SCHEDULER}>
     USER_VECT_TAB_ADDRESS VECT_TAB_OFFSET=0x00004200U)
 foreach(RADIO_PROFILE_KEY RADIO_AIR_BIT_RATE_BPS RADIO_AIR_SHARE_PERCENT
-        RADIO_AIR_FRAME_OVERHEAD_BYTES RADIO_PACKET_BURST_MS RADIO_PACKET_GAP_MS)
+        RADIO_AIR_FRAME_OVERHEAD_BYTES RADIO_PACKET_BURST_MS RADIO_PACKET_GAP_MS
+            RADIO_TURN_PERIOD_MS)
     if(NOT "${${RADIO_PROFILE_KEY}}" MATCHES "^[0-9]+$")
         message(FATAL_ERROR "${RADIO_PROFILE_KEY} must be an unsigned integer")
     endif()
