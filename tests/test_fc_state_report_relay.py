@@ -39,12 +39,14 @@ typedef struct { uint32_t ty; const char *sender; size_t sender_len; } SedsPacke
 static int router; static SedsRouter *recovery_router = &router;
 bool seds_router_sender_matches_hostname(SedsRouter *r, const char *s, size_t len, const char *n, size_t nl)
 { assert(r); return s && len == nl && !memcmp(s, n, nl); }
-''' + function(text, 'authorized_primary') + '\n' + function(text, 'board_recovery_managed_report_ignorable') + r'''
+''' + function(text, 'authorized_owner') + '\n' + function(text, 'authorized_primary') + '\n' + function(text, 'board_recovery_managed_report_ignorable') + r'''
 int main(void) {
   SedsPacketView p = { SEDS_DT_FLIGHT_STATE, "FC", 2 };
   assert(board_recovery_managed_report_ignorable(&p));
   p.sender = "RF"; assert(board_recovery_managed_report_ignorable(&p));
   p.sender = "GS"; assert(!board_recovery_managed_report_ignorable(&p));
+  p.sender = "RRLS"; p.sender_len = 4; assert(!board_recovery_managed_report_ignorable(&p)); /* a station write */
+  p.sender_len = 2;
   p.sender = NULL; p.sender_len = 0; assert(!board_recovery_managed_report_ignorable(&p));
   p.sender = "FC"; p.sender_len = 2; p.ty = 12U; assert(!board_recovery_managed_report_ignorable(&p));
   p.ty = SEDS_DT_FLIGHT_STATE; recovery_router = NULL; assert(!board_recovery_managed_report_ignorable(&p));

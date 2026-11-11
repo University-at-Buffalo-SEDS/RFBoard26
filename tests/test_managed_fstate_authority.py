@@ -38,13 +38,13 @@ class ManagedAuthorityTests(unittest.TestCase):
   SedsResult seds_router_get_network_time_ms(SedsRouter*r,uint64_t*out){assert(r);*out=now;return 0;}
   uint64_t board_recovery_station_now(SedsRouter*r){uint64_t t=0;return !r||seds_router_get_network_time_ms(r,&t)?0U:t;}
   bool seds_router_sender_matches_hostname(SedsRouter*r,const char*s,size_t len,const char*name,size_t n){assert(r);return s&&len==n&&!memcmp(s,name,n);}
-  '''+function(text,'authorized_primary')+'\n'+function(text,'board_recovery_command_is_stale')+'\n'+body+'''
+  '''+function(text,'authorized_owner')+'\n'+function(text,'authorized_primary')+'\n'+function(text,'board_recovery_command_is_stale')+'\n'+body+'''
   int main(int argc,char**argv){assert(argc==2);SedsPacketView p={.ty=SEDS_DT_FLIGHT_STATE,.sender="VB",.sender_len=2,.timestamp=9000};
    if(!strcmp(argv[1],"inactive_nonGS")){assert(!board_recovery_managed_update_allowed(&p));return 0;}
    const char*senders[]={"GS","RF","VB","FC","RRLS"};unsigned cases=0;
    for(unsigned type=11;type<=13;type++)for(unsigned ac=0;ac<2;ac++)for(unsigned h=0;h<2;h++)for(unsigned rr=0;rr<2;rr++)for(unsigned src=0;src<5;src++)for(unsigned stale=0;stale<2;stale++){
    p.ty=type;active=ac;healthy=h;ready=rr;p.sender=senders[src];p.sender_len=strlen(p.sender);p.timestamp=stale?4999:5000;
-   bool allowed=board_recovery_managed_update_allowed(&p);bool expected=healthy&&READY_GUARD&&(!active?(type!=SEDS_DT_FLIGHT_STATE||src==0):(src==0&&!stale));assert(allowed==expected);cases++;
+   bool allowed=board_recovery_managed_update_allowed(&p);bool expected=healthy&&READY_GUARD&&(!active?(type!=SEDS_DT_FLIGHT_STATE||src==0||src==4):((src==0||src==4)&&!stale)) /* GS or RRLS */;assert(allowed==expected);cases++;
    }
    healthy=ready=true;active=false;assert(board_recovery_managed_update_allowed(NULL));recovery_router=NULL;p.ty=SEDS_DT_FLIGHT_STATE;p.sender="GS";p.sender_len=2;assert(!board_recovery_managed_update_allowed(&p));p.ty=SEDS_DT_FLIGHT_COMMAND;assert(board_recovery_managed_update_allowed(&p));printf("actual authority matrix %u PASS\\n",cases);return 0;}
   '''.replace('READY_GUARD','true' if ROOT.name in ['ActuatorBoard26','ValveBoard26'] else 'ready')

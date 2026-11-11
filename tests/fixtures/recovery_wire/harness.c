@@ -38,7 +38,7 @@ static launchcore_storage_status_t erase_media(uint32_t a,uint32_t n){check_owne
 static launchcore_storage_status_t write_media(uint32_t a,const void*p,uint32_t n){check_owner();assert(a<=4096&&n<=4096-a);media_writes++;uint32_t key=0;if(n>=24)memcpy(&key,(const uint8_t*)p+4,4);if(key&&key==fail_key)return LAUNCHCORE_STORAGE_ERR_WRITE;for(uint32_t i=0;i<n;i++){assert((disk[a+i]&((const uint8_t*)p)[i])==((const uint8_t*)p)[i]);disk[a+i]=((const uint8_t*)p)[i];}return LAUNCHCORE_STORAGE_OK;}
 const launchcore_storage_driver_t launchcore_board_storage_driver={.init=init_media,.read=read_media,.erase=erase_media,.write=write_media,.layout=get_layout};
 static void sdk_unlocked(void){assert(!physical||!physical->locked);}
-bool seds_router_sender_matches_hostname(const SedsRouter*r,const char*s,size_t n,const char*name,size_t len){sdk_unlocked();assert(r&&len==2&&!memcmp(name,"GS",2));return s&&((n==2&&!memcmp(s,"GS",2))||(n==10&&!memcmp(s,"@addr:1234",10)));}
+bool seds_router_sender_matches_hostname(const SedsRouter*r,const char*s,size_t n,const char*name,size_t len){sdk_unlocked();assert(r&&((len==2&&!memcmp(name,"GS",2))||(len==4&&!memcmp(name,"RRLS",4))));return s&&((n==len&&!memcmp(s,name,len))||(len==2&&n==10&&!memcmp(s,"@addr:1234",10))||(len==4&&n==10&&!memcmp(s,"@addr:5678",10)));}
 SedsResult seds_router_get_network_time_ms(SedsRouter*r,uint64_t*out){sdk_unlocked();assert(r);*out=clock_ms;return SEDS_OK;}
 SedsResult seds_router_log_queue_typed(SedsRouter*r,SedsDataType type,const void*p,size_t count,size_t width,SedsElemKind kind){sdk_unlocked();assert(r&&type==201&&count==40&&width==1&&kind==SEDS_EK_UNSIGNED);memcpy(response,p,40);assert((response[3]&32U)==EXPECTED_CAP);app_replies++;return SEDS_OK;}
 SedsResult seds_router_enable_network_variable(SedsRouter*r,SedsDataType type,bool read,bool write){sdk_unlocked();(void)r;assert(type==SEDS_DT_FLIGHT_STATE&&read&&!write);return SEDS_OK;}
@@ -89,6 +89,8 @@ int main(int argc,char**argv){assert(argc==2);(void)send;(void)response_epoch;
  healthy=true; /* Normal virgin/ABSENT bookkeeping is initialized at boot. */
  fixture=false;(void)persistent_store_boot_begin();uint64_t generation=board_recovery_boot_generation();if(!strcmp(argv[1],"query_fault"))fail_read=true;(void)board_recovery_floor_prime_boot();board_commissioning_probe_boot();flight_state_cache_restore();if(!strcmp(argv[1],"corrupt_boot")||!strcmp(argv[1],"deleted_identity")||!strcmp(argv[1],"deleted_floor")){assert(!persistent_store_controls_ready());return 0;}assert(persistent_store_runtime_start()==0);runtime=true;if(!healthy||!strcmp(argv[1],"query_fault")){assert(!persistent_store_controls_ready());}else{assert(persistent_store_controls_ready());}
  int cookie=0;SedsRouter*r=(SedsRouter*)&cookie;assert(flight_state_cache_init(r)==0);board_recovery_transport_set_router(r);uint32_t endpoint=SEDS_EP_BOARD_RECOVERY;uint8_t body[32]={1,0};put64(body+4,1);put64(body+24,77);SedsPacketView packet={.ty=200,.sender="GS",.sender_len=2,.endpoints=&endpoint,.num_endpoints=1,.payload=body,.payload_len=32,.timestamp=10000};
+ /* Automatic RRLS takeover: the RRLS (name or compact alias) is a station like the GS. */
+ if(!strncmp(argv[1],"rrls_",5)){packet.sender=!strcmp(argv[1],"rrls_alias")?"@addr:5678":"RRLS";packet.sender_len=strlen(packet.sender);}
  if(healthy){
   if(strcmp(argv[1],"query_fault")){assert(generation&&generation!=UINT64_MAX);assert(board_recovery_floor_is_healthy());assert(board_recovery_command_time_allowed(10000));}
 
@@ -111,10 +113,18 @@ int main(int argc,char**argv){assert(argc==2);(void)send;(void)response_epoch;
   if(!strcmp(argv[1],"stale")){body[20]=2;request(r,&packet,false);assert(response[1]==4&&media_reads==before_reads&&media_writes==before_writes&&response_epoch()==1&&response[2]==1);return 0;}
   if(!strcmp(argv[1],"io"))fail_key=0x4252464cU;
   if(!strcmp(argv[1],"pending")){unsigned replies=app_replies;assert(board_recovery_handle(r,&packet,endpoint,123)==SEDS_OK&&app_replies==replies);assert(media_reads==before_reads&&media_writes==before_writes&&!persistent_store_controls_ready());BoardRecoverySnapshot held={0};assert(board_recovery_snapshot(&held)==0&&held.abort_epoch==1&&held.actual_state==1&&(held.flags&1U)&&!(held.flags&18U));assert(board_recovery_handle(r,&packet,endpoint,123)==SEDS_OK&&app_replies==replies);}
+  if(!strcmp(argv[1],"station_race")){
+   /* GS and RRLS recover the same epoch: the first owns it, the second is STALE. */
+   unsigned replies=app_replies;assert(board_recovery_handle(r,&packet,endpoint,123)==SEDS_OK&&app_replies==replies);
+   uint8_t other[32];memcpy(other,body,32);put64(other+4,9);put64(other+24,88);SedsPacketView rival=packet;rival.sender="RRLS";rival.sender_len=4;rival.payload=other;
+   request(r,&rival,false);assert(response[1]==BOARD_RECOVERY_RESULT_STALE);
+  }
   request(r,&packet,true);
   if(!strcmp(argv[1],"io")){assert(response[1]==7&&response[3]&1U&&!(response[3]&18U)&&!persistent_store_controls_ready()&&response_epoch()==2&&response[2]==1);unsigned reads=media_reads,writes=media_writes;fail_key=0;request(r,&packet,false);assert(response[1]==7&&reads==media_reads&&writes==media_writes);puts("actual NVM IO stays held, exact duplicate performs no IO PASS");return 0;}
 
   assert(response[1]==0&&response[2]==0&&response_epoch()==2&&!(response[3]&19U)&&persistent_store_controls_ready()&&!persistent_store_commission_pending());
+  if(!strcmp(argv[1],"station_race")){uint8_t late[32];memcpy(late,body,32);put64(late+4,10);put64(late+24,88);SedsPacketView rival=packet;rival.sender="RRLS";rival.sender_len=4;rival.payload=late;request(r,&rival,false);assert(response[1]==BOARD_RECOVERY_RESULT_STALE&&response_epoch()==2);puts("GS/RRLS same-epoch race: one applies, the other STALE PASS");return 0;}
+  if(!strncmp(argv[1],"rrls_",5)){puts("RRLS query and recover apply like the GS PASS");return 0;}
   uint8_t marker[40];size_t size=40;assert(persistent_store_enter());assert(launchcore_persist_get_strict(COMMISSION_RECORD_KEY,marker,&size,&info)==0);assert(persistent_store_leave());CommissionRecord record;assert(commission_record_decode(marker,size,&record)&&record.kind==1&&record.state==0&&record.generation==generation&&record.nonce==2&&record.source==10001);
   uint8_t original_request[32];memcpy(original_request,body,32);body[1]=0;put64(body+4,3);put64(body+12,0);memset(body+20,0,4);packet.timestamp=clock_ms=10002;unsigned query_reads=media_reads,query_writes=media_writes;request(r,&packet,false);assert(response[1]==0&&response[2]==0&&response_epoch()==2&&!(response[3]&1U)&&get64(response+12)==generation&&media_reads==query_reads&&media_writes==query_writes);memcpy(body,original_request,32);packet.timestamp=10001;
   wr=media_writes;request(r,&packet,false);assert(response[1]==0&&media_writes==wr);packet.timestamp=10002;request(r,&packet,false);assert(response[1]==6&&media_writes==wr);

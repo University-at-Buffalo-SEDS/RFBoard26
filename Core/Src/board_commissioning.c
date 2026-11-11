@@ -106,7 +106,8 @@ int32_t board_commissioning_stage(const BoardRecoveryRequest*r,uint64_t source,u
   return history.kind==0||history.state?BOARD_RECOVERY_RESULT_IO:BOARD_RECOVERY_RESULT_STALE;
  }
  if(!board_commissioning_pending()&&eligible==COMMISSION_NONE&&!normal_eligible)return -2;
- if(job.waiting)return BOARD_RECOVERY_RESULT_IO;
+ /* Another station's request already owns this epoch: query again. */
+ if(job.waiting)return r->expected_abort_epoch==job.request.expected_abort_epoch?BOARD_RECOVERY_RESULT_STALE:BOARD_RECOVERY_RESULT_IO;
  if(!fresh(source,now)||!epoch||epoch==UINT32_MAX||r->expected_abort_epoch!=epoch||source<=query_cutoff()||(job.valid&&source<=job.source))return BOARD_RECOVERY_RESULT_STALE;
  uint8_t kind=0;uint64_t generation=board_recovery_boot_current();
  if(board_commissioning_uncertain_first()&&r->expected_boot_generation==UINT64_MAX&&query.valid&&!query.generation&&query.epoch==epoch&&fresh(query.source,now)&&r->issuer_session==query.issuer&&!same_tuple(r->issuer_session,r->nonce,query.issuer,query.nonce))kind=JOB_RECONCILE;

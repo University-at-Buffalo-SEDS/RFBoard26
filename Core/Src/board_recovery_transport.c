@@ -11,10 +11,17 @@ static SedsRouter *recovery_router;
 /* Delivered reliable packets refused for good and acknowledged (SEDS_OK). */
 volatile uint32_t g_reliable_refusal_count __attribute__((used));
 void board_recovery_transport_set_router(SedsRouter *router) { recovery_router=router; }
-static uint8_t authorized_primary(SedsRouter *router,const SedsPacketView *packet)
+static uint8_t authorized_owner(SedsRouter *router,const SedsPacketView *packet,
+                                const char *owner,size_t owner_len)
 {
  return packet!=NULL && seds_router_sender_matches_hostname(router,
-     packet->sender,packet->sender_len,"GS",2U);
+     packet->sender,packet->sender_len,owner,owner_len);
+}
+/* A station: the GS, or the RRLS when it takes over (name or compact alias,
+ * resolved by the SDK). Freshness, epoch and nonce checks still apply. */
+static uint8_t authorized_primary(SedsRouter *router,const SedsPacketView *packet)
+{
+ return authorized_owner(router,packet,"GS",2U) || authorized_owner(router,packet,"RRLS",4U);
 }
 /* Station clock: the newest GS-issued timestamp (the GS QUERY; RF hosts no
  * heartbeat endpoint), advanced by the board tick since its receipt. Transit
