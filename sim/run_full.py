@@ -7,12 +7,24 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import re
 import time
+from datetime import datetime, timezone
 
 SIMULATOR_REPOSITORY = (
     "https://github.com/University-at-Buffalo-SEDS/FirmwareSimulator.git"
 )
 SIMULATOR_INTERFACE_VERSION = "0.4.15"
+# local-dev-v<version> images are rebuilt from changing FirmwareSimulator
+# sources under one tag. Refuse an image whose simulator predates the revision
+# this board's layout needs: 12f3b71 (framed probe samples, which host load
+# cannot drop; it follows 79f98f5, the U5 factory boot budget). A stale image
+# reported a DAQ factory boot hang that did not exist. Raise this when the board
+# starts relying on newer simulator behaviour. Labelled images (FirmwareSimulator
+# 8dcf678 and later) carry the commit time; others are judged by creation time.
+SIMULATOR_REQUIRED_REVISION = "12f3b71"
+SIMULATOR_REQUIRED_COMMIT_TIME = datetime(2026, 11, 10, 4, 49, 55, tzinfo=timezone.utc)
+SIMULATOR_COMMIT_TIME_LABEL = "edu.buffalo.seds.firmware-sim.commit-time"
 FIRMWARE_BRANCH = "dev"
 FIRMWARE_ORGANIZATION = "University-at-Buffalo-SEDS"
 SIMULATOR_DOCKER_PLATFORM = os.environ.get(
@@ -194,15 +206,101 @@ def _image_exists(docker: str, image: str) -> bool:
     return result.returncode == 0
 
 
+def _source_revision(source: Path) -> tuple[str, str] | None:
+    """The checkout's commit (-dirty with uncommitted changes) and its UTC
+    commit time, for the image's revision labels. Read with Popen, so docker
+    command mocks of subprocess.run never see these git queries."""
+    def git(*args: str) -> tuple[int, str]:
+        process = subprocess.Popen(["git", "-C", str(source), *args], text=True,
+                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        output, _ = process.communicate()
+        return process.returncode, output.strip()
+    try:
+        status, revision = git("rev-parse", "HEAD")
+        stamp_status, stamp = git("show", "-s", "--format=%ct", "HEAD")
+        if status != 0 or stamp_status != 0 or not revision:
+            return None
+        when = datetime.fromtimestamp(int(stamp), tz=timezone.utc)
+        dirty = git("diff", "--quiet", "HEAD", "--")[0] != 0
+    except (OSError, ValueError):
+        return None
+    return (revision + ("-dirty" if dirty else ""), when.strftime("%Y-%m-%dT%H:%M:%SZ"))
+
+
 def _build_simulator_image(ui, docker: str, source: Path, image: str) -> None:
     build = [
         docker, "build",
         "--platform", SIMULATOR_DOCKER_PLATFORM,
         "--progress=plain",
-        "-t", image, str(source),
     ]
+    revision = _source_revision(source)
+    if revision is not None:
+        build += ["--build-arg", f"SOURCE_REVISION={revision[0]}",
+                  "--build-arg", f"SOURCE_COMMIT_TIME={revision[1]}"]
+    build += ["-t", image, str(source)]
     ui.say("run", " ".join(build))
     subprocess.run(build, check=True)
+
+
+def _docker_time(text: str) -> datetime | None:
+    """Docker/label timestamps: nanoseconds and Z or a numeric offset."""
+    match = re.fullmatch(
+        r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d+))?(Z|[+-]\d\d:\d\d)", text.strip()
+    )
+    if not match:
+        return None
+    fraction = (match.group(2) or "0")[:6].ljust(6, "0")
+    zone = "+00:00" if match.group(3) == "Z" else match.group(3)
+    return datetime.fromisoformat(f"{match.group(1)}.{fraction}{zone}")
+
+
+def _image_inspect(docker: str, image: str, template: str) -> str | None:
+    result = subprocess.run(
+        [docker, "image", "inspect", "--format", template, image],
+        capture_output=True, text=True,
+    )
+    return result.stdout if result.returncode == 0 else None
+
+
+def simulator_image_age(docker: str, image: str) -> tuple[datetime | None, str]:
+    """When the image's simulator source dates from, and how that is known.
+
+    FirmwareSimulator 8dcf678 and later label the commit and its commit time.
+    An unlabelled image can be no newer than its creation time."""
+    labels_text = _image_inspect(docker, image, "{{json .Config.Labels}}")
+    try:
+        labels = json.loads(labels_text) if labels_text else {}
+    except json.JSONDecodeError:
+        labels = {}
+    labels = labels or {}
+    committed = _docker_time(labels.get(SIMULATOR_COMMIT_TIME_LABEL, "") or "")
+    if committed is not None:
+        revision = labels.get("org.opencontainers.image.revision") or "unknown"
+        return committed, f"revision {revision} committed {committed.isoformat()}"
+    created = _docker_time(_image_inspect(docker, image, "{{.Created}}") or "")
+    if created is not None:
+        return created, f"no revision label, built {created.isoformat()}"
+    return None, "no revision label or creation time"
+
+
+def _require_current_image(docker: str, image: str) -> None:
+    """Refuse an image older than the simulator this board's layout needs."""
+    when, how = simulator_image_age(docker, image)
+    if when is not None and when >= SIMULATOR_REQUIRED_COMMIT_TIME:
+        return
+    if os.environ.get("SEDS_FIRMWARE_SIM_ALLOW_OLD") == "1":
+        print(f"warning: using {image} ({how}), older than FirmwareSimulator "
+              f"{SIMULATOR_REQUIRED_REVISION}; SEDS_FIRMWARE_SIM_ALLOW_OLD=1", file=sys.stderr)
+        return
+    raise RuntimeError(
+        f"{image} ({how}) is older than FirmwareSimulator "
+        f"{SIMULATOR_REQUIRED_REVISION} ({SIMULATOR_REQUIRED_COMMIT_TIME.isoformat()}), "
+        "which this board requires; its results are not valid for this layout. "
+        "Rebuild it from a current FirmwareSimulator dev checkout with "
+        "SEDS_FIRMWARE_SIM_SOURCE=/path/to/FirmwareSimulator, select a current "
+        "image with SEDS_FIRMWARE_SIM_IMAGE, or set SEDS_FIRMWARE_SIM_ALLOW_OLD=1 "
+        "to run it anyway."
+    )
 
 
 def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str) -> str:
@@ -219,11 +317,14 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str
                 f"SEDS_FIRMWARE_SIM_SOURCE does not contain a Dockerfile: {source}"
             )
         _build_simulator_image(ui, docker, source, local)
+        _require_current_image(docker, local)
         return local
 
-    # An explicitly selected local development image should be used as-is.
+    # An explicitly selected local development image is used without a pull,
+    # but it must still contain the simulator revision this layout requires.
     # Dev qualification follows the dev GroundStation observer; explicit images remain usable.
     if "SEDS_FIRMWARE_SIM_IMAGE" in os.environ and _image_exists(docker, requested):
+        _require_current_image(docker, requested)
         return requested
 
     ui.say("run", f"{docker} pull --platform {SIMULATOR_DOCKER_PLATFORM} {requested}")
@@ -232,11 +333,12 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str
     pull = subprocess.run(
         [docker, "pull", "--platform", SIMULATOR_DOCKER_PLATFORM, requested]
     )
-    if pull.returncode == 0:
+    if pull.returncode == 0 or _image_exists(docker, requested):
+        _require_current_image(docker, requested)
         return requested
-    if _image_exists(docker, requested):
-        return requested
+    # local-dev-v<version> is reused across simulator revisions.
     if _image_exists(docker, local):
+        _require_current_image(docker, local)
         return local
 
     git = shutil.which("git")
@@ -250,6 +352,7 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str
         "Published simulator image unavailable; cloning FirmwareSimulator and "
         "building a local image.",
     )
+    # A fresh clone of dev is current by construction.
     with tempfile.TemporaryDirectory(prefix="seds-firmware-simulator-") as directory:
         source = Path(directory) / "FirmwareSimulator"
         try:
