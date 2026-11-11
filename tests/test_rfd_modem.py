@@ -51,7 +51,7 @@ class RfdModemCheckTests(unittest.TestCase):
         modem = json.loads(profile)["modem"]
         self.assertEqual(
             (modem["max_data_bytes"], modem["max_retries"], modem["broadcast_retries"],
-             modem["serial_break_ms"]), (3968, 10, 1, 10))
+             modem["serial_break_ms"]), (3968, 10, 0, 10))
         # Byte-identical to the GS embedded default when a sibling checkout exists.
         sibling = ROOT.parent / "GroundStation26/backend/comms/rfd-profile.json"
         if sibling.is_file():
@@ -79,7 +79,10 @@ class RfdModemCheckTests(unittest.TestCase):
         from scripts import rfd_profile
         values = rfd_profile.cmake_values(ROOT / "config/rfd-profile.json")
         modem = json.loads((ROOT / "config/rfd-profile.json").read_text())["modem"]
-        drain = modem["air_bps"] // (1 + modem["broadcast_retries"])
+        # S5=0 bench pair (2026-11-10, GS scripts/rfd_link_test.py): one-way
+        # 2.9 KB/s lost 0.5%; usable_air_bps is that measured drain.
+        transport = json.loads((ROOT / "config/rfd-profile.json").read_text())["transport"]
+        drain = min(modem["air_bps"] // (1 + modem["broadcast_retries"]), transport["usable_air_bps"])
         self.assertEqual(values["RADIO_AIR_SHARE_PERCENT"], 100)
         self.assertLessEqual(values["RADIO_AIR_BIT_RATE_BPS"], drain)
         self.assertGreaterEqual(values["RADIO_AIR_BIT_RATE_BPS"], drain * 8 // 10)
