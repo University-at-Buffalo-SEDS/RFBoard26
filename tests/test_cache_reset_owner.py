@@ -51,7 +51,7 @@ HARNESS = r'''
 volatile uint32_t g_telemetry_discovery_seen;
 static SedsResult (*callback)(const SedsPacketView*,void*);
 static unsigned writes,clears,requests;
-static uint8_t stored=5,have_stored=1,allow_update=1;
+static uint8_t stored=6,have_stored=1,allow_update=1;
 static int fail_write,fail_read,wrong_read,fail_invalidate,fail_apply;
 static unsigned tick;
 uint32_t HAL_GetTick(void){return tick;}
@@ -89,8 +89,8 @@ static SedsResult update(uint8_t state){SedsPacketView p={SEDS_DT_FLIGHT_STATE,&
 int main(int argc,char **argv){
  assert(argc==2);SedsRouter router=0;BoardRecoverySnapshot out;
  assert(flight_state_cache_init(&router)==0);
- assert(flight_state_cache_has_value()&&flight_state_cache_value()==5);
- assert(board_recovery_snapshot(&out)==0&&out.actual_state==5&&out.abort_epoch==1);
+ assert(flight_state_cache_has_value()&&flight_state_cache_value()==6);
+ assert(board_recovery_snapshot(&out)==0&&out.actual_state==6&&out.abort_epoch==1);
  assert((out.flags&(BOARD_RECOVERY_STATE_VALID|BOARD_RECOVERY_SUPPORTED))==(BOARD_RECOVERY_STATE_VALID|BOARD_RECOVERY_SUPPORTED));
  assert(!(out.flags&(BOARD_RECOVERY_OUTPUTS_VALID|BOARD_RECOVERY_SAFE_OUTPUTS)));
  if(!strcmp(argv[1],"success")){
@@ -103,21 +103,21 @@ int main(int argc,char **argv){
   g_telemetry_discovery_seen=1;tick=499;assert(flight_state_cache_poll(&router)==0&&requests==0);
   tick=500;assert(flight_state_cache_poll(&router)==0&&requests==1);
  }else if(!strcmp(argv[1],"write_failure")){
-  fail_write=1;assert(board_recovery_apply_safe(0,1,&out)!=0&&out.actual_state==5&&out.abort_epoch==1&&clears==0);
+  fail_write=1;assert(board_recovery_apply_safe(0,1,&out)!=0&&out.actual_state==6&&out.abort_epoch==1&&clears==0);
   fail_write=0;assert(board_recovery_apply_safe(0,1,&out)==0&&out.actual_state==0&&out.abort_epoch==2);
  }else if(!strcmp(argv[1],"read_failure")){
-  fail_read=1;assert(board_recovery_apply_safe(0,1,&out)!=0&&out.actual_state==5&&out.abort_epoch==1&&clears==0);
+  fail_read=1;assert(board_recovery_apply_safe(0,1,&out)!=0&&out.actual_state==6&&out.abort_epoch==1&&clears==0);
   fail_read=0;assert(board_recovery_apply_safe(0,1,&out)==0&&out.actual_state==0);
  }else if(!strcmp(argv[1],"read_mismatch")){
-  wrong_read=1;assert(board_recovery_apply_safe(0,1,&out)!=0&&out.actual_state==5&&out.abort_epoch==1&&clears==0);
+  wrong_read=1;assert(board_recovery_apply_safe(0,1,&out)!=0&&out.actual_state==6&&out.abort_epoch==1&&clears==0);
   wrong_read=0;assert(board_recovery_apply_safe(0,1,&out)==0&&out.actual_state==0);
  }else if(!strcmp(argv[1],"service_failure")){
-  fail_invalidate=1;assert(board_recovery_apply_safe(0,1,&out)!=0&&out.actual_state==5&&out.abort_epoch==1);
+  fail_invalidate=1;assert(board_recovery_apply_safe(0,1,&out)!=0&&out.actual_state==6&&out.abort_epoch==1);
   fail_invalidate=0;assert(board_recovery_apply_safe(0,1,&out)==0&&out.actual_state==0&&out.abort_epoch==2);
  }else if(!strcmp(argv[1],"stale_retirement")){
   assert(board_recovery_apply_safe(0,1,&out)==0);unsigned w=writes,c=clears;
   /* A refused station write is acknowledged (SEDS_OK), never applied. */
-  allow_update=0;assert(update(3)==0&&flight_state_cache_value()==0&&stored==0&&writes==w&&clears==c+1&&callback);
+  allow_update=0;assert(update(13)==0&&flight_state_cache_value()==0&&stored==0&&writes==w&&clears==c+1&&callback);
   allow_update=1;assert(update(1)==0&&flight_state_cache_value()==1&&stored==1);
   assert(board_recovery_apply_safe(0,1,&out)!=0&&writes==w+1);
  }else if(!strcmp(argv[1],"report_ignored")){
@@ -134,10 +134,10 @@ int main(int argc,char **argv){
   assert(update(0)==0&&writes==2);fail_write=0;
   assert(update(0)==0&&writes==3&&stored==0);assert(update(0)==0&&writes==3&&clears==0);
  }else if(!strcmp(argv[1],"apply_failure")){
-  fail_apply=1;assert(update(3)==-14&&flight_state_cache_value()==5&&stored==5&&writes==0&&clears==1&&callback);
-  fail_apply=0;assert(update(3)==0&&flight_state_cache_value()==3&&stored==3&&writes==1&&clears==1);
+  fail_apply=1;assert(update(13)==-14&&flight_state_cache_value()==6&&stored==6&&writes==0&&clears==1&&callback);
+  fail_apply=0;assert(update(13)==0&&flight_state_cache_value()==13&&stored==13&&writes==1&&clears==1);
  }else if(!strcmp(argv[1],"malformed_retirement")){
-  assert(update(255)==0&&flight_state_cache_value()==5&&stored==5&&writes==0&&clears==1&&callback);
+  assert(update(255)==0&&flight_state_cache_value()==6&&stored==6&&writes==0&&clears==1&&callback);
  }else assert(!"unknown case");
  puts(argv[1]);return 0;
 }

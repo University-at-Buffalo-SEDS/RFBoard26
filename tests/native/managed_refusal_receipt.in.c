@@ -17,6 +17,9 @@
 
 extern volatile uint32_t g_reliable_refusal_count;
 extern volatile uint32_t g_flight_state_cache_writes;
+extern volatile uint32_t g_flight_state_contract_violations;
+extern volatile uint32_t g_flight_state_contract_logged;
+extern volatile uint32_t g_flight_state_contract_first_raw;
 volatile uint32_t g_telemetry_discovery_seen;
 static uint64_t mono_ms = 1000U;
 static int allowed = 1, ota_busy;
@@ -96,8 +99,8 @@ int main(int argc, char **argv)
   receipts = relayed = 0U;
 
   /* Accepted write: applied, persisted, acknowledged and relayed. */
-  assert(deliver("GS", 3U) == SEDS_OK);
-  assert(flight_state_cache_value() == 3U && writes == 1U && receipts == 1U && relayed == 1U);
+  assert(deliver("GS", 6U) == SEDS_OK);
+  assert(flight_state_cache_value() == 6U && writes == 1U && receipts == 1U && relayed == 1U);
   const uint32_t refusals = g_reliable_refusal_count;
 
   /* Station write refused by the recovery floor: acknowledged, never applied. */
@@ -106,26 +109,44 @@ int main(int argc, char **argv)
   printf("refused result=%d receipts=%u relayed=%u value=%u writes=%u refusals=%u\n", r, receipts,
          relayed, flight_state_cache_value(), writes, (unsigned)(g_reliable_refusal_count - refusals));
   assert(r == SEDS_OK && receipts == 2U && relayed == 2U);
-  assert(flight_state_cache_value() == 3U && writes == 1U && stored == 3U);
+  assert(flight_state_cache_value() == 6U && writes == 1U && stored == 6U);
   /* The SDK may re-run the callback on relay of a retired observation. */
   assert(g_reliable_refusal_count > refusals);
   const uint32_t after_refused = g_reliable_refusal_count;
 
   /* Out-of-range value: acknowledged, never applied. */
   allowed = 1;
-  r = deliver("GS", 16U);
+  r = deliver("GS", 17U);
   printf("malformed result=%d receipts=%u value=%u writes=%u\n", r, receipts, flight_state_cache_value(), writes);
-  assert(r == SEDS_OK && receipts == 3U && flight_state_cache_value() == 3U && writes == 1U);
+  assert(r == SEDS_OK && receipts == 3U && flight_state_cache_value() == 6U && writes == 1U);
   assert(g_reliable_refusal_count > after_refused);
 
   /* The OTA owner is busy: applied and acknowledged now, never written
    * while OTA owns flash; durability is retried afterwards. */
   ota_busy = 1;
-  r = deliver("GS", 4U);
+  r = deliver("GS", 1U);
   printf("busy result=%d receipts=%u value=%u writes=%u\n", r, receipts, flight_state_cache_value(), writes);
-  assert(r == SEDS_OK && receipts == 4U && flight_state_cache_value() == 4U && writes == 1U);
+  assert(r == SEDS_OK && receipts == 4U && flight_state_cache_value() == 1U && writes == 1U);
   ota_busy = 0;
-  assert(deliver("GS", 4U) == SEDS_OK && receipts == 5U && flight_state_cache_value() == 4U && writes == 2U);
+  assert(deliver("GS", 1U) == SEDS_OK && receipts == 5U && flight_state_cache_value() == 1U && writes == 2U);
+
+  /* InFlight (16) is in contract set (a): applied, persisted, acknowledged. */
+  const unsigned receipts_in_flight = receipts;
+  const uint32_t writes_in_flight = writes;
+  assert(deliver("GS", 16U) == SEDS_OK && receipts == receipts_in_flight + 1U &&
+         flight_state_cache_value() == 16U && writes == writes_in_flight + 1U && stored == 16U);
+  assert(g_flight_state_contract_violations == 0U && g_flight_state_contract_logged == 0U);
+  /* Older firmware: a retired value maps to the nearest network value, is
+   * logged once and acknowledged, never refused into a retransmit loop. */
+  static const uint8_t raw[] = {4U, 9U, 14U, 3U}, mapped[] = {2U, 16U, 13U, 2U};
+  for (unsigned i = 0U; i < sizeof raw; i++) {
+    const unsigned before = receipts;
+    assert(deliver("GS", raw[i]) == SEDS_OK && receipts == before + 1U &&
+           flight_state_cache_value() == mapped[i]);
+    assert(g_flight_state_contract_logged == 1U && g_flight_state_contract_first_raw == 4U &&
+           g_flight_state_contract_violations >= i + 1U);
+  }
+  puts("PASS InFlight applied; retired FLIGHT_STATE mapped, logged once and acknowledged");
 
   seds_router_free(board);
   puts("PASS refused and malformed FLIGHT_STATE acknowledged and relayed without applying; busy OTA owner still acknowledged");

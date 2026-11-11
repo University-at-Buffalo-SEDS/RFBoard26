@@ -51,7 +51,7 @@ HARNESS = r'''
 volatile uint32_t g_telemetry_discovery_seen;
 static unsigned writes,invalidations,enables,registrations;
 static int fail_enable,fail_callback;
-static uint8_t stored=5;
+static uint8_t stored=6;
 uint32_t HAL_GetTick(void){return 1000;}
 int persistent_store_init(void){return 0;}
 int persistent_store_get(uint32_t key,void*p,size_t*n){assert(key==0x46535445U&&*n==1);*(uint8_t*)p=stored;return 0;}
@@ -70,10 +70,10 @@ int main(int argc,char**argv){
  fail_enable=!strcmp(argv[1],"enable_failure");fail_callback=!strcmp(argv[1],"callback_failure");
  if(fail_enable||fail_callback){
   assert(flight_state_cache_init(&router)==SEDS_HANDLER_ERROR&&g_cache_router==NULL);
-  assert(writes==0&&invalidations==0&&flight_state_cache_value()==5);
+  assert(writes==0&&invalidations==0&&flight_state_cache_value()==6);
   assert(clear_managed_cache()==SEDS_BAD_ARG);
   assert(flight_state_cache_reset_startup()==-9&&writes==1&&stored==0&&invalidations==0);
-  assert(flight_state_cache_value()==5); /* No falsely confirmed volatile Startup. */
+  assert(flight_state_cache_value()==6); /* No falsely confirmed volatile Startup. */
   fail_enable=fail_callback=0;
  }
  assert(flight_state_cache_init(&router)==SEDS_OK&&g_cache_router==&router);

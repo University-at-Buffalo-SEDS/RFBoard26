@@ -68,7 +68,7 @@ static uint32_t tick;
 static SedsResult apply_result = SEDS_OK;
 uint32_t HAL_GetTick(void) { return tick; }
 bool ota_stream_state_begin(uint8_t phase) {
- assert(phase<=15U && !ota_owned);
+ assert(phase<=16U && !ota_owned);
  if(ota_busy)return false;
  ota_owned=1;return true;
 }
@@ -120,8 +120,8 @@ static SedsRouter poll_router;
 static void poll_at(uint32_t at) { tick=at;assert(flight_state_cache_poll(&poll_router)==SEDS_OK && !ota_owned); }
 int main(int argc,char **argv) {
  assert(argc==2);SedsRouter router=0;
- if(!strcmp(argv[1],"restore")){have_stored=1;stored=5;}
- if(!strcmp(argv[1],"invalid_restore")){have_stored=1;stored=16;}
+ if(!strcmp(argv[1],"restore")){have_stored=1;stored=13;}
+ if(!strcmp(argv[1],"invalid_restore")){have_stored=1;stored=17;}
  if(!strcmp(argv[1],"init_error"))init_failed=1;
  assert(flight_state_cache_init(&router)==SEDS_OK && callback);
  if(!strcmp(argv[1],"changed_retry")){
@@ -154,10 +154,10 @@ int main(int argc,char **argv) {
   write_failed=0;poll_at(2000);assert(write_attempts==3 && stored==0);
   assert(update(0)==SEDS_OK && write_attempts==3);
  }else if(!strcmp(argv[1],"restore")){
-  assert(flight_state_cache_has_value() && flight_state_cache_value()==5 && g_flight_state_cache_restores==1);
-  assert(update(5)==SEDS_OK && write_attempts==0);
+  assert(flight_state_cache_has_value() && flight_state_cache_value()==13 && g_flight_state_cache_restores==1);
+  assert(update(13)==SEDS_OK && write_attempts==0);
   write_failed=1;tick=1000;
-  assert(update(6)==SEDS_OK && write_attempts==1 && stored==5);
+  assert(update(6)==SEDS_OK && write_attempts==1 && stored==13);
   assert(flight_state_cache_value()==6 && applied==6);
   write_failed=0;poll_at(2000);assert(write_attempts==2 && stored==6);
  }else if(!strcmp(argv[1],"invalid_restore")){
@@ -178,12 +178,12 @@ int main(int argc,char **argv) {
  }else if(!strcmp(argv[1],"ota_busy")){
   ota_busy=1;tick=1000;
   /* The OTA owner holds flash: apply and acknowledge, never write now. */
-  assert(update(3)==SEDS_OK && write_attempts==0 && applied==3 && flight_state_cache_value()==3);
+  assert(update(6)==SEDS_OK && write_attempts==0 && applied==6 && flight_state_cache_value()==6);
   poll_at(2000);assert(write_attempts==0 && g_flight_state_cache_errors==2);
   ota_busy=0;poll_at(2999);assert(write_attempts==0);
-  poll_at(3000);assert(write_attempts==1 && stored==3);
+  poll_at(3000);assert(write_attempts==1 && stored==6);
  }else if(!strcmp(argv[1],"invalid_packet")){
-  uint8_t state=16;SedsPacketView packet={SEDS_DT_FLIGHT_STATE,&state,1};
+  uint8_t state=17;SedsPacketView packet={SEDS_DT_FLIGHT_STATE,&state,1};
   assert(callback(NULL,NULL)==SEDS_HANDLER_ERROR);
   /* A malformed FLIGHT_STATE never succeeds on retry: acknowledged, unapplied. */
   assert(callback(&packet,NULL)==SEDS_OK);

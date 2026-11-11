@@ -41,7 +41,7 @@ launchcore_persist_status_t persistent_store_init(void){++inits;return LAUNCHCOR
 launchcore_persist_status_t persistent_store_get(uint32_t key,void*value,size_t*size){assert(*size==1);*(uint8_t*)value=key==0x46535445u?3:1;return LAUNCHCORE_PERSIST_OK;}
 launchcore_persist_status_t persistent_store_set(uint32_t key,const void*value,size_t size){(void)key;(void)value;(void)size;assert(0);return LAUNCHCORE_PERSIST_STORAGE_ERROR;}
 void HAL_GPIO_WritePin(void*port,uint16_t pin,int state){assert(port==(void*)1&&pin==1&&state==1);++drives;}
-int main(void){flight_state_cache_restore();flight_state_cache_restore();assert(flight_state_cache_has_value());assert(flight_state_cache_value()==3);av_bay_underglow_restore();av_bay_underglow_restore();assert(inits==2&&drives==1);return 0;}
+int main(void){flight_state_cache_restore();flight_state_cache_restore();assert(flight_state_cache_has_value());assert(flight_state_cache_value()==2); /* retired FillTest restores as Fill */ av_bay_underglow_restore();av_bay_underglow_restore();assert(inits==2&&drives==1);return 0;}
 ''')
             executable=root/"restore"
             subprocess.run(["cc","-std=c11","-Wall","-Wextra","-Werror","-Wno-unknown-attributes","-I"+str(root),"-I"+str(ROOT/"Core/Inc"),str(ROOT/"Core/Src/flight_state_cache.c"),str(ROOT/"Core/Src/av_bay_underglow.c"),str(root/"restore.c"),"-o",str(executable)],check=True)

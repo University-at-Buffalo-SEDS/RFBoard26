@@ -41,7 +41,7 @@ class FlightStatePersistenceContract(unittest.TestCase):
             probe["name"]: probe
             for probe in layout["execution"]["memory_probes"]
         }
-        self.assertEqual(probes["flight_state_cache"]["maximum"], 15)
+        self.assertEqual(probes["flight_state_cache"]["maximum"], 16)
         self.assertEqual(probes["flight_state_errors"]["maximum"], 0)
         for name in (
             "flight_state_restores",

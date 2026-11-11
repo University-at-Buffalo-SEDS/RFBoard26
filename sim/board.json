@@ -122,7 +122,7 @@
       {"name": "hardfault_exc_return", "symbol": "g_hardfault_exc_return"},
       {"name": "telemetry_stack_start_at_fault", "symbol": "g_telemetry_stack_start"},
       {"name": "telemetry_stack_end_at_fault", "symbol": "g_telemetry_stack_end"},
-      {"name": "flight_state_cache", "symbol": "g_flight_state_cache_value", "maximum": 15},
+      {"name": "flight_state_cache", "symbol": "g_flight_state_cache_value", "maximum": 16},
       {"name": "flight_state_restores", "symbol": "g_flight_state_cache_restores"},
       {"name": "flight_state_writes", "symbol": "g_flight_state_cache_writes"},
       {"name": "flight_state_updates", "symbol": "g_flight_state_cache_updates"},

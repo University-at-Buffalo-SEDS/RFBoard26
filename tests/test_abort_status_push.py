@@ -27,7 +27,7 @@ static unsigned pushes,refuse;static SedsRouter *pushed_router;
 SedsResult board_recovery_push_abort_status(SedsRouter *r){++pushes;pushed_router=r;return refuse?SEDS_BAD_ARG:SEDS_OK;}
 int main(void){
  SedsRouter router=0;
- assert(flight_state_cache_init(&router)==0&&flight_state_cache_value()==5);
+ assert(flight_state_cache_init(&router)==0&&flight_state_cache_value()==6);
  assert(update(15)==0&&flight_state_cache_value()==15&&pushes==1&&pushed_router==&router);
  assert(update(15)==0&&pushes==1);           /* a repeated Aborted write pushes none */
  assert(update(1)==0&&pushes==1);            /* other states push none */
