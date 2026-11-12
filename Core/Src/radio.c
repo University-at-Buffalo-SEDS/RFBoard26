@@ -1040,11 +1040,20 @@ static uint32_t __attribute__((unused)) radio_uart_bundle_limit(void)
 static volatile uint8_t g_radio_compact_bundle;
 volatile uint32_t g_radio_compact_bundles;
 void radio_uart_set_compact_bundle(uint8_t active) { g_radio_compact_bundle = active ? 1U : 0U; }
+/* Largest SDK source a single bundle takes. The modem streams a packet as it
+ * arrives and a collision truncates it: frames before the cut survive, but a
+ * bundle has one CRC and is lost whole. Bundles about the size of the largest
+ * old frames keep that loss where it was (one 390 B bundle lost about 40% more
+ * packets in the shipped-profile fullnet). */
+#ifndef RADIO_COMPACT_BUNDLE_SOURCE_MAX
+#define RADIO_COMPACT_BUNDLE_SOURCE_MAX 160U
+#endif
 /* An ordinary batch (adjacent queued UART frames, already selected in queue
- * order) leaves as one UART frame holding one compact bundle: one 4 B UART
- * header, one CRC32, and per-record header fields relative to the previous
- * record. Any frame that cannot join (side-wrapped, sealed, damaged) leaves the
- * batch exactly as it was. */
+ * order) leaves as one UART run of compact bundles, each up to
+ * RADIO_COMPACT_BUNDLE_SOURCE_MAX of SDK frames: one 4 B UART header and one
+ * CRC32 per bundle instead of per frame, and per-record header fields relative
+ * to the previous record. If any frame cannot join (side-wrapped, sealed,
+ * damaged) the batch leaves exactly as it was. */
 static void radio_uart_pack_compact_bundle(radio_tx_item_t *out)
 {
   uint16_t offsets[RADIO_UART_TX_QUEUE_SLOTS];
@@ -1063,16 +1072,39 @@ static void radio_uart_pack_compact_bundle(radio_tx_item_t *out)
     n++;
     at += RADIO_UART_FRAME_HEADER_SIZE + len;
   }
-  if (n < 2U) return;
-  const int32_t packed = seds_compact_bundle_pack(out->data, offsets, lengths, n,
-      &out->data[RADIO_UART_FRAME_HEADER_SIZE], sizeof(out->data) - RADIO_UART_FRAME_HEADER_SIZE);
-  if (packed <= 0) return;
-  out->data[0] = RADIO_UART_FRAME_SYNC_0;
-  out->data[1] = RADIO_UART_FRAME_SYNC_1;
-  out->data[2] = (uint8_t)((uint32_t)packed & 0xFFU);
-  out->data[3] = (uint8_t)((uint32_t)packed >> 8U);
-  out->len = (uint16_t)((uint32_t)packed + RADIO_UART_FRAME_HEADER_SIZE);
-  g_radio_compact_bundles++;
+  /* Chunks of consecutive frames; each output lands at or before its own
+   * source (a bundle is only kept when smaller), so later sources stay intact. */
+  uint32_t w = 0U;
+  size_t i = 0U;
+  uint8_t bundles = 0U;
+  while (i < n) {
+    size_t j = i + 1U;
+    uint32_t source = lengths[i];
+    while (j < n && source + lengths[j] <= RADIO_COMPACT_BUNDLE_SOURCE_MAX) source += lengths[j++];
+    const uint32_t from = (uint32_t)offsets[i] - RADIO_UART_FRAME_HEADER_SIZE;
+    const uint32_t span = (uint32_t)offsets[j - 1U] + lengths[j - 1U] - from;
+    int32_t packed = 0;
+    if (j - i >= 2U) {
+      /* The SDK writes only a bundle that fits this cap (strictly smaller than
+       * the frames it replaces), and reads every source frame before writing. */
+      packed = seds_compact_bundle_pack(out->data, &offsets[i], &lengths[i], j - i,
+          &out->data[w + RADIO_UART_FRAME_HEADER_SIZE], span - RADIO_UART_FRAME_HEADER_SIZE - 1U);
+    }
+    if (packed > 0) {
+      out->data[w] = RADIO_UART_FRAME_SYNC_0;
+      out->data[w + 1U] = RADIO_UART_FRAME_SYNC_1;
+      out->data[w + 2U] = (uint8_t)((uint32_t)packed & 0xFFU);
+      out->data[w + 3U] = (uint8_t)((uint32_t)packed >> 8U);
+      w += (uint32_t)packed + RADIO_UART_FRAME_HEADER_SIZE;
+      bundles++;
+    } else {
+      memmove(&out->data[w], &out->data[from], span);
+      w += span;
+    }
+    i = j;
+  }
+  out->len = (uint16_t)w;
+  g_radio_compact_bundles += bundles;
 }
 #else
 #define RADIO_COMPACT_BUNDLE 0
