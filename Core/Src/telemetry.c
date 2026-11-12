@@ -449,6 +449,13 @@ static SedsResult tx_send_with_priority(const uint8_t *bytes, size_t len,
   return telemetry_send_can_packet(bytes, len, priority);
 }
 
+/* Driver queue check: a relayed reliable copy every owner already ACKed. */
+static uint8_t telemetry_radio_frame_obsolete(const uint8_t *frame, size_t len) {
+  return (g_router.r && g_radio_side_id >= 0 &&
+          seds_router_relayed_frame_satisfied(g_router.r, (uint32_t)g_radio_side_id, frame, len))
+             ? 1U : 0U;
+}
+
 /* A ThreadX tick captured in an interrupt, on the router's clock (us). */
 static uint64_t telemetry_router_us_from_tick(uint32_t tick) {
   const uint64_t ms = ((uint64_t)tick * 1000ULL) / (uint64_t)TX_TIMER_TICKS_PER_SECOND;
@@ -1002,6 +1009,7 @@ static SedsResult init_telemetry_router_locked(void) {
      * The GS's responses carry an 8 B mesh wrapper its requests lack:
      * +8 x 211.8 / 2 us of fixed asymmetry. */
     (void)seds_router_set_side_timesync_path(r, (uint32_t)g_radio_side_id, 211800U, 847200);
+    radio_uart_set_obsolete_check(telemetry_radio_frame_obsolete);
   }
   if (g_can_side_id < 0 || g_radio_side_id < 0) {
     /* The failing side was printed above; only this path frees the router. */

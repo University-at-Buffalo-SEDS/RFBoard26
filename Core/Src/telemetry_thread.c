@@ -195,6 +195,7 @@ void telemetry_thread_entry(ULONG initial_input)
         (void)telemetry_poll_timesync();
         ota_stream_poll();
 
+        (void)radio_uart_drop_obsolete();
         (void)radio_uart_process_tx();
 
         /* Advances only after ingress, routing, timers, OTA, and egress all

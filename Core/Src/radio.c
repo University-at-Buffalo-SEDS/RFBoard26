@@ -2443,6 +2443,46 @@ void radio_uart_process_rx(void)
 */
 uint32_t radio_uart_last_rx_tick(void) { return g_rx_event_tick; }
 
+static radio_frame_obsolete_cb_t g_obsolete_check;
+volatile uint32_t g_radio_tx_obsolete_drops __attribute__((used)) = 0U;
+
+void radio_uart_set_obsolete_check(radio_frame_obsolete_cb_t cb) { g_obsolete_check = cb; }
+
+/* Small single-frame ordinary entries only (battery, status): the copy that
+ * went on air after every owner's ACK had reached RF. The check runs with
+ * the queue unlocked; the entry is removed only if it is still unchanged. */
+uint32_t radio_uart_drop_obsolete(void) {
+  enum { MAX_CHECK = 96U };
+  uint8_t frame[MAX_CHECK];
+  uint32_t dropped = 0U;
+  if (!g_obsolete_check) return 0U;
+  for (uint32_t i = 0U;; ++i) {
+    if (radio_uart_lock_tx_queue() != HAL_OK) break;
+    if (i >= g_tx_count) {
+      radio_uart_unlock_tx_queue();
+      break;
+    }
+    const radio_tx_queue_item_t item = g_tx_queue[i];
+    const uint8_t candidate = item.priority < RADIO_UART_PRIORITY_NETWORK_CONTROL &&
+        item.uart_frames <= 1U && item.len > RADIO_UART_FRAME_HEADER_SIZE && item.len <= MAX_CHECK;
+    if (candidate) memcpy(frame, &g_tx_queue_bytes[item.offset], item.len);
+    radio_uart_unlock_tx_queue();
+    if (!candidate || !g_obsolete_check(&frame[RADIO_UART_FRAME_HEADER_SIZE],
+                                        item.len - RADIO_UART_FRAME_HEADER_SIZE)) continue;
+    if (radio_uart_lock_tx_queue() != HAL_OK) break;
+    if (i < g_tx_count && g_tx_queue[i].len == item.len &&
+        g_tx_queue[i].enqueued_ms == item.enqueued_ms &&
+        memcmp(&g_tx_queue_bytes[g_tx_queue[i].offset], frame, item.len) == 0) {
+      radio_uart_remove_queue_index(i);
+      ++dropped;
+      --i;
+    }
+    radio_uart_unlock_tx_queue();
+  }
+  g_radio_tx_obsolete_drops += dropped;
+  return dropped;
+}
+
 void radio_uart_watch_frame(const uint8_t *bytes, size_t len) {
   if (!bytes || len == 0U || len > RADIO_TS_WATCH_MAX || g_ts_watch.state == 2U) return;
   memcpy(g_ts_watch.bytes, bytes, len);
