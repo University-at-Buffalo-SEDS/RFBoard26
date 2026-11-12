@@ -7,7 +7,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 class RadioControlFifoTests(unittest.TestCase):
-    def _run_case(self, test, *, real_air=False, lora=False, lookahead=2056):
+    def _run_case(self, test, *, real_air=False, lora=False, lookahead=2056, turn=False):
         source = (ROOT/'Core/Src/radio.c').read_text()
         types = '\n'.join(re.search(r'typedef struct \{[^}]*\} '+name+';', source).group()
                           for name in ['radio_tx_item_t', 'radio_tx_queue_item_t'])
@@ -87,6 +87,10 @@ static uint32_t radio_uart_air_ms(uint16_t n){return n;}
         preamble += '\n#define RFBOARD_LORA_SCHEDULER ' + str(int(lora)) + '\n'
         preamble += '#define RADIO_UART_TX_NORMAL_LOOKAHEAD_BYTES ' + str(lookahead) + 'U\n'
         preamble += '#define RADIO_AIR_BIT_RATE_BPS 64000U\n#define RADIO_AIR_SHARE_PERCENT 40U\n#define RADIO_AIR_FRAME_OVERHEAD_BYTES 16U\n'
+        if turn:
+            # Air turns: the turn helpers live outside the extracted queue code.
+            preamble += '#define RADIO_TURN_PERIOD_MS 200U\n'
+            globals_ += 'static uint32_t g_turn_left=691U;\nstatic uint32_t __attribute__((unused)) radio_uart_turn_bytes_left(uint32_t now){(void)now;return g_turn_left;}\n'
         with tempfile.TemporaryDirectory() as tmp:
             exe=str(Path(tmp)/'queue-test')
             subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-x','c','-','-o',exe],
@@ -445,3 +449,49 @@ int main(void) {
  assert(g_tx_count==9); /* Two owned UARTframes share one descriptor, not an extra admission slot. */
 }
 """)
+
+    def test_turn_bundles_one_contiguous_run_with_acks_first_and_within_the_turn(self):
+        """Air turns: RF must hand the modem one contiguous run per turn (a
+        refill pause over S6 split bursts and the station's gap write met the
+        late packets: RF GPS and board health were lost). About 512 B of
+        ordinary frames are encoded ahead and go in one DMA write; an ACK still
+        goes first, at the head of the next write, and no write runs past the
+        turn's burst."""
+        test = r'''
+static void frame(uint8_t *p,unsigned n,unsigned marker){
+ memset(p,0,n);p[0]=0xa5;p[1]=0x5a;p[2]=(n-4)&255;p[3]=(n-4)>>8;p[4]=0xca;p[5]=1;p[6]=1;p[7]=marker;
+}
+int main(void){
+ radio_uart_drop_stale_locked(0);
+ uint8_t tel[100],ack[20];radio_tx_item_t out;
+ frame(tel,sizeof(tel),9);frame(ack,sizeof(ack),0);
+ /* Five 100 B telemetry frames are owned ahead (not one 196 B lookahead). */
+ for(unsigned i=0;i<5;i++) assert(radio_uart_enqueue_sedsnet_parts(tel,sizeof(tel),NULL,0U,16)==HAL_OK);
+ /* An ACK queued behind them leaves first. */
+ assert(radio_uart_enqueue_sedsnet_parts(ack,sizeof(ack),NULL,0U,255)==HAL_OK);
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000));
+ assert(out.len==sizeof(ack));
+ /* The telemetry goes as one contiguous DMA write. */
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000));
+ assert(out.len==5*sizeof(tel));
+ /* A bundle in flight counts against the lookahead; an ACK that arrives
+  * meanwhile is admitted from the control reserve and heads the next write. */
+ g_tx_dma_item=out;g_tx_dma_busy=1;
+ assert(radio_uart_enqueue_sedsnet_parts(tel,sizeof(tel),NULL,0U,16)==HAL_BUSY);
+ assert(radio_uart_enqueue_sedsnet_parts(ack,sizeof(ack),NULL,0U,255)==HAL_OK);
+ g_tx_dma_busy=0;
+ for(unsigned i=0;i<3;i++) assert(radio_uart_enqueue_sedsnet_parts(tel,sizeof(tel),NULL,0U,16)==HAL_OK);
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000));
+ assert(out.len==sizeof(ack));
+ /* Near the end of the turn's burst a write carries only what still fits. */
+ g_turn_left=250U;
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000));
+ assert(out.len==2*sizeof(tel));
+ g_turn_left=691U;
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000));
+ assert(out.len==sizeof(tel));
+ return 0;
+}
+'''
+        self._run_case(test, lookahead=196, turn=True)
+

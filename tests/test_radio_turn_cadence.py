@@ -26,11 +26,16 @@ class TurnCadence(unittest.TestCase):
 #include <assert.h>
 #define RFBOARD_LORA_SCHEDULER 0
 #define RADIO_TURN_PERIOD_MS 200U
+#define RADIO_BAUD_RATE 115200U
 ''' + helpers + '''
 int main(void) {
+  /* A DMA write may carry at most what still fits in the turn's burst. */
+  assert(radio_uart_turn_bytes_left(1000U) == 691U);
   /* Idle: a frame may start at once and opens the turn. */
   assert(radio_uart_turn_remaining_ms(1000U) == 0U);
   radio_uart_turn_note_start(1000U);
+  assert(radio_uart_turn_bytes_left(1030U) == 345U);
+  assert(radio_uart_turn_bytes_left(1060U) == 0U);
   /* Inside the turn's 60 ms burst, more frames may start back to back. */
   assert(radio_uart_turn_remaining_ms(1010U) == 0U);
   radio_uart_turn_note_start(1010U);

@@ -347,6 +347,17 @@ static uint32_t radio_uart_turn_remaining_ms(uint32_t now)
   g_tx_turn_open = 0U;
   return 0U;
 }
+/* UART bytes that still fit in the open turn's burst (a whole burst when no
+ * turn is open: the next frame opens one). One DMA write must not run past
+ * RF's turn share into the station's gap. */
+static uint32_t radio_uart_turn_bytes_left(uint32_t now)
+{
+  const uint32_t burst_bytes = (uint32_t)RADIO_TURN_BURST_MS * RADIO_BAUD_RATE / 10000U;
+  if (!g_tx_turn_open) return burst_bytes;
+  const uint32_t elapsed = now - g_tx_turn_started_ms;
+  if (elapsed >= RADIO_TURN_BURST_MS) return 0U;
+  return (uint32_t)(RADIO_TURN_BURST_MS - elapsed) * RADIO_BAUD_RATE / 10000U;
+}
 #endif
 static uint32_t radio_uart_bundle_limit(void);
 static volatile uint32_t g_tx_packet_until_ms;
@@ -1038,7 +1049,13 @@ static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32
       /* Batch only already-owned adjacent bytes. Receipts may share a
        * physical burst, while each original UART frame still spends its
        * existing fairness turn. No waiting window, extra slots, or bytes. */
-      const uint32_t batch_limit = radio_uart_bundle_limit();
+      uint32_t batch_limit = radio_uart_bundle_limit();
+#if RADIO_TURN_PERIOD_MS > 0
+      /* A bundle never runs past RF's turn share; the selected frame itself
+       * always goes (it is within the turn's burst, or opens a turn). */
+      const uint32_t turn_left = radio_uart_turn_bytes_left(radio_now_ms());
+      if (turn_left < batch_limit) batch_limit = turn_left;
+#endif
       uint64_t ack_ids[4];
       const uint8_t ack_batch = out->priority >= RADIO_UART_PRIORITY_NETWORK_CONTROL &&
           radio_uart_ack_contracts(out->data, out->len, out->priority, ack_ids);
