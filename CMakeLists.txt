@@ -272,6 +272,9 @@ set(SEDSNET_ENV_RELIABLE_MAX_RETRIES "24" CACHE STRING
     "Allow bounded radio startup receipt latency" FORCE)
 set(SEDSNET_ENV_PAYLOAD_COMPRESS_THRESHOLD "30" CACHE STRING "" FORCE)
 set(SEDSNET_TARGET "thumbv7em-none-eabihf" CACHE STRING "" FORCE)
+# The firmware links only SEDSnet's C static archive. Also building the rlib
+# makes Cargo skip the release-embedded LTO, which costs 24-47 KB of flash.
+set(SEDSNET_CRATE_TYPE "staticlib" CACHE STRING "C-only embedded SDK artifact" FORCE)
 if(ENABLE_TELEMETRY)
     include(cmake/sedsnet_fetch.cmake)
 endif()
