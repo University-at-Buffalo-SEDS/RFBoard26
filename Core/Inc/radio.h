@@ -101,7 +101,7 @@ uint8_t radio_uart_take_watched_sent(const uint8_t **bytes, size_t *len, uint64_
 /* Subscribe a callback that is invoked from radio_uart_process_rx() in thread context. */
 HAL_StatusTypeDef radio_uart_subscribe_rx(radio_rx_cb_t cb, void *user);
 void radio_uart_process_rx(void);
-/* 1 while the radio side negotiated SEDSnet compact bundles (telemetry thread). */
+/* 1 once the radio side carries SEDSnet compact bundles (telemetry init). */
 void radio_uart_set_compact_bundle(uint8_t active);
 /* Startup modem check: hold frame TX/RX so the check owns the modem UART.
  * Returns 0 if a TX DMA is in flight. Read/write return < 0 unless held. */

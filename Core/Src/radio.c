@@ -1036,8 +1036,7 @@ static uint32_t __attribute__((unused)) radio_uart_bundle_limit(void)
 }
 #if defined(SEDS_ENABLE_COMPACT_BUNDLE) && SEDS_ENABLE_COMPACT_BUNDLE && !RFBOARD_LORA_SCHEDULER
 #define RADIO_COMPACT_BUNDLE 1
-/* Set by the telemetry thread while every live peer on the radio side accepts
- * SEDSnet compact bundles (negotiated in discovery); 0 keeps legacy frames. */
+/* Set once the telemetry router put the radio side on SEDSnet compact bundles. */
 static volatile uint8_t g_radio_compact_bundle;
 volatile uint32_t g_radio_compact_bundles;
 void radio_uart_set_compact_bundle(uint8_t active) { g_radio_compact_bundle = active ? 1U : 0U; }

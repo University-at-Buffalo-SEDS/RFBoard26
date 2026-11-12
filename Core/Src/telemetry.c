@@ -854,12 +854,6 @@ static SedsResult telemetry_poll_discovery_locked(void) {
     (void)av_bay_underglow_poll(g_router.r);
   }
   telemetry_update_network_health(g_router.r);
-#if defined(SEDS_ENABLE_COMPACT_BUNDLE) && SEDS_ENABLE_COMPACT_BUNDLE
-  if (g_radio_side_id >= 0) {
-    radio_uart_set_compact_bundle(
-        seds_router_side_compact_bundle_active(g_router.r, (uint32_t)g_radio_side_id) == 1);
-  }
-#endif
   return result;
 #endif
 }
@@ -1062,11 +1056,17 @@ static SedsResult init_telemetry_router_locked(void) {
     radio_uart_set_obsolete_check(telemetry_radio_frame_obsolete);
   }
 #if defined(SEDS_ENABLE_COMPACT_BUNDLE) && SEDS_ENABLE_COMPACT_BUNDLE
-  /* Offer compact bundles on the radio; used only once every live radio peer
-   * offers them too, so an older station keeps the legacy format. */
+  {
+    /* Same ordered table on every SEDS build (GS SEDS_NODE_TABLE); append only. */
+    static const char *const node_table[] = {"GS", "RRLS", "RF", "FC", "PB", "AB", "VB", "GB", "DAQ"};
+    (void)seds_set_node_table(node_table, sizeof node_table / sizeof node_table[0]);
+  }
+  /* The radio link carries SEDSnet compact bundles (whole stack, no fallback). */
   if (g_radio_side_id >= 0 &&
       seds_router_set_side_compact_bundle(r, (uint32_t)g_radio_side_id, true) != SEDS_OK) {
-    printf("Error: radio compact bundle offer\r\n");
+    printf("Error: radio compact bundle\r\n");
+  } else {
+    radio_uart_set_compact_bundle(1U);
   }
 #endif
   if (g_can_side_id < 0 || g_radio_side_id < 0) {
