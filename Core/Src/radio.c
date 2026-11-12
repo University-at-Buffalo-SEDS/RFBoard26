@@ -326,26 +326,55 @@ static volatile uint32_t g_tx_packet_started_ms;
  * the station 7.5 s late. A 60 ms burst is about 90 ms on air, which leaves
  * the station its 20 ms quiet gap and write well inside the 200 ms turn. */
 #define RADIO_TURN_BURST_MS ((RADIO_TURN_PERIOD_MS * 30U) / 100U)
+/* The burst closes once RF's UART has been idle this long inside it (half of
+ * S6): a frame that arrives later (FC/PB telemetry keeps arriving over CAN)
+ * would reach the modem as a separate air packet after the station began its
+ * gap write, and both were lost (fullnet: RF GPS and board health). Such a
+ * frame waits for the next turn; ABORT acks and other control frames may
+ * still start while the turn's burst lasts. */
+#define RADIO_TURN_IDLE_CLOSE_MS 5U
 static volatile uint32_t g_tx_turn_started_ms;
 static volatile uint8_t g_tx_turn_open;
+static volatile uint8_t g_tx_turn_writing, g_tx_turn_has_end;
+static volatile uint32_t g_tx_turn_last_end_ms;
 /* A frame starts on the UART: it opens a turn unless one is open. */
 static void radio_uart_turn_note_start(uint32_t now)
 {
   if (!g_tx_turn_open) {
     g_tx_turn_started_ms = now;
     g_tx_turn_open = 1U;
+    g_tx_turn_has_end = 0U;
   }
+  g_tx_turn_writing = 1U;
+}
+/* A write finished on the UART. */
+static void __attribute__((unused)) radio_uart_turn_note_end(uint32_t now)
+{
+  if (!g_tx_turn_open) return;
+  g_tx_turn_writing = 0U;
+  g_tx_turn_last_end_ms = now;
+  g_tx_turn_has_end = 1U;
 }
 /* Milliseconds before another frame may start: none inside the turn's
- * burst, then quiet until the turn's period has passed. */
-static uint32_t radio_uart_turn_remaining_ms(uint32_t now)
+ * burst (for an ordinary frame, only until the UART goes idle), then quiet
+ * until the turn's period has passed. */
+static uint32_t radio_uart_turn_remaining_for(uint32_t now, uint8_t critical)
 {
   if (!g_tx_turn_open) return 0U;
   const uint32_t elapsed = now - g_tx_turn_started_ms;
-  if (elapsed < RADIO_TURN_BURST_MS) return 0U;
+  if (elapsed < RADIO_TURN_BURST_MS) {
+    if (!critical && g_tx_turn_has_end && !g_tx_turn_writing &&
+        (uint32_t)(now - g_tx_turn_last_end_ms) >= RADIO_TURN_IDLE_CLOSE_MS)
+      return RADIO_TURN_PERIOD_MS - elapsed;
+    return 0U;
+  }
   if (elapsed < RADIO_TURN_PERIOD_MS) return RADIO_TURN_PERIOD_MS - elapsed;
   g_tx_turn_open = 0U;
   return 0U;
+}
+static uint32_t radio_uart_turn_remaining_ms(uint32_t now)
+{
+  return radio_uart_turn_remaining_for(now, 1U);
 }
 /* UART bytes that still fit in the open turn's burst (a whole burst when no
  * turn is open: the next frame opens one). One DMA write must not run past
@@ -1476,8 +1505,15 @@ static uint32_t radio_uart_quiet_remaining_ms(void)
 #if RADIO_TURN_PERIOD_MS > 0 && !RFBOARD_LORA_SCHEDULER
   /* The turn replaces burst/gap and per-frame airtime pacing: a turn's frames
    * must leave back to back (closer than S6) to share one air packet, and
-   * one burst of 30% of the period per period already bounds the rate. */
-  return radio_uart_turn_remaining_ms(now);
+   * one burst of 30% of the period per period already bounds the rate. A
+   * queued control frame (ACK, status) may still start in an idle-closed
+   * burst; ordinary frames wait for the next turn. */
+  uint8_t critical = 0U;
+  for (uint32_t i = 0U; i < g_tx_count && !critical; ++i) {
+    critical = radio_uart_independent_control(&g_tx_queue_bytes[g_tx_queue[i].offset],
+                                              g_tx_queue[i].len, g_tx_queue[i].priority);
+  }
+  return radio_uart_turn_remaining_for(now, critical);
 #endif
   if (g_tx_air_budget_active && (int32_t)(g_tx_quiet_until_ms - now) > 0) {
     remaining = g_tx_quiet_until_ms - now;
@@ -2445,6 +2481,9 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
   radio_uart_mark_tx_drained();
 #endif
   if (g_tx_dma_busy && preserves_rx) radio_uart_note_ack_completion();
+#if RADIO_TURN_PERIOD_MS > 0 && !RFBOARD_LORA_SCHEDULER
+  radio_uart_turn_note_end(radio_now_ms());
+#endif
   g_tx_dma_busy = 0U;
   g_tx_dma_preserves_rx = 0U;
   g_radio_tx_ok += uart_frames;

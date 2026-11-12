@@ -49,6 +49,20 @@ int main(void) {
   radio_uart_turn_note_start(1205U);
   assert(radio_uart_turn_remaining_ms(1240U) == 0U);
   assert(radio_uart_turn_remaining_ms(1270U) == 135U);
+  /* A write ended and the UART stayed idle for 5 ms: the burst closes for
+   * ordinary frames (they wait for the next turn), but a control frame (an
+   * ABORT ack, a status) may still start while the burst lasts. */
+  radio_uart_turn_remaining_ms(1500U);
+  radio_uart_turn_note_start(1500U);
+  radio_uart_turn_note_end(1520U);
+  assert(radio_uart_turn_remaining_for(1524U, 0U) == 0U);
+  assert(radio_uart_turn_remaining_for(1525U, 0U) == 175U);
+  assert(radio_uart_turn_remaining_for(1525U, 1U) == 0U);
+  radio_uart_turn_note_start(1530U);
+  assert(radio_uart_turn_remaining_for(1540U, 0U) == 0U);
+  radio_uart_turn_note_end(1545U);
+  assert(radio_uart_turn_remaining_for(1550U, 0U) == 150U);
+  assert(radio_uart_turn_remaining_for(1560U, 1U) == 140U);
   /* Wraparound of the millisecond clock. */
   radio_uart_turn_remaining_ms(0xFFFFFFF0U + 400U);
   radio_uart_turn_note_start(0xFFFFFFF0U);
@@ -70,7 +84,7 @@ int main(void) {
         self.assertIn('RECOVERY_PROFILE_TURN_CADENCE)) != 0U)', header, 'the reply builder accepts the flag')
         self.assertIn('flags |= RECOVERY_PROFILE_TURN_CADENCE;', source)
         quiet = block(source, 'static uint32_t radio_uart_quiet_remaining_ms(void)', '\n}\n')
-        self.assertIn('return radio_uart_turn_remaining_ms(now);', quiet,
+        self.assertIn('return radio_uart_turn_remaining_for(now, critical);', quiet,
                       'the turn replaces burst/gap and airtime pacing')
 
 
