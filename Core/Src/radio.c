@@ -896,9 +896,18 @@ static HAL_StatusTypeDef radio_uart_enqueue_sedsnet_parts(
 #if !RFBOARD_LORA_SCHEDULER
   if (!control) {
     uint32_t ordinary = 0U;
+#if RADIO_TURN_PERIOD_MS > 0
+    /* On air turns the write in flight (its own buffer, not queue storage)
+     * does not count: the next bundle is encoded while it drains, so the
+     * turn's burst reaches the modem without a refill pause over S6. Counted,
+     * every bundle was followed by a refill gap (fullnet: 176 mid-burst gaps
+     * of 30 ms or more, longer than the station's quiet time). */
+    if (0) {
+#else
     if (g_tx_dma_busy && !(g_tx_dma_item.priority >= RADIO_UART_PRIORITY_NETWORK_CONTROL &&
         radio_uart_independent_control(g_tx_dma_item.data, g_tx_dma_item.len,
                                        g_tx_dma_item.priority))) {
+#endif
       ordinary = g_tx_dma_item.len;
     }
     for (uint32_t i = 0U; i < g_tx_count; ++i) {

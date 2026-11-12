@@ -474,13 +474,12 @@ int main(void){
  /* The telemetry goes as one contiguous DMA write. */
  assert(radio_uart_dequeue_frame_with_budget(&out,2000));
  assert(out.len==5*sizeof(tel));
- /* A bundle in flight counts against the lookahead; an ACK that arrives
-  * meanwhile is admitted from the control reserve and heads the next write. */
+ /* While a bundle drains, the next one is encoded (no refill pause), and an
+  * ACK that arrives meanwhile heads the next write. */
  g_tx_dma_item=out;g_tx_dma_busy=1;
- assert(radio_uart_enqueue_sedsnet_parts(tel,sizeof(tel),NULL,0U,16)==HAL_BUSY);
+ for(unsigned i=0;i<3;i++) assert(radio_uart_enqueue_sedsnet_parts(tel,sizeof(tel),NULL,0U,16)==HAL_OK);
  assert(radio_uart_enqueue_sedsnet_parts(ack,sizeof(ack),NULL,0U,255)==HAL_OK);
  g_tx_dma_busy=0;
- for(unsigned i=0;i<3;i++) assert(radio_uart_enqueue_sedsnet_parts(tel,sizeof(tel),NULL,0U,16)==HAL_OK);
  assert(radio_uart_dequeue_frame_with_budget(&out,2000));
  assert(out.len==sizeof(ack));
  /* Near the end of the turn's burst a write carries only what still fits. */
