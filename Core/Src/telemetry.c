@@ -429,6 +429,11 @@ SedsResult tx_send(const uint8_t *bytes, size_t len, void *user) {
 }
 
 
+#if TELEMETRY_TIMESYNC_PROBE
+/* Simulator-only: (board_now_us, network us) as lo/hi words for memory probes. */
+volatile uint32_t g_ts_probe[4] __attribute__((used));
+#endif
+
 /* Router microseconds: board_now_us() in node_now_since_ms's epoch. */
 static uint64_t node_now_since_us(void) {
   return board_now_us() - g_router.start_time * 1000ULL;
@@ -753,6 +758,16 @@ static SedsResult telemetry_poll_timesync_locked(void) {
                                         telemetry_router_us(can_sent_us));
     }
   }
+#if TELEMETRY_TIMESYNC_PROBE
+  {
+    uint64_t net_us;
+    if (seds_router_get_network_time_us(g_router.r, &net_us) == SEDS_OK) {
+      const uint64_t mono_us = board_now_us();
+      g_ts_probe[0] = (uint32_t)mono_us; g_ts_probe[1] = (uint32_t)(mono_us >> 32U);
+      g_ts_probe[2] = (uint32_t)net_us; g_ts_probe[3] = (uint32_t)(net_us >> 32U);
+    }
+  }
+#endif
   const SedsResult result = seds_router_poll_timesync(g_router.r, &did_queue);
   if (did_queue) {
     g_telemetry_timesync_queued++;

@@ -120,6 +120,12 @@ foreach(RADIO_PROFILE_KEY RADIO_AIR_BIT_RATE_BPS RADIO_AIR_SHARE_PERCENT
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
         ${RADIO_PROFILE_KEY}=${${RADIO_PROFILE_KEY}})
 endforeach()
+# Simulator-only clock-error probe (never in release images): records a
+# (board microseconds, network microseconds) pair each telemetry loop.
+option(TELEMETRY_TIMESYNC_PROBE "Simulator-only time sync error probe" OFF)
+if(TELEMETRY_TIMESYNC_PROBE)
+    add_compile_definitions(TELEMETRY_TIMESYNC_PROBE=1)
+endif()
 option(SEDS_FIRMWARE_SIM_TEST
     "Seed deterministic external time for linked firmware qualification" OFF)
 if(SEDS_FIRMWARE_SIM_TEST)
