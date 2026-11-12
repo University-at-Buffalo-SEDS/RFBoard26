@@ -348,6 +348,7 @@ static uint32_t radio_uart_turn_remaining_ms(uint32_t now)
   return 0U;
 }
 #endif
+static uint32_t radio_uart_bundle_limit(void);
 static volatile uint32_t g_tx_packet_until_ms;
 static volatile uint8_t g_tx_packet_active;
 static volatile uint32_t g_tx_last_forced_boundary_ms;
@@ -895,8 +896,9 @@ static HAL_StatusTypeDef radio_uart_enqueue_sedsnet_parts(
               g_tx_queue[i].len, g_tx_queue[i].priority))) ordinary += g_tx_queue[i].len;
     }
     /* A larger owned frame can progress alone without enlarging storage. */
-    const uint32_t lookahead = len > RADIO_UART_TX_NORMAL_LOOKAHEAD_BYTES ?
-        len : RADIO_UART_TX_NORMAL_LOOKAHEAD_BYTES;
+    uint32_t lookahead = RADIO_UART_TX_NORMAL_LOOKAHEAD_BYTES;
+    if (radio_uart_bundle_limit() > lookahead) lookahead = radio_uart_bundle_limit();
+    if (len > lookahead) lookahead = len;
     if (ordinary + len > lookahead) {
       radio_uart_unlock_tx_queue();
       ++g_tx_busy;
@@ -955,6 +957,24 @@ static uint8_t radio_uart_ack_contracts (const uint8_t *data, uint16_t len,
                                         uint8_t priority, uint64_t ids[4]);
 #endif
 
+/* Ordinary frames the SDK may keep encoded ahead of the UART, and the most
+ * adjacent same-flow bytes one DMA write may carry. On the air turn cadence
+ * RF's burst must reach the modem as one contiguous UART run: refilled frame
+ * by frame from a 196 B lookahead, pauses over S6 (10 ms) split it into
+ * several air packets, and the station's gap write met the late ones (RF
+ * GPS and board health were lost that way). With about 512 B owned ahead the
+ * next frame is already encoded when a write ends. */
+#ifndef RADIO_TURN_BUNDLE_BYTES
+#define RADIO_TURN_BUNDLE_BYTES (512U + RADIO_UART_FRAME_HEADER_SIZE)
+#endif
+static uint32_t __attribute__((unused)) radio_uart_bundle_limit(void)
+{
+#if RADIO_TURN_PERIOD_MS > 0 && !RFBOARD_LORA_SCHEDULER
+  return RADIO_TURN_BUNDLE_BYTES;
+#else
+  return 192U + RADIO_UART_FRAME_HEADER_SIZE;
+#endif
+}
 static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32_t budget_ms) {
   uint8_t have = 0U;
   if (!out) return 0U;
@@ -1018,7 +1038,7 @@ static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32
       /* Batch only already-owned adjacent bytes. Receipts may share a
        * physical burst, while each original UART frame still spends its
        * existing fairness turn. No waiting window, extra slots, or bytes. */
-      const uint32_t batch_limit = 192U + RADIO_UART_FRAME_HEADER_SIZE;
+      const uint32_t batch_limit = radio_uart_bundle_limit();
       uint64_t ack_ids[4];
       const uint8_t ack_batch = out->priority >= RADIO_UART_PRIORITY_NETWORK_CONTROL &&
           radio_uart_ack_contracts(out->data, out->len, out->priority, ack_ids);
