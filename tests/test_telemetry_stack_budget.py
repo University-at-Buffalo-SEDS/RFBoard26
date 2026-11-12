@@ -80,6 +80,7 @@ void radio_uart_unlock_tx_queue(void);
 uint8_t radio_uart_independent_control(const uint8_t *data, uint16_t len, uint8_t priority);
 uint32_t launchcore_crc32(const void *data, size_t len);
 uint32_t radio_uart_owned_frame_count(void);
+uint32_t radio_uart_bundle_limit(void);
 uint32_t radio_now_ms(void);
 void radio_uart_note_queue_depth_locked(void);
 uint8_t radio_uart_tx_ready(void);
