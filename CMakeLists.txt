@@ -274,7 +274,8 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     RF_SEDSNET_QUEUE_BUDGET=${RF_SEDSNET_QUEUE_BUDGET}
     RF_SEDSNET_MAX_RECENT_RX_IDS=${SEDSNET_MAX_RECENT_RX_IDS}
     RF_SEDSNET_STARTING_ALLOCATION=${RF_SEDSNET_STARTING_ALLOCATION})
-set(TELEMETRY_TIMESYNC_MASTER_PRIO "1" CACHE STRING "Timesync source priority. Values < 0 make this board a consumer; values >= 0 make it a source with that priority." FORCE)
+# GS 50 and RRLS 60 lead network time; RF leads with GPS UTC only without them.
+set(TELEMETRY_TIMESYNC_MASTER_PRIO "70" CACHE STRING "Timesync source priority. Values < 0 make this board a consumer; values >= 0 make it a source with that priority." FORCE)
 set(TELEMETRY_TIMESYNC_SOURCE_TIMEOUT_MS "5000" CACHE STRING "Time sync source timeout in milliseconds." FORCE)
 set(TELEMETRY_TIMESYNC_ANNOUNCE_INTERVAL_MS "2000" CACHE STRING "Time sync announce interval in milliseconds." FORCE)
 set(TELEMETRY_TIMESYNC_REQUEST_INTERVAL_MS "2000" CACHE STRING "Time sync request interval in milliseconds." FORCE)

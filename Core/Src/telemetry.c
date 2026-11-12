@@ -302,6 +302,9 @@ static SedsResult telemetry_configure_timesync_locked(SedsRouter *router) {
   }
 #endif
 
+  /* Safety traffic outranks SEDSnet network control (time sync); data stays below. */
+  (void)seds_dtype_set_scheduling_class((uint32_t)SEDS_DT_ABORT, -1);
+  (void)seds_dtype_set_scheduling_class((uint32_t)SEDS_DT_FLIGHT_COMMAND, -1);
   result = seds_router_configure_timesync(
       router, true, telemetry_timesync_role(), telemetry_timesync_priority(),
       (uint64_t)TELEMETRY_TIMESYNC_SOURCE_TIMEOUT_MS,
@@ -350,6 +353,44 @@ uint64_t telemetry_unix_s(void) { return telemetry_unix_ms() / 1000ULL; }
 
 uint8_t telemetry_unix_is_valid(void) { return telemetry_unix_ms() != 0ULL ? 1U : 0U; }
 
+#ifndef TELEMETRY_GPS_UTC_LATENCY_MS
+/* NMEA RMC parse instant minus the fix epoch it reports, at its minimum
+ * (M9N output plus SPI polling); calibrate on the bench against NTP (the GS
+ * logs GPS minus NTP). No PPS pin is wired. */
+#define TELEMETRY_GPS_UTC_LATENCY_MS 40
+#endif
+#ifndef TELEMETRY_GPS_UTC_ERROR_MS
+#define TELEMETRY_GPS_UTC_ERROR_MS 60
+#endif
+
+/* Reports GPS UTC minus network time to RF's time source (the GS) in its
+ * time sync requests: the GS disciplines absolute station UTC to it. Parse
+ * latency only delays the stamp, so the largest of the last 16 fixes (4 s)
+ * is the least delayed; the modelled minimum latency is added back. */
+static void telemetry_report_gps_utc_locked(uint64_t gps_epoch_ms) {
+#ifdef TELEMETRY_ENABLED
+  static int64_t window[16];
+  static uint8_t count, head;
+  uint64_t net_ms = 0ULL;
+  if (g_router.r == NULL || gps_epoch_ms == 0ULL ||
+      seds_router_get_network_time_ms(g_router.r, &net_ms) != SEDS_OK) {
+    return;
+  }
+  window[head] = (int64_t)gps_epoch_ms - (int64_t)net_ms;
+  head = (uint8_t)((head + 1U) % 16U);
+  if (count < 16U) count++;
+  int64_t best = window[0];
+  for (uint8_t i = 1U; i < count; i++) {
+    if (window[i] > best) best = window[i];
+  }
+  (void)seds_router_set_utc_reference_offset(
+      g_router.r, true, (best + TELEMETRY_GPS_UTC_LATENCY_MS) * 1000LL,
+      (uint32_t)TELEMETRY_GPS_UTC_ERROR_MS * 1000U);
+#else
+  (void)gps_epoch_ms;
+#endif
+}
+
 static void telemetry_set_unix_time_ms_locked(uint64_t unix_ms) {
 #ifdef TELEMETRY_ENABLED
   const uint8_t was_source = telemetry_timesync_is_source();
@@ -357,6 +398,7 @@ static void telemetry_set_unix_time_ms_locked(uint64_t unix_ms) {
   g_local_unix_ms = unix_ms;
   g_local_unix_valid = (unix_ms != 0ULL) ? 1U : 0U;
   g_local_unix_set_ms = (uint32_t)tx_raw_now_ms_locked();
+  telemetry_report_gps_utc_locked(unix_ms);
 
 #ifdef TELEMETRY_ENABLED
   if (g_router.r != NULL) {
@@ -407,6 +449,12 @@ static SedsResult tx_send_with_priority(const uint8_t *bytes, size_t len,
   return telemetry_send_can_packet(bytes, len, priority);
 }
 
+/* A ThreadX tick captured in an interrupt, on the router's clock (us). */
+static uint64_t telemetry_router_us_from_tick(uint32_t tick) {
+  const uint64_t ms = ((uint64_t)tick * 1000ULL) / (uint64_t)TX_TIMER_TICKS_PER_SECOND;
+  return (ms - g_router.start_time) * 1000ULL;
+}
+
 static SedsResult radio_tx_send(const uint8_t *bytes, size_t len,
                                 uint8_t priority, void *user) {
   (void)user;
@@ -414,6 +462,11 @@ static SedsResult radio_tx_send(const uint8_t *bytes, size_t len,
 
   if (!bytes || len == 0U) {
     return SEDS_BAD_ARG;
+  }
+  /* SEDSnet network control (time sync) is priority 254: watch the frame so
+   * its exchange is stamped at UART TX-complete, not at queueing. */
+  if (priority == 254U) {
+    radio_uart_watch_frame(bytes, len);
   }
 
 #if SEDS_FIRMWARE_SIM_TEST
@@ -513,8 +566,10 @@ static void telemetry_radio_rx_locked(const uint8_t *data, size_t len, void *use
 #endif
 
   if (g_radio_side_id >= 0) {
-    (void)seds_router_receive_packed_from_side(
-        g_router.r, (uint32_t)g_radio_side_id, data, len);
+    /* Stamped with the UART RX event that completed the frame. */
+    (void)seds_router_receive_packed_from_side_at(
+        g_router.r, (uint32_t)g_radio_side_id, data, len,
+        telemetry_router_us_from_tick(radio_uart_last_rx_tick()));
   } else {
     (void)seds_router_receive_packed(g_router.r, data, len);
   }
@@ -662,6 +717,15 @@ static SedsResult telemetry_poll_timesync_locked(void) {
   bool did_queue = false;
   board_commissioning_service();
   (void)flight_state_cache_poll(g_router.r);
+  {
+    const uint8_t *sent;
+    size_t sent_len;
+    uint32_t sent_tick;
+    if (g_radio_side_id >= 0 && radio_uart_take_watched_sent(&sent, &sent_len, &sent_tick)) {
+      (void)seds_router_note_frame_sent(g_router.r, (uint32_t)g_radio_side_id, sent, sent_len,
+                                        telemetry_router_us_from_tick(sent_tick));
+    }
+  }
   const SedsResult result = seds_router_poll_timesync(g_router.r, &did_queue);
   if (did_queue) {
     g_telemetry_timesync_queued++;
@@ -932,6 +996,12 @@ static SedsResult init_telemetry_router_locked(void) {
   if (g_radio_side_id < 0) {
     printf("Error: failed to add radio side: %ld\r\n", (long)g_radio_side_id);
     g_radio_side_id = -1;
+  } else {
+    /* RFD time sync path: after the TX-complete and RX stamps each frame byte
+     * costs 64 kbit/s air (125 us) plus the receiving 115200 UART (86.8 us).
+     * The GS's responses carry an 8 B mesh wrapper its requests lack:
+     * +8 x 211.8 / 2 us of fixed asymmetry. */
+    (void)seds_router_set_side_timesync_path(r, (uint32_t)g_radio_side_id, 211800U, 847200);
   }
   if (g_can_side_id < 0 || g_radio_side_id < 0) {
     /* The failing side was printed above; only this path frees the router. */

@@ -61,6 +61,13 @@ void board_health_poll(SedsRouter *router)
   words[23] = failures;
   words[1] |= board_temperature_health_flags();
   if (!telemetry_router_enter()) { ++failures; return; }
+  /* Network time quality in word 6 bits 24..31 (SEDSnet health byte). */
+  {
+    SedsTimeSyncStatus ts;
+    if (seds_router_get_timesync_status(router, &ts) == SEDS_OK) {
+      words[6] |= (uint32_t)ts.health_byte << 24U;
+    }
+  }
   /* Static UInt32 schema + exact little-endian bytes: use the existing
    * bounded byte path without pulling every generic numeric converter in. */
   const SedsResult result = seds_router_log_bytes_ex(router, SEDS_DT_BOARD_HEALTH,
