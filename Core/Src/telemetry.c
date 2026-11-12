@@ -1,3 +1,5 @@
+#include "board_clock_us.h"
+#include "can_tx_queue.h"
 #include "board_commissioning.h"
 
 #ifdef TELEMETRY_ENABLED
@@ -210,6 +212,7 @@ static uint32_t telemetry_timesync_role(void) {
 }
 
 static SedsResult telemetry_send_can_packet(const uint8_t *bytes, size_t len, uint8_t priority) {
+  if (priority == 254U) can_tx_queue_watch_next();
   return can_bus_send_large(bytes, len, telemetry_flight_can_id(bytes, len, priority)) == HAL_OK
       ? SEDS_OK : SEDS_IO;
 }
@@ -353,20 +356,17 @@ uint64_t telemetry_unix_s(void) { return telemetry_unix_ms() / 1000ULL; }
 
 uint8_t telemetry_unix_is_valid(void) { return telemetry_unix_ms() != 0ULL ? 1U : 0U; }
 
-#ifndef TELEMETRY_GPS_UTC_LATENCY_MS
-/* NMEA RMC parse instant minus the fix epoch it reports, at its minimum
- * (M9N output plus SPI polling); calibrate on the bench against NTP (the GS
- * logs GPS minus NTP). No PPS pin is wired. */
-#define TELEMETRY_GPS_UTC_LATENCY_MS 40
-#endif
 #ifndef TELEMETRY_GPS_UTC_ERROR_MS
-#define TELEMETRY_GPS_UTC_ERROR_MS 60
+/* NMEA parse jitter after the max-of-16 filter (no PPS on this board). */
+#define TELEMETRY_GPS_UTC_ERROR_MS 20
 #endif
 
 /* Reports GPS UTC minus network time to RF's time source (the GS) in its
- * time sync requests: the GS disciplines absolute station UTC to it. Parse
+ * time sync requests. The NMEA reporting delay is NOT removed here: the GS
+ * learns it against NTP and subtracts it (it depends on the receiver's
+ * output and on this parser, and must be measured, not assumed). Parse
  * latency only delays the stamp, so the largest of the last 16 fixes (4 s)
- * is the least delayed; the modelled minimum latency is added back. */
+ * is the least delayed. */
 static void telemetry_report_gps_utc_locked(uint64_t gps_epoch_ms) {
 #ifdef TELEMETRY_ENABLED
   static int64_t window[16];
@@ -384,7 +384,7 @@ static void telemetry_report_gps_utc_locked(uint64_t gps_epoch_ms) {
     if (window[i] > best) best = window[i];
   }
   (void)seds_router_set_utc_reference_offset(
-      g_router.r, true, (best + TELEMETRY_GPS_UTC_LATENCY_MS) * 1000LL,
+      g_router.r, true, best * 1000LL,
       (uint32_t)TELEMETRY_GPS_UTC_ERROR_MS * 1000U);
 #else
   (void)gps_epoch_ms;
@@ -429,6 +429,16 @@ SedsResult tx_send(const uint8_t *bytes, size_t len, void *user) {
 }
 
 
+/* Router microseconds: board_now_us() in node_now_since_ms's epoch. */
+static uint64_t node_now_since_us(void) {
+  return board_now_us() - g_router.start_time * 1000ULL;
+}
+
+/* A board_now_us() stamp on the router clock (us). */
+static uint64_t telemetry_router_us(uint64_t board_us) {
+  return board_us - g_router.start_time * 1000ULL;
+}
+
 static uint64_t node_now_since_ms(void *user) {
   (void)user;
   const RouterState s = g_router;
@@ -456,11 +466,6 @@ static uint8_t telemetry_radio_frame_obsolete(const uint8_t *frame, size_t len) 
              ? 1U : 0U;
 }
 
-/* A ThreadX tick captured in an interrupt, on the router's clock (us). */
-static uint64_t telemetry_router_us_from_tick(uint32_t tick) {
-  const uint64_t ms = ((uint64_t)tick * 1000ULL) / (uint64_t)TX_TIMER_TICKS_PER_SECOND;
-  return (ms - g_router.start_time) * 1000ULL;
-}
 
 static SedsResult radio_tx_send(const uint8_t *bytes, size_t len,
                                 uint8_t priority, void *user) {
@@ -521,8 +526,10 @@ static void telemetry_can_rx_locked(const uint8_t *data, size_t len, void *user)
   }
 
   if (g_can_side_id >= 0) {
-    (void)seds_router_receive_packed_from_side(
-        g_router.r, (uint32_t)g_can_side_id, data, len);
+    (void)(can_bus_current_rx_us() != 0U
+        ? seds_router_receive_packed_from_side_at(g_router.r, (uint32_t)g_can_side_id, data, len,
+                                                  telemetry_router_us(can_bus_current_rx_us()))
+        : seds_router_receive_packed_from_side(g_router.r, (uint32_t)g_can_side_id, data, len));
   } else {
     (void)seds_router_receive_packed(g_router.r, data, len);
   }
@@ -576,7 +583,7 @@ static void telemetry_radio_rx_locked(const uint8_t *data, size_t len, void *use
     /* Stamped with the UART RX event that completed the frame. */
     (void)seds_router_receive_packed_from_side_at(
         g_router.r, (uint32_t)g_radio_side_id, data, len,
-        telemetry_router_us_from_tick(radio_uart_last_rx_tick()));
+        telemetry_router_us(radio_uart_last_rx_us()));
   } else {
     (void)seds_router_receive_packed(g_router.r, data, len);
   }
@@ -614,8 +621,10 @@ static void rx_asynchronous_locked(const uint8_t *bytes, size_t len) {
   }
 
   if (g_can_side_id >= 0) {
-    (void)seds_router_receive_packed_from_side(
-        g_router.r, (uint32_t)g_can_side_id, bytes, len);
+    (void)(can_bus_current_rx_us() != 0U
+        ? seds_router_receive_packed_from_side_at(g_router.r, (uint32_t)g_can_side_id, bytes, len,
+                                                  telemetry_router_us(can_bus_current_rx_us()))
+        : seds_router_receive_packed_from_side(g_router.r, (uint32_t)g_can_side_id, bytes, len));
   } else {
     (void)seds_router_receive_packed(g_router.r, bytes, len);
   }
@@ -648,8 +657,10 @@ static UNUSED_FUNCTION void rx_synchronous_locked(const uint8_t *bytes, size_t l
   }
 
   if (g_can_side_id >= 0) {
-    (void)seds_router_receive_packed_from_side(g_router.r, (uint32_t)g_can_side_id, bytes,
-                                                   len);
+    (void)(can_bus_current_rx_us() != 0U
+        ? seds_router_receive_packed_from_side_at(g_router.r, (uint32_t)g_can_side_id, bytes, len,
+                                                  telemetry_router_us(can_bus_current_rx_us()))
+        : seds_router_receive_packed_from_side(g_router.r, (uint32_t)g_can_side_id, bytes, len));
   } else {
     (void)seds_router_receive_packed(g_router.r, bytes, len);
   }
@@ -727,10 +738,19 @@ static SedsResult telemetry_poll_timesync_locked(void) {
   {
     const uint8_t *sent;
     size_t sent_len;
-    uint32_t sent_tick;
-    if (g_radio_side_id >= 0 && radio_uart_take_watched_sent(&sent, &sent_len, &sent_tick)) {
+    uint64_t sent_us;
+    if (g_radio_side_id >= 0 && radio_uart_take_watched_sent(&sent, &sent_len, &sent_us)) {
       (void)seds_router_note_frame_sent(g_router.r, (uint32_t)g_radio_side_id, sent, sent_len,
-                                        telemetry_router_us_from_tick(sent_tick));
+                                        telemetry_router_us(sent_us));
+    }
+  }
+  {
+    const uint8_t *can_sent;
+    size_t can_sent_len;
+    uint64_t can_sent_us;
+    if (g_can_side_id >= 0 && can_tx_queue_take_watched_sent(&can_sent, &can_sent_len, &can_sent_us)) {
+      (void)seds_router_note_frame_sent(g_router.r, (uint32_t)g_can_side_id, can_sent, can_sent_len,
+                                        telemetry_router_us(can_sent_us));
     }
   }
   const SedsResult result = seds_router_poll_timesync(g_router.r, &did_queue);
@@ -964,6 +984,8 @@ static SedsResult init_telemetry_router_locked(void) {
 
   r = seds_router_new_with_memory(node_now_since_ms, NULL, locals, sizeof(locals)/sizeof(locals[0]),
                                   SEDS_ROUTER_E2E_DISABLED, 0U, &memory);
+
+  seds_set_clock_us(node_now_since_us);
   if (!r) {
     printf("Error: failed to create router\r\n");
     g_router.r = NULL;

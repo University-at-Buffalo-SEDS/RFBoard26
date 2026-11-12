@@ -11,3 +11,11 @@ HAL_StatusTypeDef can_tx_queue_submit(const uint8_t *data, size_t len, uint32_t 
 void can_tx_queue_service(void);
 void can_tx_queue_pump(void);
 void can_tx_queue_reset(void);
+
+/* Time sync transmit stamps: watch the next submitted packet; the FDCAN TX
+ * buffer complete interrupt stamps its last fragment (board_now_us). */
+void can_tx_queue_watch_next(void);
+void can_tx_queue_note_complete(uint32_t buffers);
+uint8_t can_tx_queue_take_watched_sent(const uint8_t **bytes, size_t *len, uint64_t *sent_us);
+uint32_t can_bus_latest_tx_buffer(void);
+uint64_t can_bus_current_rx_us(void);

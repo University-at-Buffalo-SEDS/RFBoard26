@@ -86,9 +86,9 @@ radio_uart_stats_t radio_uart_stats_snapshot(void);
 uint32_t radio_uart_process_tx(void);
 uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms);
 uint8_t radio_uart_current_rx_is_command_frame(void);
-/* Time sync stamps (ThreadX ticks): the last UART RX event, and the TX-complete
+/* Time sync stamps (board_now_us): the last UART RX event, and the TX-complete
  * of a watched frame (radio_uart_watch_frame) once its DMA finished. */
-uint32_t radio_uart_last_rx_tick(void);
+uint64_t radio_uart_last_rx_us(void);
 /* Drop queued ordinary frames the check reports obsolete (relayed reliable
  * copies every destination already acknowledged). Thread context only;
  * returns the number dropped. */
@@ -96,7 +96,7 @@ void radio_uart_set_obsolete_check(radio_frame_obsolete_cb_t cb);
 uint32_t radio_uart_drop_obsolete(void);
 void radio_uart_watch_frame(const uint8_t *bytes, size_t len);
 /* Returns 1 and the watched frame with its TX-complete tick once, else 0. */
-uint8_t radio_uart_take_watched_sent(const uint8_t **bytes, size_t *len, uint32_t *tick);
+uint8_t radio_uart_take_watched_sent(const uint8_t **bytes, size_t *len, uint64_t *sent_us);
 
 /* Subscribe a callback that is invoked from radio_uart_process_rx() in thread context. */
 HAL_StatusTypeDef radio_uart_subscribe_rx(radio_rx_cb_t cb, void *user);

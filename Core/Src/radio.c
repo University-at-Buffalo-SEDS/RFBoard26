@@ -7,6 +7,7 @@
 #include "sedsnet_config.h"
 #include "tx_api.h"
 #include <string.h>
+#include "board_clock_us.h"
 #include <stdint.h>
 #include <stdio.h>
 
@@ -231,13 +232,13 @@ static volatile uint32_t g_rx_sync_loss = 0;
 static volatile uint32_t g_rx_bad_len = 0;
 static volatile uint32_t g_rx_crc_errors = 0;
 static volatile uint32_t g_rx_irq_events = 0;
-static volatile uint32_t g_rx_event_tick = 0;
+static volatile uint64_t g_rx_event_us = 0;
 /* One watched time sync frame: 1 queued, 2 in the active DMA, 3 sent. */
-#define RADIO_TS_WATCH_MAX 96U
+#define RADIO_TS_WATCH_MAX 72U
 static struct {
   volatile uint8_t state;
   uint8_t len;
-  volatile uint32_t tick;
+  volatile uint64_t us;
   uint8_t bytes[RADIO_TS_WATCH_MAX];
 } g_ts_watch;
 static volatile uint32_t g_rx_errors = 0;
@@ -2441,7 +2442,7 @@ void radio_uart_process_rx(void)
   Own the HAL callback here.
   IMPORTANT: ISR does NOT call subscribers anymore.
 */
-uint32_t radio_uart_last_rx_tick(void) { return g_rx_event_tick; }
+uint64_t radio_uart_last_rx_us(void) { return g_rx_event_us; }
 
 static radio_frame_obsolete_cb_t g_obsolete_check;
 volatile uint32_t g_radio_tx_obsolete_drops __attribute__((used)) = 0U;
@@ -2490,11 +2491,11 @@ void radio_uart_watch_frame(const uint8_t *bytes, size_t len) {
   g_ts_watch.state = 1U;
 }
 
-uint8_t radio_uart_take_watched_sent(const uint8_t **bytes, size_t *len, uint32_t *tick) {
+uint8_t radio_uart_take_watched_sent(const uint8_t **bytes, size_t *len, uint64_t *sent_us) {
   if (g_ts_watch.state != 3U) return 0U;
   *bytes = g_ts_watch.bytes;
   *len = g_ts_watch.len;
-  *tick = g_ts_watch.tick;
+  *sent_us = g_ts_watch.us;
   g_ts_watch.state = 0U;
   return 1U;
 }
@@ -2503,7 +2504,7 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
   if (!g_huart) return;
   if (huart->Instance != g_huart->Instance) return;
   g_rx_irq_events++;
-  g_rx_event_tick = (uint32_t)tx_time_get();
+  g_rx_event_us = board_now_us();
 
   if (Size > 0) {
     g_last_rx_len = Size;
@@ -2561,7 +2562,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
   radio_uart_turn_note_end(radio_now_ms());
 #endif
   if (g_ts_watch.state == 2U) {
-    g_ts_watch.tick = (uint32_t)tx_time_get();
+    g_ts_watch.us = board_now_us();
     g_ts_watch.state = 3U;
   }
   g_tx_dma_busy = 0U;

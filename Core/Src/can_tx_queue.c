@@ -1,6 +1,7 @@
 #include "can_tx_queue.h"
 #include "main.h"
 #include <string.h>
+#include "board_clock_us.h"
 
 #ifndef CAN_TX_QUEUE_BUDGET
 #define CAN_TX_QUEUE_BUDGET 6144U
@@ -20,9 +21,34 @@ typedef struct can_tx_packet {
     uint32_t queued_ms;
     uint16_t id, len, offset;
     uint8_t seq;
+    uint8_t watched;
     uint8_t data[];
 } can_tx_packet;
 static can_tx_packet *head, *tail, *retired;
+/* One watched time sync packet: 1 next submit is watched, 2 queued, 3 last
+ * fragment in hardware buffer `watch_buf`, 4 sent at `watch_us`. */
+#define CAN_TX_WATCH_MAX 72U
+static volatile uint8_t watch_state;
+static uint8_t watch_len;
+static uint32_t watch_buf;
+static uint64_t watch_us;
+static uint8_t watch_bytes[CAN_TX_WATCH_MAX];
+
+void can_tx_queue_watch_next(void) { if (watch_state != 2U && watch_state != 3U) watch_state = 1U; }
+
+void can_tx_queue_note_complete(uint32_t buffers) {
+    if (watch_state == 3U && (buffers & watch_buf) != 0U) {
+        watch_us = board_now_us();
+        watch_state = 4U;
+    }
+}
+
+uint8_t can_tx_queue_take_watched_sent(const uint8_t **bytes, size_t *len, uint64_t *sent_us) {
+    if (watch_state != 4U) return 0U;
+    *bytes = watch_bytes; *len = watch_len; *sent_us = watch_us;
+    watch_state = 0U;
+    return 1U;
+}
 static uint8_t next_seq;
 volatile uint32_t g_can_tx_queue_bytes;
 volatile uint32_t g_can_tx_pending;
@@ -98,6 +124,10 @@ void can_tx_queue_pump(void) {
         if (can_bus_send_bytes(frame, used, head->id) != HAL_OK) break;
         head->offset += take;
         if (head->offset == head->len) {
+            if (head->watched && watch_state == 2U) {
+                watch_buf = can_bus_latest_tx_buffer();
+                watch_state = 3U;
+            }
             ++g_can_tx_submitted;
             retire_head();
         }
@@ -131,6 +161,7 @@ HAL_StatusTypeDef can_tx_queue_submit(const uint8_t *data, size_t len, uint32_t 
     packet->id = (uint16_t)(id & 0x7ffU);
     packet->len = (uint16_t)len;
     packet->offset = 0;
+    packet->watched = 0U;
     memcpy(packet->data, data, len);
     saved = lock();
     /* Another foreground sender may have filled the queue during allocation. */
@@ -142,6 +173,12 @@ HAL_StatusTypeDef can_tx_queue_submit(const uint8_t *data, size_t len, uint32_t 
         return HAL_BUSY;
     }
     packet->seq = next_seq++;
+    if (watch_state == 1U && len <= CAN_TX_WATCH_MAX) {
+        memcpy(watch_bytes, data, len);
+        watch_len = (uint8_t)len;
+        packet->watched = 1U;
+        watch_state = 2U;
+    }
     if (id < 0x80U) {
         can_tx_packet **at = &head;
         while (*at && (*at)->id < 0x80U) at = &(*at)->next;

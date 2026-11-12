@@ -30,6 +30,7 @@
 //  ensure the slot is fully written before publishing `head` (release), and
 //  ensure the consumer sees the slot contents after observing `head` (acquire).
 
+#include "board_clock_us.h"
 #include "can_bus.h"
 #include "can_tx_queue.h"
 #include <stdint.h>
@@ -306,6 +307,14 @@ failed:
   return HAL_ERROR;
 }
 
+/* Receive time of the frame being delivered (0 outside delivery). */
+static uint64_t g_can_rx_us;
+uint64_t can_bus_current_rx_us(void) { return g_can_rx_us; }
+
+uint32_t can_bus_latest_tx_buffer(void) {
+  return g_hfdcan ? HAL_FDCAN_GetLatestTxFifoQRequestBuffer(g_hfdcan) : 0U;
+}
+
 static inline void can_bus_notify_rx(const uint8_t *data, size_t len)
 {
   for (unsigned i = 0; i < CAN_BUS_MAX_SUBSCRIBERS; i++)
@@ -354,8 +363,19 @@ typedef struct
 {
   uint32_t std_id; // 11-bit ID in lower bits (we only handle standard here)
   uint8_t len;     // payload bytes (0..64)
+  uint8_t ts[3];   // receive ISR time, low 24 bits of board_now_us() (struct padding)
   uint8_t data[64];
 } can_bus_rx_frame_t;
+
+/* Full board_now_us() of a ring frame from its 24-bit stamp (frames are
+ * delivered within 16.7 s of receipt). */
+static uint64_t can_bus_frame_rx_us(const can_bus_rx_frame_t *f) {
+  const uint64_t now = board_now_us();
+  const uint32_t ts = (uint32_t)f->ts[0] | ((uint32_t)f->ts[1] << 8) | ((uint32_t)f->ts[2] << 16);
+  const uint32_t age = ((uint32_t)now - ts) & 0xFFFFFFU;
+  return now - age;
+}
+
 
 static volatile uint16_t g_rx_head = 0;
 static volatile uint16_t g_rx_tail = 0;
@@ -451,6 +471,11 @@ static inline void rb_push_drop_oldest(uint32_t std_id, const uint8_t *data, uin
 
   g_rx_ring[h].std_id = std_id;
   g_rx_ring[h].len = len;
+  {
+    const uint32_t us = (uint32_t)board_now_us();
+    g_rx_ring[h].ts[0] = (uint8_t)us; g_rx_ring[h].ts[1] = (uint8_t)(us >> 8);
+    g_rx_ring[h].ts[2] = (uint8_t)(us >> 16);
+  }
   memcpy(g_rx_ring[h].data, data, len);
 
   __DMB(); // publish slot before updating head (release)
@@ -733,7 +758,9 @@ static void handle_rx_frame(const can_bus_rx_frame_t *f, uint32_t now_ms)
       {
         CAN_BUS_DBG("CAN REASM DONE: id=0x%03lx len=%u\r\n",
                     (unsigned long)f->std_id, (unsigned)s->total_len);
+        g_can_rx_us = can_bus_frame_rx_us(f);
         can_bus_notify_rx(s->buf, s->total_len);
+        g_can_rx_us = 0U;
         reasm_reset(s);
       }
 
@@ -743,7 +770,9 @@ static void handle_rx_frame(const can_bus_rx_frame_t *f, uint32_t now_ms)
 
   // Not a fragment frame: deliver raw CAN payload
   CAN_BUS_DBG("CAN RX: id=0x%03lx len=%u\r\n", (unsigned long)f->std_id, (unsigned)f->len);
+  g_can_rx_us = can_bus_frame_rx_us(f);
   can_bus_notify_rx(f->data, f->len);
+  g_can_rx_us = 0U;
 }
 
 // =========================
@@ -982,6 +1011,7 @@ void HAL_FDCAN_TxFifoEmptyCallback(FDCAN_HandleTypeDef *hfdcan) {
 
 void HAL_FDCAN_TxBufferCompleteCallback(FDCAN_HandleTypeDef *hfdcan,
                                       uint32_t buffers) {
+  if (hfdcan == g_hfdcan) can_tx_queue_note_complete(buffers);
   if (buffers != 0U && hfdcan == g_hfdcan && !g_can_recovering)
     can_tx_queue_pump();
 }
