@@ -30,6 +30,8 @@ option(ENABLE_TELEMETRY "Enable the telemetry subsystem" ON)
 option(RFBOARD_LORA_SCHEDULER "Enable legacy LoRa airtime windows and AUX gating (off for RFD)" OFF)
 # This board selects the reviewed RFD egress policy; the generic SDK remains opt-in.
 option(SEDSNET_LATEST_VALUE_EGRESS "Coalesce pending RFD telemetry before encoding" ON)
+# Negotiated SEDSnet compact bundles on the RFD link (needs SEDSnet with compact-bundle).
+option(SEDSNET_COMPACT_BUNDLE "Pack each ordinary radio batch into one SEDSnet compact bundle" ON)
 if(RFBOARD_LORA_SCHEDULER)
     set(RADIO_AIR_BIT_RATE_DEFAULT "64000")
     set(RADIO_AIR_SHARE_DEFAULT "40")

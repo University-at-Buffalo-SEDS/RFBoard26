@@ -854,6 +854,12 @@ static SedsResult telemetry_poll_discovery_locked(void) {
     (void)av_bay_underglow_poll(g_router.r);
   }
   telemetry_update_network_health(g_router.r);
+#if defined(SEDS_ENABLE_COMPACT_BUNDLE) && SEDS_ENABLE_COMPACT_BUNDLE
+  if (g_radio_side_id >= 0) {
+    radio_uart_set_compact_bundle(
+        seds_router_side_compact_bundle_active(g_router.r, (uint32_t)g_radio_side_id) == 1);
+  }
+#endif
   return result;
 #endif
 }
@@ -1055,6 +1061,14 @@ static SedsResult init_telemetry_router_locked(void) {
     (void)seds_router_set_side_timesync_path(r, (uint32_t)g_radio_side_id, 211800U, 847200);
     radio_uart_set_obsolete_check(telemetry_radio_frame_obsolete);
   }
+#if defined(SEDS_ENABLE_COMPACT_BUNDLE) && SEDS_ENABLE_COMPACT_BUNDLE
+  /* Offer compact bundles on the radio; used only once every live radio peer
+   * offers them too, so an older station keeps the legacy format. */
+  if (g_radio_side_id >= 0 &&
+      seds_router_set_side_compact_bundle(r, (uint32_t)g_radio_side_id, true) != SEDS_OK) {
+    printf("Error: radio compact bundle offer\r\n");
+  }
+#endif
   if (g_can_side_id < 0 || g_radio_side_id < 0) {
     /* The failing side was printed above; only this path frees the router. */
     seds_router_free(r);

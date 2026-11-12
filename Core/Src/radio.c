@@ -1034,6 +1034,52 @@ static uint32_t __attribute__((unused)) radio_uart_bundle_limit(void)
   return 192U + RADIO_UART_FRAME_HEADER_SIZE;
 #endif
 }
+#if defined(SEDS_ENABLE_COMPACT_BUNDLE) && SEDS_ENABLE_COMPACT_BUNDLE && !RFBOARD_LORA_SCHEDULER
+#define RADIO_COMPACT_BUNDLE 1
+/* Set by the telemetry thread while every live peer on the radio side accepts
+ * SEDSnet compact bundles (negotiated in discovery); 0 keeps legacy frames. */
+static volatile uint8_t g_radio_compact_bundle;
+volatile uint32_t g_radio_compact_bundles;
+void radio_uart_set_compact_bundle(uint8_t active) { g_radio_compact_bundle = active ? 1U : 0U; }
+/* An ordinary batch (adjacent queued UART frames, already selected in queue
+ * order) leaves as one UART frame holding one compact bundle: one 4 B UART
+ * header, one CRC32, and per-record header fields relative to the previous
+ * record. Any frame that cannot join (side-wrapped, sealed, damaged) leaves the
+ * batch exactly as it was. */
+static void radio_uart_pack_compact_bundle(radio_tx_item_t *out)
+{
+  uint16_t offsets[RADIO_UART_TX_QUEUE_SLOTS];
+  uint16_t lengths[RADIO_UART_TX_QUEUE_SLOTS];
+  size_t n = 0U;
+  uint32_t at = 0U;
+  if (!g_radio_compact_bundle || out->uart_frames < 2U) return;
+  while (at < out->len) {
+    if (n == RADIO_UART_TX_QUEUE_SLOTS || at + RADIO_UART_FRAME_HEADER_SIZE > out->len ||
+        out->data[at] != RADIO_UART_FRAME_SYNC_0 || out->data[at + 1U] != RADIO_UART_FRAME_SYNC_1) return;
+    const uint32_t len = (uint32_t)out->data[at + 2U] | ((uint32_t)out->data[at + 3U] << 8U);
+    if (len == 0U || at + RADIO_UART_FRAME_HEADER_SIZE + len > out->len) return;
+    offsets[n] = (uint16_t)(at + RADIO_UART_FRAME_HEADER_SIZE);
+    lengths[n] = (uint16_t)len;
+    if (seds_compact_bundle_frame_ok(&out->data[offsets[n]], len) != 1) return;
+    n++;
+    at += RADIO_UART_FRAME_HEADER_SIZE + len;
+  }
+  if (n < 2U) return;
+  const int32_t packed = seds_compact_bundle_pack(out->data, offsets, lengths, n,
+      &out->data[RADIO_UART_FRAME_HEADER_SIZE], sizeof(out->data) - RADIO_UART_FRAME_HEADER_SIZE);
+  if (packed <= 0) return;
+  out->data[0] = RADIO_UART_FRAME_SYNC_0;
+  out->data[1] = RADIO_UART_FRAME_SYNC_1;
+  out->data[2] = (uint8_t)((uint32_t)packed & 0xFFU);
+  out->data[3] = (uint8_t)((uint32_t)packed >> 8U);
+  out->len = (uint16_t)((uint32_t)packed + RADIO_UART_FRAME_HEADER_SIZE);
+  g_radio_compact_bundles++;
+}
+#else
+#define RADIO_COMPACT_BUNDLE 0
+static const uint8_t g_radio_compact_bundle = 0U;
+void radio_uart_set_compact_bundle(uint8_t active) { (void)active; }
+#endif
 static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32_t budget_ms) {
   uint8_t have = 0U;
   if (!out) return 0U;
@@ -1115,7 +1161,11 @@ static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32
           const radio_tx_queue_item_t *next = &g_tx_queue[selected];
           const uint8_t next_frames = next->uart_frames ? next->uart_frames : 1U;
           const uint32_t combined = (uint32_t)out->len + next->len;
-          if (next->priority != out->priority || next->flow_id != out->flow_id ||
+          /* Bundled records are self-contained, so one bundle may carry
+           * adjacent frames of several flows of the same priority. */
+          if (next->priority != out->priority ||
+              (next->flow_id != out->flow_id && !(RADIO_COMPACT_BUNDLE && ordinary_batch &&
+                                                  g_radio_compact_bundle)) ||
               next->control_class != out->control_class ||
               next->is_heartbeat != out->is_heartbeat ||
               combined > batch_limit || combined > sizeof(out->data) ||
@@ -1142,6 +1192,10 @@ static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32
       }
       /* A requeued batch loses its offsets and reports as its oldest frame. */
       if (ack_batch) g_tx_dma_ack_frames = out->uart_frames;
+#if RADIO_COMPACT_BUNDLE
+      /* Receipt batches keep their per-frame DMA receipt accounting. */
+      if (ordinary_batch && !ack_batch) radio_uart_pack_compact_bundle(out);
+#endif
 #endif
       g_tx_last_flow_id = out->flow_id;
       have = 1U;
