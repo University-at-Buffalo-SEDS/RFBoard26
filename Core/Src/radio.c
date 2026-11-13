@@ -1108,7 +1108,7 @@ static void radio_uart_pack_compact_bundle(radio_tx_item_t *out)
 }
 #else
 #define RADIO_COMPACT_BUNDLE 0
-static const uint8_t g_radio_compact_bundle = 0U;
+static const uint8_t g_radio_compact_bundle __attribute__((unused)) = 0U;
 void radio_uart_set_compact_bundle(uint8_t active) { (void)active; }
 #endif
 static uint8_t radio_uart_dequeue_frame_with_budget(radio_tx_item_t *out, uint32_t budget_ms) {
