@@ -233,6 +233,37 @@ static volatile uint32_t g_rx_bad_len = 0;
 static volatile uint32_t g_rx_crc_errors = 0;
 static volatile uint32_t g_rx_irq_events = 0;
 static volatile uint64_t g_rx_event_us = 0;
+/* Recent RX events: received byte total and instant, so a frame is stamped
+ * at its own last byte (the station writes several frames at once and the
+ * idle event comes after all of them). */
+#define RADIO_RX_EVENTS 8U
+static struct { uint32_t bytes; uint64_t us; } g_rx_events[RADIO_RX_EVENTS];
+static uint8_t g_rx_event_head;
+/* Byte total (from the ring) at the end of the frame being delivered. */
+static uint32_t g_rx_appended_bytes;
+static uint32_t g_rx_frame_end_bytes;
+static void radio_rx_note_event(uint32_t bytes_total, uint64_t us)
+{
+  g_rx_events[g_rx_event_head].bytes = bytes_total;
+  g_rx_events[g_rx_event_head].us = us;
+  g_rx_event_head = (uint8_t)((g_rx_event_head + 1U) % RADIO_RX_EVENTS);
+}
+/* The frame ending at byte total `frame_end` arrived at the first recorded
+ * event covering it, less the bytes received after it (10 bit times each). */
+static uint64_t radio_rx_frame_us(uint32_t frame_end, uint32_t baud)
+{
+  uint8_t best = RADIO_RX_EVENTS;
+  uint32_t best_after = 0U;
+  for (uint8_t i = 0U; i < RADIO_RX_EVENTS; ++i) {
+    if (g_rx_events[i].us == 0ULL) continue;
+    const uint32_t after = g_rx_events[i].bytes - frame_end;
+    if ((int32_t)after < 0) continue;
+    if (best == RADIO_RX_EVENTS || after < best_after) { best = i; best_after = after; }
+  }
+  if (best == RADIO_RX_EVENTS) return 0ULL;
+  const uint64_t back = baud ? ((uint64_t)best_after * 10ULL * 1000000ULL) / baud : 0ULL;
+  return g_rx_events[best].us > back ? g_rx_events[best].us - back : 0ULL;
+}
 /* One watched time sync frame: 1 queued, 2 in the active DMA, 3 sent.
  * `tail`: bytes that follow it in that DMA (a turn writes one burst). */
 #define RADIO_TS_WATCH_MAX 72U
@@ -2441,6 +2472,8 @@ static void radio_process_buffered_frames(void)
                              &g_last_frame_preview_len,
                              &g_frame_buf[RADIO_UART_FRAME_HEADER_SIZE],
                              payload_len);
+    g_rx_frame_end_bytes = g_rx_appended_bytes -
+        (uint32_t)(g_frame_len - (RADIO_UART_FRAME_HEADER_SIZE + payload_len));
     const uint8_t *notify_data = &g_frame_buf[RADIO_UART_FRAME_HEADER_SIZE];
     size_t notify_len = payload_len;
     uint8_t notify_command = is_command_frame;
@@ -2464,6 +2497,7 @@ static void radio_process_framed_bytes(const uint8_t *data, size_t len)
     const size_t room = RADIO_UART_FRAME_BUF_SIZE - g_frame_len;
     const size_t take = len < room ? len : room;
     radio_frame_buf_append(data, take);
+    g_rx_appended_bytes += (uint32_t)take;
     data += take;
     len -= take;
     radio_process_buffered_frames();
@@ -2550,7 +2584,12 @@ void radio_uart_process_rx(void)
   Own the HAL callback here.
   IMPORTANT: ISR does NOT call subscribers anymore.
 */
-uint64_t radio_uart_last_rx_us(void) { return g_rx_event_us; }
+/* Receive instant of the frame being delivered: its own last byte. */
+uint64_t radio_uart_last_rx_us(void)
+{
+  const uint64_t us = radio_rx_frame_us(g_rx_frame_end_bytes, radio_ts_watch_baud());
+  return us ? us : g_rx_event_us;
+}
 
 static radio_frame_obsolete_cb_t g_obsolete_check;
 volatile uint32_t g_radio_tx_obsolete_drops __attribute__((used)) = 0U;
@@ -2623,6 +2662,7 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
     uart_dma_rx_consume(g_rx_buf, sizeof(g_rx_buf), Size,
                         &g_rx_dma_position, radio_rx_ring_push_isr);
   }
+  radio_rx_note_event((uint32_t)g_rx_isr_bytes, g_rx_event_us);
 
   /* Circular DMA remains armed across HT, TC and IDLE. Error recovery owns
    * restarts; rearming here creates a receive gap on every UART fragment. */

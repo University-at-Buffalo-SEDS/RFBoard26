@@ -25,6 +25,7 @@ class RadioFramingTests(unittest.TestCase):
 static uint8_t g_frame_buf[1028],g_current_rx_is_command_frame,g_last_frame_kind;
 static uint8_t g_last_frame_preview[16],g_last_frame_preview_len;
 static size_t g_frame_len,g_last_frame_payload_len;
+static uint32_t g_rx_appended_bytes __attribute__((unused)), g_rx_frame_end_bytes __attribute__((unused));
 #define RADIO_PARTIAL_FRAME_TIMEOUT_MS 2000U
 static uint32_t g_partial_frame_started_ms;
 static uint8_t g_partial_frame_waiting;

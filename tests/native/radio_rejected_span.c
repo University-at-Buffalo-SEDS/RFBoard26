@@ -33,6 +33,7 @@ static void radio_uart_store_preview(uint8_t*a,uint8_t*b,const uint8_t*c,size_t 
 static void radio_notify_rx(const uint8_t*p,size_t n){
  assert(received<2);assert(n==expected_len[received]);assert(!memcmp(p,expected[received],n));assert(g_current_rx_is_command_frame==expected_command);++received;
 }
+static uint32_t g_rx_appended_bytes __attribute__((unused)), g_rx_frame_end_bytes __attribute__((unused));
 /* ACTUAL_PARSER_UNDER_TEST */
 static void reset(void){memset(&g_rejected_frame,0,sizeof(g_rejected_frame));g_frame_len=0;g_partial_frame_waiting=0;mock_now=0;received=0;g_rx_crc_errors=0;g_rx_bad_len=0;}
 static void additional_regressions(void);

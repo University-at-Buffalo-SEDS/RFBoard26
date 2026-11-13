@@ -33,6 +33,7 @@ class CorruptRadioFrameTests(unittest.TestCase):
 static uint8_t g_frame_buf[1028],g_current_rx_is_command_frame,g_last_frame_kind;
 static uint8_t g_last_frame_preview[16],g_last_frame_preview_len,g_partial_frame_waiting;
 static size_t g_frame_len,g_last_frame_payload_len,expected_length;
+static uint32_t g_rx_appended_bytes __attribute__((unused)), g_rx_frame_end_bytes __attribute__((unused));
 static uint32_t g_partial_frame_started_ms,g_rx_sync_loss,g_rx_bad_len,g_radio_rx_frames_ok,received;
 static const uint8_t *expected;
 static uint32_t radio_now_ms(void){return 0;}
