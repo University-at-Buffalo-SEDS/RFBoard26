@@ -41,6 +41,9 @@ void rfd_modem_port_status_words(uint32_t w[3]){w[0]=0x0a041021U;w[1]=0x00320f80
 size_t seds_memory_admission_rejected(void){return 34;}
 void telemetry_lock(void){assert(!mask);++lock_depth;}
 void telemetry_unlock(void){assert(lock_depth==1);--lock_depth;}
+typedef struct{uint8_t health_byte;}SedsTimeSyncStatus;
+uint8_t ts_health;
+SedsResult seds_router_get_timesync_status(SedsRouter *router,SedsTimeSyncStatus *out){assert(router&&out&&lock_depth==1);out->health_byte=ts_health;return SEDS_OK;}
 SedsResult seds_router_log_bytes_ex(SedsRouter *router,int dtype,const uint8_t *data,size_t length,const uint64_t *stamp,bool queue){
  assert(router&&dtype==42&&length==96&&!stamp&&queue);
  assert(!mask&&lock_depth==1);++calls;memcpy(captured,data,sizeof(captured));return refuse?1:0;
@@ -81,6 +84,9 @@ int main(void){
  assert(calls==6&&captured[6]==(5U|(0x1AU<<16)));
  g_telemetry_service_faults=0x1FF;uptime+=5000;board_health_poll(&router);
  assert(calls==7&&captured[6]==(5U|(0xFFU<<16)));
+ /* Network time quality: SEDSnet health byte in word 6 bits 24..31. */
+ {unsigned before=calls;ts_health=0x8AU;uptime+=5000;board_health_poll(&router);
+  assert(calls==before+1&&(captured[6]>>24)==0x8AU);ts_health=0;}
 #else
  uptime=999999;board_health_poll(&router);assert(!calls);
 #endif

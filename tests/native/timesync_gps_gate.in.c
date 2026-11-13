@@ -20,6 +20,9 @@
 #define TELEMETRY_TIMESYNC_SOURCE_TIMEOUT_MS 5000U
 #define TELEMETRY_TIMESYNC_ANNOUNCE_INTERVAL_MS 2000U
 #define TELEMETRY_TIMESYNC_REQUEST_INTERVAL_MS 2000U
+#define TELEMETRY_GPS_UTC_ERROR_MS 20
+#define SEDS_DT_ABORT ((uint32_t)135612662U)
+#define SEDS_DT_FLIGHT_COMMAND ((uint32_t)223048036U)
 @@HOLDOVER@@
 
 typedef struct {SedsRouter *r; uint8_t created; uint64_t start_time;} RouterState;
@@ -38,6 +41,7 @@ static uint64_t now_cb(void *user) { (void)user; return mono_ms; }
 @@TELEMETRY:telemetry_unix_ms_to_utc@@
 @@TELEMETRY:telemetry_apply_local_unix_time_locked@@
 @@TELEMETRY:telemetry_configure_timesync_locked@@
+@@TELEMETRY:telemetry_report_gps_utc_locked@@
 @@TELEMETRY:telemetry_set_unix_time_ms_locked@@
 @@TELEMETRY:telemetry_expire_gps_time_locked@@
 

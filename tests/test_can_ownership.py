@@ -24,6 +24,7 @@ enum{SEDS_OK=0,SEDS_IO=8,HAL_OK=0,HAL_BUSY=2};
 #define TELEMETRY_FLIGHT_HEARTBEAT_CAN_ID 0x001U
 static uint32_t dtype,observed;static unsigned calls;static int result;
 static uint32_t sim_probe_packed_data_type(const uint8_t *p,size_t n){(void)p;(void)n;return dtype;}
+static unsigned watched;static void can_tx_queue_watch_next(void){++watched;}
 static int can_bus_send_large(const uint8_t *p,size_t n,uint32_t id){assert(p&&n);calls++;observed=id;return result;}
 '''+function(source,'telemetry_flight_can_id')+function(source,'telemetry_send_can_packet')+r'''
 int main(void){

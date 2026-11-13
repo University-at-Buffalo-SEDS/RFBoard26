@@ -32,6 +32,8 @@ class CriticalPacketBoundaryTests(unittest.TestCase):
 #include <stddef.h>
 #include <string.h>
 #include <assert.h>
+/* Time sync TX watch state (radio.c), inert here. */
+struct {volatile uint8_t state;uint8_t len;volatile uint64_t us;uint8_t bytes[72];} g_ts_watch;
 #define RFBOARD_LORA_SCHEDULER 0
 #define RADIO_AIR_BIT_RATE_BPS 64000U
 #define RADIO_AIR_SHARE_PERCENT 40U

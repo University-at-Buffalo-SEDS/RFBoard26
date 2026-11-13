@@ -19,6 +19,11 @@ typedef int HAL_StatusTypeDef;
 HAL_StatusTypeDef can_bus_send_bytes(const uint8_t*,size_t,uint32_t);
 ''')
             (p/'can_tx_queue.h').write_text((ROOT/'Core/Inc/can_tx_queue.h').read_text())
+            (p/'board_clock_us.h').write_text('''#pragma once
+#include <stdint.h>
+extern uint64_t now_us;
+static inline uint64_t board_now_us(void){return now_us;}
+''')
             (p/'main.h').write_text('''#include <stdint.h>
 extern uint32_t irq;
 static inline uint32_t __get_PRIMASK(void){return irq;}
@@ -37,6 +42,8 @@ static unsigned free_slots,allocations,frees,failed_alloc,hal_error,count,last_p
 static uint8_t wire[4096][64];static uint32_t ids[4096];
 extern volatile uint32_t g_can_tx_queue_bytes,g_can_tx_pending,g_can_tx_rejected,g_can_tx_expired,g_can_tx_submitted;
 uint32_t HAL_GetTick(void){return tick;}
+uint64_t now_us;static uint32_t latest_buffer=1U;
+uint32_t can_bus_latest_tx_buffer(void){assert(irq);return latest_buffer;}
 void *telemetry_can_tx_allocate_priority(size_t n,uint8_t protected_control){assert(protected_control<=1);last_protected=protected_control;assert(!irq);if(failed_alloc)return NULL;allocations++;return malloc(n);}
 void telemetryFree(void *p){assert(!irq);frees++;free(p);}
 HAL_StatusTypeDef can_bus_send_bytes(const uint8_t *p,size_t n,uint32_t id){
@@ -130,6 +137,22 @@ int main(void){
   }
  }
  assert(allocations==frees);
+ // Time sync TX stamp: the watched packet's last fragment is stamped at its
+ // hardware buffer's completion, not at submit or at an unrelated buffer.
+ {const uint8_t *got=NULL;size_t got_len=0;uint64_t sent=0;
+  assert(!can_tx_queue_take_watched_sent(&got,&got_len,&sent));
+  for(unsigned n=0;n<70;n++)data[n]=(uint8_t)(200+n);
+  can_tx_queue_watch_next();free_slots=1;latest_buffer=1U<<2;
+  assert(can_tx_queue_submit(data,70,0x101)==HAL_OK);          /* two fragments, one sent */
+  memset(data,0,70);
+  can_tx_queue_note_complete(1U<<2);assert(!can_tx_queue_take_watched_sent(&got,&got_len,&sent));
+  latest_buffer=1U<<1;free_slots=1;interrupt();                /* last fragment in buffer 1 */
+  now_us=777;can_tx_queue_note_complete(1U<<2);assert(!can_tx_queue_take_watched_sent(&got,&got_len,&sent));
+  now_us=888;can_tx_queue_note_complete(1U<<1);
+  assert(can_tx_queue_take_watched_sent(&got,&got_len,&sent)&&sent==888&&got_len==70);
+  for(unsigned n=0;n<70;n++)assert(got[n]==(uint8_t)(200+n));
+  assert(!can_tx_queue_take_watched_sent(&got,&got_len,&sent));   /* taken once */
+  can_tx_queue_service();assert(allocations==frees);}
 }
 ''')
             subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined',
