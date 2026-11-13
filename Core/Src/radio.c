@@ -233,14 +233,44 @@ static volatile uint32_t g_rx_bad_len = 0;
 static volatile uint32_t g_rx_crc_errors = 0;
 static volatile uint32_t g_rx_irq_events = 0;
 static volatile uint64_t g_rx_event_us = 0;
-/* One watched time sync frame: 1 queued, 2 in the active DMA, 3 sent. */
+/* One watched time sync frame: 1 queued, 2 in the active DMA, 3 sent.
+ * `tail`: bytes that follow it in that DMA (a turn writes one burst). */
 #define RADIO_TS_WATCH_MAX 72U
 static struct {
   volatile uint8_t state;
   uint8_t len;
+  uint16_t tail;
   volatile uint64_t us;
   uint8_t bytes[RADIO_TS_WATCH_MAX];
 } g_ts_watch;
+/* The watched frame is in this DMA: note how many bytes follow it. */
+static void radio_ts_watch_note_dma(const uint8_t *data, uint16_t len)
+{
+  if (g_ts_watch.state != 1U || len < g_ts_watch.len) return;
+  for (uint16_t i = 0U; i + g_ts_watch.len <= len; ++i) {
+    if (memcmp(&data[i], g_ts_watch.bytes, g_ts_watch.len) == 0) {
+      g_ts_watch.tail = (uint16_t)(len - (i + g_ts_watch.len));
+      g_ts_watch.state = 2U;
+      return;
+    }
+  }
+}
+/* The radio UART's configured baud rate (8N1 byte = 10 bit times). */
+static uint32_t radio_ts_watch_baud(void)
+{
+  const uint32_t baud = (g_huart != NULL) ? g_huart->Init.BaudRate : 0U;
+  return baud ? baud : RADIO_BAUD_RATE;
+}
+/* DMA complete at `now_us`: the frame's own last byte left the UART `tail`
+ * byte times (10 bits each) earlier. That is the edge the station stamps on
+ * receipt, so the modem's air delay is the same both ways. */
+static void radio_ts_watch_note_complete(uint64_t now_us, uint32_t baud)
+{
+  if (g_ts_watch.state != 2U) return;
+  const uint64_t after = baud ? ((uint64_t)g_ts_watch.tail * 10ULL * 1000000ULL) / baud : 0ULL;
+  g_ts_watch.us = now_us > after ? now_us - after : 0ULL;
+  g_ts_watch.state = 3U;
+}
 static volatile uint32_t g_rx_errors = 0;
 static volatile uint32_t g_rx_restart_errors = 0;
 static volatile uint8_t g_rx_restart_pending = 0U;
@@ -2089,14 +2119,7 @@ uint32_t radio_uart_process_tx_with_budget(uint32_t budget_ms)
       }
     }
 #endif
-    if (g_ts_watch.state == 1U && g_tx_dma_item.len >= g_ts_watch.len) {
-      for (uint16_t i = 0U; i + g_ts_watch.len <= g_tx_dma_item.len; ++i) {
-        if (memcmp(&g_tx_dma_item.data[i], g_ts_watch.bytes, g_ts_watch.len) == 0) {
-          g_ts_watch.state = 2U;
-          break;
-        }
-      }
-    }
+    radio_ts_watch_note_dma(g_tx_dma_item.data, g_tx_dma_item.len);
     status = HAL_UART_Transmit_DMA(g_huart, g_tx_dma_item.data, g_tx_dma_item.len);
     if (status != HAL_OK) {
 #if !RFBOARD_LORA_SCHEDULER
@@ -2646,10 +2669,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 #if RADIO_TURN_PERIOD_MS > 0 && !RFBOARD_LORA_SCHEDULER
   radio_uart_turn_note_end(radio_now_ms());
 #endif
-  if (g_ts_watch.state == 2U) {
-    g_ts_watch.us = board_now_us();
-    g_ts_watch.state = 3U;
-  }
+  radio_ts_watch_note_complete(board_now_us(), radio_ts_watch_baud());
   g_tx_dma_busy = 0U;
   g_tx_dma_preserves_rx = 0U;
   g_radio_tx_ok += uart_frames;
