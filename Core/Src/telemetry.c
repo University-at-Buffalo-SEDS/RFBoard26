@@ -430,8 +430,13 @@ SedsResult tx_send(const uint8_t *bytes, size_t len, void *user) {
 
 
 #if TELEMETRY_TIMESYNC_PROBE
-/* Simulator-only: (board_now_us, network us) as lo/hi words for memory probes. */
-volatile uint32_t g_ts_probe[4] __attribute__((used));
+/* Simulator-only: (board_now_us, network us) as lo/hi words. The simulator
+ * samples every g_telemetry_timesync_* symbol; the ThreadX tick and SysTick
+ * VAL are aliased to probe names by the linker (CMake, same option). */
+volatile uint32_t g_telemetry_timesync_probe_mono_lo __attribute__((used));
+volatile uint32_t g_telemetry_timesync_probe_mono_hi __attribute__((used));
+volatile uint32_t g_telemetry_timesync_probe_net_lo __attribute__((used));
+volatile uint32_t g_telemetry_timesync_probe_net_hi __attribute__((used));
 #endif
 
 /* Router microseconds: board_now_us() in node_now_since_ms's epoch. */
@@ -763,8 +768,10 @@ static SedsResult telemetry_poll_timesync_locked(void) {
     uint64_t net_us;
     if (seds_router_get_network_time_us(g_router.r, &net_us) == SEDS_OK) {
       const uint64_t mono_us = board_now_us();
-      g_ts_probe[0] = (uint32_t)mono_us; g_ts_probe[1] = (uint32_t)(mono_us >> 32U);
-      g_ts_probe[2] = (uint32_t)net_us; g_ts_probe[3] = (uint32_t)(net_us >> 32U);
+      g_telemetry_timesync_probe_mono_lo = (uint32_t)mono_us;
+      g_telemetry_timesync_probe_mono_hi = (uint32_t)(mono_us >> 32U);
+      g_telemetry_timesync_probe_net_lo = (uint32_t)net_us;
+      g_telemetry_timesync_probe_net_hi = (uint32_t)(net_us >> 32U);
     }
   }
 #endif

@@ -159,14 +159,7 @@
       {"name": "memory_type_count", "symbol": "g_rf_memory_counters", "byte_offset": 56},
       {"name": "memory_stats_bytes", "symbol": "g_rf_memory_counters", "byte_offset": 60},
       {"name": "memory_snapshot_tick", "symbol": "g_rf_memory_snapshot_tick"},
-      {"name": "admission_last_free", "symbol": "g_rf_admission_last_free"},
-      {"name": "ts_probe_mono_lo", "symbol": "g_ts_probe", "byte_offset": 0},
-      {"name": "ts_probe_mono_hi", "symbol": "g_ts_probe", "byte_offset": 4},
-      {"name": "ts_probe_net_lo", "symbol": "g_ts_probe", "byte_offset": 8},
-      {"name": "ts_probe_net_hi", "symbol": "g_ts_probe", "byte_offset": 12},
-      {"name": "tx_tick", "symbol": "_tx_timer_system_clock"},
-      {"name": "systick_val", "address": 3758153752},
-      {"name": "systick_load", "address": 3758153748}
+      {"name": "admission_last_free", "symbol": "g_rf_admission_last_free"}
     ]
   },
   "traffic": {
