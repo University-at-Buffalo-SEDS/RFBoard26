@@ -96,6 +96,11 @@ static int seds_router_receive_packed_from_side(void *r,uint32_t s,const uint8_t
 static int seds_router_receive_packed(void *r,const uint8_t *p,size_t n) {
   return seds_router_receive_packed_from_side(r,0,p,n);
 }
+static uint64_t radio_uart_last_rx_us(void) {return 1234U;}
+static uint64_t telemetry_router_us(uint64_t us) {return us;}
+static int seds_router_receive_packed_from_side_at(void *r,uint32_t s,const uint8_t *p,size_t n,uint64_t at) {
+  assert(at==1234U);return seds_router_receive_packed_from_side(r,s,p,n);
+}
 '''
         code += array("query", query) + array("expected", reply) + driver +'\nstatic unsigned locked;\nvoid telemetry_lock(void){assert(!locked);++locked;}\nvoid telemetry_unlock(void){assert(locked==1);--locked;}\n'+checked_hooks(ROOT)+'\n'+consumer
         code += r'''

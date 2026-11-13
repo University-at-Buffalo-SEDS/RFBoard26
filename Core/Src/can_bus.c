@@ -233,6 +233,14 @@ static volatile uint8_t g_txevt_pending = 0;
 
 /* Recovery runs only in the foreground. A failed HAL Stop can leave ERROR,
  * and PSR.BusOff is not evidence that the HAL/controller is running. */
+/* Receive time of the frame being delivered (0 outside delivery). */
+static uint64_t g_can_rx_us;
+uint64_t can_bus_current_rx_us(void) { return g_can_rx_us; }
+
+uint32_t can_bus_latest_tx_buffer(void) {
+  return g_hfdcan ? HAL_FDCAN_GetLatestTxFifoQRequestBuffer(g_hfdcan) : 0U;
+}
+
 #define CAN_BUS_RECOVERY_RETRY_MS 100U
 static uint8_t g_can_restart_pending;
 static uint8_t g_can_recovery_attempted;
@@ -305,14 +313,6 @@ failed:
   ++g_fdcan_recovery_fail_count;
   /* Keep ISR TX pumping/admission gated, but let the next foreground retry run. */
   return HAL_ERROR;
-}
-
-/* Receive time of the frame being delivered (0 outside delivery). */
-static uint64_t g_can_rx_us;
-uint64_t can_bus_current_rx_us(void) { return g_can_rx_us; }
-
-uint32_t can_bus_latest_tx_buffer(void) {
-  return g_hfdcan ? HAL_FDCAN_GetLatestTxFifoQRequestBuffer(g_hfdcan) : 0U;
 }
 
 static inline void can_bus_notify_rx(const uint8_t *data, size_t len)

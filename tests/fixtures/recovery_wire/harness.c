@@ -41,6 +41,9 @@ static void sdk_unlocked(void){assert(!physical||!physical->locked);}
 bool seds_router_sender_matches_hostname(const SedsRouter*r,const char*s,size_t n,const char*name,size_t len){sdk_unlocked();assert(r&&((len==2&&!memcmp(name,"GS",2))||(len==4&&!memcmp(name,"RRLS",4))));return s&&((n==len&&!memcmp(s,name,len))||(len==2&&n==10&&!memcmp(s,"@addr:1234",10))||(len==4&&n==10&&!memcmp(s,"@addr:5678",10)));}
 SedsResult seds_router_get_network_time_ms(SedsRouter*r,uint64_t*out){sdk_unlocked();assert(r);*out=clock_ms;return SEDS_OK;}
 SedsResult seds_router_log_queue_typed(SedsRouter*r,SedsDataType type,const void*p,size_t count,size_t width,SedsElemKind kind){sdk_unlocked();assert(r&&type==201&&count==40&&width==1&&kind==SEDS_EK_UNSIGNED);memcpy(response,p,40);assert((response[3]&32U)==EXPECTED_CAP);app_replies++;return SEDS_OK;}
+/* No older status is pending here: the Abort push's supersede pass finds none. */
+int32_t seds_router_copy_reliable_pending(SedsRouter*r,size_t first,SedsReliablePendingRow*rows,size_t capacity){sdk_unlocked();assert(r&&rows&&capacity);(void)first;memset(rows,0,capacity*sizeof *rows);return 0;}
+SedsResult seds_router_complete_reliable(SedsRouter*r,uint64_t packet_id){(void)r;(void)packet_id;assert(!"no pending status to complete");return SEDS_OK;}
 SedsResult seds_router_enable_network_variable(SedsRouter*r,SedsDataType type,bool read,bool write){sdk_unlocked();(void)r;assert(type==SEDS_DT_FLIGHT_STATE&&read&&!write);return SEDS_OK;}
 SedsResult seds_router_on_network_variable_update(SedsRouter*r,SedsDataType type,SedsResult(*cb)(const SedsPacketView*,void*),void*user){sdk_unlocked();(void)r;state_cb=cb;assert(type==SEDS_DT_FLIGHT_STATE&&!user);return SEDS_OK;}
 SedsResult seds_router_invalidate_network_variable_cache(SedsRouter*r,SedsDataType type,bool*out){sdk_unlocked();(void)r;assert(type==SEDS_DT_FLIGHT_STATE&&!out);return owner_fail?SEDS_IO:SEDS_OK;}

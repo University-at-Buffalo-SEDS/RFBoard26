@@ -101,6 +101,21 @@ static SedsResult commissioning_status(SedsRouter*router,uint8_t result,const Bo
 }
 static uint64_t commissioning_now(void*context){return board_recovery_station_now((SedsRouter*)context);}
 static bool commissioning_reply(void*context,const BoardRecoveryRequest*request,uint8_t result){uint32_t uptime=(uint32_t)(((uint64_t)tx_time_get()*1000U)/TX_TIMER_TICKS_PER_SECOND);return commissioning_status((SedsRouter*)context,result,request,uptime,0U)==SEDS_OK;}
+/* BOARD_STATE_STATUS is an ordered reliable stream: a status goes on air only
+ * once every older one has its station receipt. The Abort push carries the
+ * live snapshot, so it supersedes them; without this it waits behind them, for
+ * seconds when their receipts are lost on air. Rows are read one at a time (no
+ * scratch); a completed row shifts the rest down, so that index is read again.
+ * The SDK never completes ABORT or another urgent type this way. */
+static void retire_superseded_status(SedsRouter*router){
+ SedsReliablePendingRow row;
+ for(size_t index=0,guard=0;guard<64U;++guard){
+  if(seds_router_copy_reliable_pending(router,index,&row,1)<=(int32_t)index)return;
+  if(row.data_type==(uint32_t)SEDS_DT_BOARD_STATE_STATUS&&
+     seds_router_complete_reliable(router,row.packet_id)==SEDS_OK)continue;
+  ++index;
+ }
+}
 /* Issuer of the last valid station QUERY, echoed by the Abort push. */
 static uint64_t last_query_issuer;
 /* Caller holds the router (FLIGHT_STATE callback): one unsolicited status for
@@ -108,6 +123,7 @@ static uint64_t last_query_issuer;
  * queries wait. Nonce 0, the last valid QUERY issuer, the QUERY generation. */
 SedsResult board_recovery_push_abort_status(SedsRouter*router){
  if(!router)return SEDS_BAD_ARG;
+ retire_superseded_status(router);
  BoardRecoveryRequest request={0};request.issuer_session=last_query_issuer;
  return commissioning_status(router,BOARD_RECOVERY_RESULT_OK,&request,
   (uint32_t)(((uint64_t)tx_time_get()*1000U)/TX_TIMER_TICKS_PER_SECOND),BOARD_RECOVERY_ABORT_LATCHED);
