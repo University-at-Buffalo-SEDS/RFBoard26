@@ -125,16 +125,6 @@ endforeach()
 option(TELEMETRY_TIMESYNC_PROBE "Simulator-only time sync error probe" OFF)
 if(TELEMETRY_TIMESYNC_PROBE)
     add_compile_definitions(TELEMETRY_TIMESYNC_PROBE=1)
-    # Probe names for the ThreadX tick and the SysTick current value, read at
-    # the simulator's paused checkpoints together with the pair.
-    set(_ts_probe_link
-        "-Wl,--defsym=g_telemetry_timesync_probe_tick=_tx_timer_system_clock"
-        "-Wl,--defsym=g_telemetry_timesync_probe_systick_val=0xE000E018")
-    if(TARGET ${CMAKE_PROJECT_NAME})
-        target_link_options(${CMAKE_PROJECT_NAME} PRIVATE ${_ts_probe_link})
-    else()
-        add_link_options(${_ts_probe_link})
-    endif()
 endif()
 option(SEDS_FIRMWARE_SIM_TEST
     "Seed deterministic external time for linked firmware qualification" OFF)
@@ -354,3 +344,12 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Core/Src/board_recovery_boot.c
     ${CMAKE_SOURCE_DIR}/Core/Src/board_recovery_floor.c
     "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_SOURCE_DIR}/Core/Src/board_recovery_transport.c>")
+
+# Simulator-only probe (TELEMETRY_TIMESYNC_PROBE): probe names for the ThreadX
+# tick and the SysTick current value on the firmware image only, read at the
+# simulator's paused checkpoints together with the (board, network) pair.
+if(TELEMETRY_TIMESYNC_PROBE)
+    target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
+        "-Wl,--defsym=g_telemetry_timesync_probe_tick=_tx_timer_system_clock"
+        "-Wl,--defsym=g_telemetry_timesync_probe_systick_val=0xE000E018")
+endif()
