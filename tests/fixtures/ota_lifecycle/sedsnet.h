@@ -22,4 +22,5 @@ SedsResult seds_router_on_network_variable_update(SedsRouter*,uint32_t,SedsResul
 SedsResult seds_router_request_managed_variable(SedsRouter*,uint32_t);
 SedsResult seds_router_invalidate_network_variable_cache(SedsRouter*,uint32_t,bool*);
 bool seds_router_sender_matches_hostname(const SedsRouter*,const char*,size_t,const char*,size_t);
+bool seds_router_sender_matches_station(const SedsRouter*,const char*,size_t,const char*,size_t);
 SedsResult seds_router_get_network_time_ms(SedsRouter*,uint64_t*);

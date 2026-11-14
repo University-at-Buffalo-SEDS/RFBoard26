@@ -39,6 +39,7 @@ static launchcore_storage_status_t write_media(uint32_t a,const void*p,uint32_t 
 const launchcore_storage_driver_t launchcore_board_storage_driver={.init=init_media,.read=read_media,.erase=erase_media,.write=write_media,.layout=get_layout};
 static void sdk_unlocked(void){assert(!physical||!physical->locked);}
 bool seds_router_sender_matches_hostname(const SedsRouter*r,const char*s,size_t n,const char*name,size_t len){sdk_unlocked();assert(r&&((len==2&&!memcmp(name,"GS",2))||(len==4&&!memcmp(name,"RRLS",4))));return s&&((n==len&&!memcmp(s,name,len))||(len==2&&n==10&&!memcmp(s,"@addr:1234",10))||(len==4&&n==10&&!memcmp(s,"@addr:5678",10)));}
+bool seds_router_sender_matches_station(const SedsRouter*r,const char*s,size_t n,const char*name,size_t len){return seds_router_sender_matches_hostname(r,s,n,name,len);}
 SedsResult seds_router_get_network_time_ms(SedsRouter*r,uint64_t*out){sdk_unlocked();assert(r);*out=clock_ms;return SEDS_OK;}
 SedsResult seds_router_log_queue_typed(SedsRouter*r,SedsDataType type,const void*p,size_t count,size_t width,SedsElemKind kind){sdk_unlocked();assert(r&&type==201&&count==40&&width==1&&kind==SEDS_EK_UNSIGNED);memcpy(response,p,40);assert((response[3]&32U)==EXPECTED_CAP);app_replies++;return SEDS_OK;}
 /* No older status is pending here: the Abort push's supersede pass finds none. */

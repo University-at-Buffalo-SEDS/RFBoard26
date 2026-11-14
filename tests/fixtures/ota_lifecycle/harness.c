@@ -33,6 +33,7 @@ void persistent_store_hold_commissioning(void){pending=true;}bool persistent_sto
 uint64_t board_commissioning_query_generation(void){return generation;}uint8_t board_recovery_floor_cached_health(void){return floor_healthy;}
 uint8_t board_recovery_floor_active(void){return 1;}uint8_t board_recovery_floor_is_healthy(void){return 1;}uint8_t board_recovery_command_time_allowed(uint64_t stamp){return stamp>100&&stamp!=UINT64_MAX;}
 bool seds_router_sender_matches_hostname(const SedsRouter*r,const char*s,size_t n,const char*name,size_t count){assert(r&&!irq_mask);return s&&n==count&&!memcmp(s,name,n);}
+bool seds_router_sender_matches_station(const SedsRouter*r,const char*s,size_t n,const char*name,size_t len){return seds_router_sender_matches_hostname(r,s,n,name,len);}
 SedsResult seds_router_get_network_time_ms(SedsRouter*r,uint64_t*out){assert(r&&!irq_mask);*out=clock_ms;return 0;}
 SedsResult seds_router_enable_network_variable(SedsRouter*r,uint32_t ty,bool a,bool b){assert(r&&ty==SEDS_DT_FLIGHT_STATE&&a&&!b);return 0;}
 SedsResult seds_router_on_network_variable_update(SedsRouter*r,uint32_t ty,SedsResult(*fn)(const SedsPacketView*,void*),void*u){assert(r&&ty==SEDS_DT_FLIGHT_STATE&&!u);cache_callback=fn;return 0;}

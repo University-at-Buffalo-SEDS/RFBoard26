@@ -37,6 +37,7 @@ typedef int SedsRouter;
 typedef struct { uint32_t ty; const char *sender; size_t sender_len; } SedsPacketView;
 #define SEDS_DT_FLIGHT_STATE 11U
 static int router; static SedsRouter *recovery_router = &router;
+#define seds_router_sender_matches_station seds_router_sender_matches_hostname
 bool seds_router_sender_matches_hostname(SedsRouter *r, const char *s, size_t len, const char *n, size_t nl)
 { assert(r); return s && len == nl && !memcmp(s, n, nl); }
 ''' + function(text, 'authorized_owner') + '\n' + function(text, 'authorized_primary') + '\n' + function(text, 'board_recovery_managed_report_ignorable') + r'''
