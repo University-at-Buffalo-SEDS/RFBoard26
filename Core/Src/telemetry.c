@@ -1076,6 +1076,12 @@ static SedsResult init_telemetry_router_locked(void) {
      * it by x is off by at most x/2). */
     (void)seds_router_set_side_timesync_min_delay(
         r, (uint32_t)g_radio_side_id, (RF_RFD_SERIAL_BREAK_MS + 4U) * 1000000U);
+    /* Each stamp's own uncertainty: the RX stamp comes from the UART event,
+     * which IDLE raises one byte time (86.8 us) after the last byte, plus
+     * ISR latency under ThreadX critical sections; the TX stamp from the
+     * transmit-complete interrupt. 250 us covers both with margin. */
+    (void)seds_router_set_side_timesync_stamp_uncertainty(
+        r, (uint32_t)g_radio_side_id, 250000U);
     radio_uart_set_obsolete_check(telemetry_radio_frame_obsolete);
   }
 #if defined(SEDS_ENABLE_COMPACT_BUNDLE) && SEDS_ENABLE_COMPACT_BUNDLE
