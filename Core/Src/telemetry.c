@@ -107,6 +107,12 @@ static uint32_t telemetry_flight_can_id(const uint8_t *bytes, size_t len, uint8_
 #ifndef RF_SEDSNET_QUEUE_BUDGET
 #define RF_SEDSNET_QUEUE_BUDGET 9984U
 #endif
+/* RFD serial break (S6) of the selected profile, ms. */
+#ifdef RFD_PROFILE_SERIAL_BREAK_MS
+#define RF_RFD_SERIAL_BREAK_MS RFD_PROFILE_SERIAL_BREAK_MS
+#else
+#define RF_RFD_SERIAL_BREAK_MS 10U
+#endif
 #ifndef RF_SEDSNET_MAX_RECENT_RX_IDS
 #define RF_SEDSNET_MAX_RECENT_RX_IDS 16U
 #endif
@@ -1053,6 +1059,14 @@ static SedsResult init_telemetry_router_locked(void) {
      * The GS's responses carry an 8 B mesh wrapper its requests lack:
      * +8 x 211.8 / 2 us of fixed asymmetry. */
     (void)seds_router_set_side_timesync_path(r, (uint32_t)g_radio_side_id, 211800U, 847200);
+    /* Physical minimum one-way delay after the stamps, besides the per-byte
+     * part: the modem closes a packet S6 (serial break) after the last byte,
+     * then TX setup (4 ms + 0-3 ms) and air framing, whose sum the bench
+     * only bounds from below by the 4 ms setup. A true lower bound: the
+     * reported error bound rests on it (an exchange whose round trip exceeds
+     * it by x is off by at most x/2). */
+    (void)seds_router_set_side_timesync_min_delay(
+        r, (uint32_t)g_radio_side_id, (RF_RFD_SERIAL_BREAK_MS + 4U) * 1000000U);
     radio_uart_set_obsolete_check(telemetry_radio_frame_obsolete);
   }
 #if defined(SEDS_ENABLE_COMPACT_BUNDLE) && SEDS_ENABLE_COMPACT_BUNDLE
