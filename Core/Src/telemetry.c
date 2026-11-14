@@ -443,6 +443,10 @@ volatile uint32_t g_telemetry_timesync_probe_mono_lo __attribute__((used));
 volatile uint32_t g_telemetry_timesync_probe_mono_hi __attribute__((used));
 volatile uint32_t g_telemetry_timesync_probe_net_lo __attribute__((used));
 volatile uint32_t g_telemetry_timesync_probe_net_hi __attribute__((used));
+/* Sim-only: the reported error bound (us, UINT32_MAX unknown) and lock state
+ * at the same instant, to check the bound against the probe's real error. */
+volatile uint32_t g_telemetry_timesync_probe_bound_us __attribute__((used));
+volatile uint32_t g_telemetry_timesync_probe_state __attribute__((used));
 #endif
 
 /* Router microseconds: board_now_us() in node_now_since_ms's epoch. */
@@ -778,6 +782,11 @@ static SedsResult telemetry_poll_timesync_locked(void) {
       g_telemetry_timesync_probe_mono_hi = (uint32_t)(mono_us >> 32U);
       g_telemetry_timesync_probe_net_lo = (uint32_t)net_us;
       g_telemetry_timesync_probe_net_hi = (uint32_t)(net_us >> 32U);
+      SedsTimeSyncStatus probe_ts;
+      if (seds_router_get_timesync_status(g_router.r, &probe_ts) == SEDS_OK) {
+        g_telemetry_timesync_probe_bound_us = probe_ts.error_bound_us;
+        g_telemetry_timesync_probe_state = probe_ts.state;
+      }
     }
   }
 #endif
