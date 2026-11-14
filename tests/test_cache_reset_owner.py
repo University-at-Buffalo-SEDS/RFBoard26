@@ -12,7 +12,7 @@ HEADERS = {
 #include <stdbool.h>
 typedef int SedsResult;
 typedef int SedsRouter;
-typedef struct { unsigned ty; const uint8_t *payload; size_t payload_len; uint64_t timestamp; } SedsPacketView;
+typedef struct { unsigned ty; const uint8_t *payload; size_t payload_len; uint64_t timestamp; const char *sender; size_t sender_len; } SedsPacketView;
 #define SEDS_OK 0
 #define SEDS_BAD_ARG -10
 #define SEDS_HANDLER_ERROR -9
@@ -85,7 +85,9 @@ SedsResult seds_router_request_managed_variable(SedsRouter *r,unsigned ty){asser
 uint8_t board_recovery_managed_update_allowed(const SedsPacketView *p){assert(p);return allow_update;}
 static int report_ignorable;
 uint8_t board_recovery_managed_report_ignorable(const SedsPacketView *p){assert(p);return (uint8_t)report_ignorable;}
-static SedsResult update(uint8_t state){SedsPacketView p={SEDS_DT_FLIGHT_STATE,&state,1,100};assert(callback);return callback(&p,NULL);}
+/* Each call is a new station write (its own station timestamp). */
+static uint64_t write_stamp=100;
+static SedsResult update(uint8_t state){SedsPacketView p={.ty=SEDS_DT_FLIGHT_STATE,.payload=&state,.payload_len=1,.timestamp=write_stamp++,.sender="GS",.sender_len=2};assert(callback);return callback(&p,NULL);}
 int main(int argc,char **argv){
  assert(argc==2);SedsRouter router=0;BoardRecoverySnapshot out;
  assert(flight_state_cache_init(&router)==0);

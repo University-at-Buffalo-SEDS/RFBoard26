@@ -12,7 +12,7 @@ HEADERS = {
               'typedef int SedsResult;\n'
               'typedef int SedsRouter;\n'
               'typedef struct { unsigned ty; const uint8_t *payload; size_t payload_len; '
-              'uint64_t timestamp; } SedsPacketView;\n'
+              'uint64_t timestamp; const char *sender; size_t sender_len; } SedsPacketView;\n'
               '#define SEDS_OK 0\n'
               '#define SEDS_BAD_ARG -10\n'
               '#define SEDS_HANDLER_ERROR -9\n'

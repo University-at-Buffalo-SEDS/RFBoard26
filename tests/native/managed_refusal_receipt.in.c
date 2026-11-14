@@ -72,6 +72,30 @@ static SedsResult deliver(const char *sender, uint8_t value)
   return result;
 }
 
+/* A station write at an explicit station timestamp. late=true models the
+ * same write arriving again after the board's 16-entry recent-ID ring has
+ * rolled over: an extra endpoint gives it its own packet ID, as the SDK here
+ * keeps a larger ring; station timestamp and value are the original's. */
+static SedsResult deliver_at(uint8_t value, uint64_t stamp, bool late)
+{
+  const uint32_t eps[] = {SEDS_EP_FLIGHT_STATE, SEDS_EP_SD_CARD, SEDS_EP_GROUND_STATION, SEDS_EP_BOARD_RECOVERY};
+  mono_ms += 100U;
+  SedsPacketView p = {.ty = SEDS_DT_FLIGHT_STATE, .data_size = 1U, .sender = "GS", .sender_len = 2U,
+                      .endpoints = eps, .num_endpoints = late ? 4U : 3U,
+                      .timestamp = stamp, .payload = &value, .payload_len = 1U};
+  const SedsResult result = seds_router_receive_from_side(board, (uint32_t)upstream, &p);
+  (void)seds_router_process_all_queues(board);
+  return result;
+}
+/* A refused station write, then FC reports: each retires the SDK cache. */
+static void retire_cache(uint64_t stamp)
+{
+  allowed = 0;
+  (void)deliver_at(1U, stamp, false);
+  for (unsigned k = 0U; k < 4U; ++k) (void)deliver("FC", 2U);
+  allowed = 1;
+}
+
 int main(int argc, char **argv)
 {
   setbuf(stdout, NULL);
@@ -147,6 +171,26 @@ int main(int argc, char **argv)
            g_flight_state_contract_violations >= i + 1U);
   }
   puts("PASS InFlight applied; retired FLIGHT_STATE mapped, logged once and acknowledged");
+
+  /* Station writes apply in station-time order. 2 then Aborted 15; the SDK
+   * cache that alone ordered them is retired; a late copy of the 2 must not
+   * take the board out of Aborted. Then an Advance: 1, 2, the cache retired,
+   * a late copy of the 1 must not step it back; a newer 7 still applies. */
+  {
+    const uint64_t base = 900000U;
+    const struct { uint8_t value; uint64_t ts; int retire, late; uint8_t want; } steps[] = {
+      {2U, 0U, 0, 0, 2U}, {15U, 1U, 0, 0, 15U}, {0U, 2U, 1, 0, 15U}, {2U, 0U, 0, 1, 15U},
+      {1U, 3U, 0, 0, 1U}, {2U, 4U, 0, 0, 2U}, {0U, 5U, 1, 0, 2U}, {1U, 3U, 0, 1, 2U}, {7U, 6U, 0, 0, 7U}};
+    for (unsigned i = 0U; i < sizeof steps / sizeof steps[0]; i++) {
+      if (steps[i].retire) { retire_cache(base + steps[i].ts); continue; }
+      const unsigned before = receipts;
+      const SedsResult a = deliver_at(steps[i].value, base + steps[i].ts, steps[i].late);
+      printf("order step %u write %u ts+%u%s result=%d value=%u acked=%d\n", i, steps[i].value,
+             (unsigned)steps[i].ts, steps[i].late ? " late copy" : "", a, flight_state_cache_value(), receipts > before);
+      assert(a == SEDS_OK && receipts > before && flight_state_cache_value() == steps[i].want);
+    }
+  }
+  puts("PASS a late older FLIGHT_STATE write never applies; Aborted kept");
 
   seds_router_free(board);
   puts("PASS refused and malformed FLIGHT_STATE acknowledged and relayed without applying; busy OTA owner still acknowledged");

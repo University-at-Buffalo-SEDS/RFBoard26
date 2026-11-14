@@ -202,6 +202,45 @@ static void persist_pending(void)
     g_flight_state_cache_writes++;
 }
 
+/* Station FLIGHT_STATE writes apply in station-time order, per sender. The
+ * SDK orders them only while it still caches the newest one, and every
+ * refusal below retires that cache; a late re-send of an older write (say
+ * Idle sent before Aborted) would then apply after the newer one and take
+ * this board out of Aborted or step it back. Remember the last applied write
+ * per sender (the GS and the RRLS) and acknowledge an older one, or an exact
+ * repeat, without applying it. A write to Aborted (15) always applies: it is
+ * the safe direction, also if a station clock steps back. remember=true
+ * records an applied write. */
+volatile uint32_t g_flight_state_writes_out_of_order __attribute__((used)) = 0U;
+bool flight_state_cache_order(const SedsPacketView *packet, bool remember)
+{
+    static struct { uint64_t stamp; uint32_t sender; uint8_t value, valid; } last[2];
+    if (packet == NULL || packet->payload == NULL || packet->payload_len != 1U) return false;
+    uint32_t sender = 2166136261u;
+    for (size_t i = 0; i < packet->sender_len; ++i)
+        sender = (sender ^ (uint8_t)packet->sender[i]) * 16777619u;
+    const uint8_t value = packet->payload[0];
+    unsigned slot = 0U;
+    for (unsigned i = 0; i < 2U; ++i)
+    {
+        if (last[i].valid && last[i].sender == sender) { slot = i; break; }
+        if (!last[i].valid || (last[slot].valid && last[i].stamp < last[slot].stamp)) slot = i;
+    }
+    const bool known = last[slot].valid && last[slot].sender == sender;
+    if (remember)
+    {
+        if (!known || packet->timestamp >= last[slot].stamp)
+        {
+            last[slot].stamp = packet->timestamp; last[slot].sender = sender;
+            last[slot].value = value; last[slot].valid = 1U;
+        }
+        return false;
+    }
+    if (value == 15U || !known) return false;
+    return packet->timestamp < last[slot].stamp ||
+           (packet->timestamp == last[slot].stamp && value == last[slot].value);
+}
+
 static SedsResult persist_update(const SedsPacketView *packet, void *user)
 {
     (void)user;
@@ -233,6 +272,12 @@ static SedsResult persist_update(const SedsPacketView *packet, void *user)
         }
         ++g_flight_state_cache_errors;
         ++g_reliable_refusal_count;
+        return SEDS_OK;
+    }
+    if (flight_state_cache_order(packet, false)) {
+        /* Older than the last applied write: acknowledged, not applied. */
+        (void)clear_managed_cache();
+        ++g_flight_state_writes_out_of_order;
         return SEDS_OK;
     }
     /* A retired value maps onto set (a); it is never refused into a
@@ -267,6 +312,7 @@ static SedsResult persist_update(const SedsPacketView *packet, void *user)
         else g_flight_state_cache_errors++;
     }
     if (owner) ota_stream_state_end();
+    (void)flight_state_cache_order(packet, true);
     return SEDS_OK;
 }
 

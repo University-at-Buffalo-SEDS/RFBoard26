@@ -55,6 +55,9 @@ int32_t flight_state_cache_reset_startup(void);
 SedsResult flight_state_cache_init(SedsRouter *router);
 SedsResult flight_state_cache_poll(SedsRouter *router);
 SedsResult flight_state_cache_apply_network_update(const SedsPacketView *packet);
+/* True when a station FLIGHT_STATE write is older than (or repeats) the last
+ * one applied from its sender; remember=true records an applied write. */
+bool flight_state_cache_order(const SedsPacketView *packet, bool remember);
 #endif
 
 #endif
