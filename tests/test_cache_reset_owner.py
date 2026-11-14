@@ -88,6 +88,8 @@ uint8_t board_recovery_managed_report_ignorable(const SedsPacketView *p){assert(
 /* Each call is a new station write (its own station timestamp). */
 static uint64_t write_stamp=100;
 static SedsResult update(uint8_t state){SedsPacketView p={.ty=SEDS_DT_FLIGHT_STATE,.payload=&state,.payload_len=1,.timestamp=write_stamp++,.sender="GS",.sender_len=2};assert(callback);return callback(&p,NULL);}
+/* Weak: the firmware counter overrides it (lets the hold test fail, not miss a link, before the hold). */
+__attribute__((weak)) volatile uint32_t g_flight_state_writes_held_aborted;
 int main(int argc,char **argv){
  assert(argc==2);SedsRouter router=0;BoardRecoverySnapshot out;
  assert(flight_state_cache_init(&router)==0);
@@ -140,6 +142,19 @@ int main(int argc,char **argv){
   fail_apply=0;assert(update(13)==0&&flight_state_cache_value()==13&&stored==13&&writes==1&&clears==1);
  }else if(!strcmp(argv[1],"malformed_retirement")){
   assert(update(255)==0&&flight_state_cache_value()==6&&stored==6&&writes==0&&clears==1&&callback);
+ }else if(!strcmp(argv[1],"abort_hold")){
+  /* Aborted holds until the recovery job's Reset: a later station Idle is
+   * acknowledged (the SDK cache retired), not applied, and counted; 15 again
+   * is harmless; Reset through board_recovery_apply_safe goes to Startup,
+   * after which Idle applies. (Round fullnet win2-range: Clear GSE abort's
+   * Idle took this board out of Aborted within a second.) */
+  assert(update(15)==0&&flight_state_cache_value()==15&&stored==15);
+  unsigned w=writes,c=clears;uint32_t held=g_flight_state_writes_held_aborted;
+  assert(update(1)==0&&flight_state_cache_value()==15&&stored==15&&writes==w&&clears==c+1&&g_flight_state_writes_held_aborted==held+1);
+  assert(update(0)==0&&flight_state_cache_value()==15&&stored==15&&writes==w&&g_flight_state_writes_held_aborted==held+2);
+  assert(update(15)==0&&flight_state_cache_value()==15&&stored==15&&writes==w&&g_flight_state_writes_held_aborted==held+2);
+  assert(board_recovery_apply_safe(0,1,&out)==0&&out.actual_state==0&&flight_state_cache_value()==0&&stored==0);
+  assert(update(1)==0&&flight_state_cache_value()==1&&stored==1);
  }else assert(!"unknown case");
  puts(argv[1]);return 0;
 }
@@ -165,4 +180,5 @@ class ResetOwnerTests(unittest.TestCase):
     def test_ordinary_failed_persistence_retries_without_extra_cache_resets(self):self.run_case('ordinary_retry')
     def test_failed_apply_retires_sdk_cache_without_mutating_applied_or_persisted_state(self):self.run_case('apply_failure')
     def test_malformed_fstate_retires_sdk_ordering_poison_without_changing_state(self):self.run_case('malformed_retirement')
+    def test_aborted_holds_until_the_recovery_reset(self):self.run_case('abort_hold')
     def run_case(self,name):subprocess.run([str(self.exe),name],check=True)

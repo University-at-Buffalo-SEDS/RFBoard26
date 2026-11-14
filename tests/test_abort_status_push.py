@@ -30,17 +30,18 @@ int main(void){
  assert(flight_state_cache_init(&router)==0&&flight_state_cache_value()==6);
  assert(update(15)==0&&flight_state_cache_value()==15&&pushes==1&&pushed_router==&router);
  assert(update(15)==0&&pushes==1);           /* a repeated Aborted write pushes none */
- assert(update(1)==0&&pushes==1);            /* other states push none */
+ assert(update(1)==0&&flight_state_cache_value()==15&&pushes==1); /* held while Aborted: pushes none */
+ assert(flight_state_cache_reset_startup()==0&&update(1)==0&&pushes==1); /* Reset; other states push none */
  assert(update(15)==0&&pushes==2);           /* a new change to Aborted pushes again */
  /* A refused push is retried from the poll, once accepted never again. */
  SedsRouter poll_router=1;
- assert(update(1)==0);refuse=1;assert(update(15)==0&&pushes==3);
+ assert(flight_state_cache_reset_startup()==0);refuse=1;assert(update(15)==0&&pushes==3);
  assert(flight_state_cache_poll(&poll_router)==0&&pushes==4&&pushed_router==&poll_router);
  refuse=0;assert(flight_state_cache_poll(&poll_router)==0&&pushes==5);
  assert(flight_state_cache_poll(&poll_router)==0&&pushes==5);
  /* No retry once the state has left Aborted. */
- assert(update(1)==0);refuse=1;assert(update(15)==0&&pushes==6);refuse=0;
- assert(update(1)==0&&flight_state_cache_poll(&poll_router)==0&&pushes==6);
+ assert(flight_state_cache_reset_startup()==0);refuse=1;assert(update(15)==0&&pushes==6);refuse=0;
+ assert(flight_state_cache_reset_startup()==0&&flight_state_cache_poll(&poll_router)==0&&pushes==6);
  return 0;
 }
 '''

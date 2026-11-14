@@ -180,8 +180,12 @@ int main(int argc, char **argv)
     const uint64_t base = 900000U;
     const struct { uint8_t value; uint64_t ts; int retire, late; uint8_t want; } steps[] = {
       {2U, 0U, 0, 0, 2U}, {15U, 1U, 0, 0, 15U}, {0U, 2U, 1, 0, 15U}, {2U, 0U, 0, 1, 15U},
+      /* A newer Idle is held while Aborted (acknowledged, not applied); only
+       * the recovery Reset (retire 2) leaves Aborted. */
+      {1U, 2U, 0, 1, 15U}, {0U, 0U, 2, 0, 0U},
       {1U, 3U, 0, 0, 1U}, {2U, 4U, 0, 0, 2U}, {0U, 5U, 1, 0, 2U}, {1U, 3U, 0, 1, 2U}, {7U, 6U, 0, 0, 7U}};
     for (unsigned i = 0U; i < sizeof steps / sizeof steps[0]; i++) {
+      if (steps[i].retire == 2) { assert(flight_state_cache_reset_startup() == 0 && flight_state_cache_value() == 0U); continue; }
       if (steps[i].retire) { retire_cache(base + steps[i].ts); continue; }
       const unsigned before = receipts;
       const SedsResult a = deliver_at(steps[i].value, base + steps[i].ts, steps[i].late);
@@ -190,7 +194,7 @@ int main(int argc, char **argv)
       assert(a == SEDS_OK && receipts > before && flight_state_cache_value() == steps[i].want);
     }
   }
-  puts("PASS a late older FLIGHT_STATE write never applies; Aborted kept");
+  puts("PASS a late older FLIGHT_STATE write never applies; Aborted kept until Reset");
 
   seds_router_free(board);
   puts("PASS refused and malformed FLIGHT_STATE acknowledged and relayed without applying; busy OTA owner still acknowledged");

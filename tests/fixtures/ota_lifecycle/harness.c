@@ -95,7 +95,9 @@ int main(int argc,char**argv){assert(argc==2);const char*which=argv[1];
  else if(!strcmp(which,"manual_reset")){BoardRecoverySnapshot before,out;assert(board_recovery_snapshot(&before)==0);assert(board_recovery_apply_safe(0,before.abort_epoch,&out)==0&&out.actual_state==0&&out.abort_epoch==before.abort_epoch+1);poll_reset(0);}
  else if(!strcmp(which,"finish_launch")){++clock_ms;phase(7);poll_reset(0);}
  else if(!strcmp(which,"launch_idle")){phase(7);phase(1);poll_reset(0);denied();}
- else if(!strcmp(which,"stop")){phase(15);poll_reset(0);phase(1);denied();}
+ else if(!strcmp(which,"stop")){phase(15);poll_reset(0);
+  /* A station Idle after the stop is held (Aborted until the recovery Reset): still denied. */
+  assert(phase_raw(1)==0);BoardRecoverySnapshot held;assert(board_recovery_snapshot(&held)==0&&held.actual_state==15);denied();}
  else if(!strcmp(which,"corrupt_health")){healthy=false;poll_reset(0);}
  else if(!strcmp(which,"corrupt_floor")){floor_healthy=false;poll_reset(0);}
  else if(!strcmp(which,"epoch_changed")){BoardRecoverySnapshot a;board_recovery_snapshot(&a);assert(board_recovery_apply_safe(0,a.abort_epoch,&a)==0);poll_reset(0);uint8_t op=3;assert(data(&op,1)!=0);}

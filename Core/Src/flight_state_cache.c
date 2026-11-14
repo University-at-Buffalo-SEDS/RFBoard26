@@ -29,6 +29,7 @@ volatile uint32_t g_flight_state_cache_restores __attribute__((used, externally_
 volatile uint32_t g_flight_state_cache_writes __attribute__((used, externally_visible)) = 0U;
 volatile uint32_t g_flight_state_cache_updates __attribute__((used, externally_visible)) = 0U;
 volatile uint32_t g_flight_state_cache_errors __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_flight_state_writes_held_aborted __attribute__((used, externally_visible)) = 0U;
 volatile uint32_t g_flight_state_cache_reports_ignored __attribute__((used, externally_visible)) = 0U;
 
 static bool g_restore_attempted;
@@ -278,6 +279,17 @@ static SedsResult persist_update(const SedsPacketView *packet, void *user)
         /* Older than the last applied write: acknowledged, not applied. */
         (void)clear_managed_cache();
         ++g_flight_state_writes_out_of_order;
+        return SEDS_OK;
+    }
+    /* Aborted holds until the recovery job's Reset
+     * (flight_state_cache_reset_startup): once 15 is applied, a station write
+     * of any other state is acknowledged (its SDK cache retired) and counted,
+     * never applied. A Clear GSE abort's Idle took this board out of Aborted
+     * within a second (round fullnet win2-range). */
+    if (g_has_value && g_flight_state_cache_value == FLIGHT_STATE_ABORTED &&
+        flight_state_cache_from_wire(packet->payload[0]) != FLIGHT_STATE_ABORTED) {
+        (void)clear_managed_cache();
+        ++g_flight_state_writes_held_aborted;
         return SEDS_OK;
     }
     /* A retired value maps onto set (a); it is never refused into a
