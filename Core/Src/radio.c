@@ -239,7 +239,9 @@ static volatile uint64_t g_rx_event_us = 0;
 #define RADIO_RX_EVENTS 8U
 static struct { uint32_t bytes; uint64_t us; } g_rx_events[RADIO_RX_EVENTS];
 static uint8_t g_rx_event_head;
-/* Byte total (from the ring) at the end of the frame being delivered. */
+/* Bytes taken out of the RX ring: framed, read by the modem check or cleared.
+ * It must count every byte g_rx_isr_bytes counts, or frame ends fall before
+ * the events that cover them and frames are stamped early. */
 static uint32_t g_rx_appended_bytes;
 static uint32_t g_rx_frame_end_bytes;
 static void radio_rx_note_event(uint32_t bytes_total, uint64_t us)
@@ -2739,6 +2741,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 static void radio_rx_ring_clear(void)
 {
   __disable_irq();
+  g_rx_appended_bytes += (uint32_t)g_rx_count;
   g_rx_head = g_rx_tail;
   g_rx_count = 0U;
   __enable_irq();
@@ -2776,6 +2779,7 @@ int radio_uart_modem_read(uint8_t *buf, size_t cap)
     g_rx_head = (radio_rx_index_t)((g_rx_head + 1U) % RADIO_UART_RX_RING_BYTES);
     g_rx_count--;
   }
+  g_rx_appended_bytes += (uint32_t)n;
   __enable_irq();
   return (int)n;
 }
