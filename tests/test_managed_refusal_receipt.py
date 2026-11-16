@@ -24,7 +24,7 @@ STUBS = {
     'board_recovery_transport.h': '#pragma once\n#include <stdbool.h>\n#include "sedsnet.h"\n'
                                   '#include "sedsnet_config.h"\n'
                                   'void board_recovery_transport_set_router(SedsRouter*);\n'
-                                  'uint8_t board_recovery_managed_update_allowed(const SedsPacketView*);\n'
+                                  'uint8_t board_recovery_managed_update_allowed(const SedsPacketView*);\nuint64_t board_recovery_station_now(SedsRouter*);\nuint8_t board_recovery_station_behind(uint64_t,uint64_t);\nuint8_t board_recovery_station_stepped_back(void);\n'
                                   'uint8_t board_recovery_managed_report_ignorable(const SedsPacketView*);\n'
                                   'extern volatile uint32_t g_reliable_refusal_count;\n',
 }

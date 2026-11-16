@@ -91,6 +91,7 @@ uint64_t board_recovery_station_now(SedsRouter*router){
  }
  return station>now?station:now;
 }
+uint8_t board_recovery_station_stepped_back(void){return station_stepped_back?1U:0U;}
 uint8_t board_recovery_station_behind(uint64_t mark,uint64_t station)
 {
  return station!=0U&&station!=UINT64_MAX&&mark>station&&mark-station>BOARD_RECOVERY_STATION_STEP_BACK_MS;
