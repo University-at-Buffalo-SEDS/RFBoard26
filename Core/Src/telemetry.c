@@ -1410,7 +1410,10 @@ static SedsResult process_all_queues_timeout_locked(uint32_t timeout_ms) {
     return SEDS_ERR;
   }
 
-  return seds_router_process_all_queues_with_timeout(g_router.r, timeout_ms);
+  /* The service loop polls discovery and time sync itself, once per pass
+   * (telemetry_poll_discovery / telemetry_poll_timesync). Drain only, so the
+   * SDK does not run both polls a second time inside every pass. */
+  return seds_router_drain_queues_with_timeout(g_router.r, timeout_ms);
 #endif
 }
 
