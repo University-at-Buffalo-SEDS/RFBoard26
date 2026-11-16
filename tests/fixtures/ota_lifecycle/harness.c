@@ -31,7 +31,7 @@ int persistent_store_set(uint32_t key,const void*value,size_t len){assert(key==0
 bool persistent_store_controls_ready(void){return healthy&&!pending;}bool persistent_store_recovery_ready(void){return healthy;}bool persistent_store_commission_pending(void){return pending;}
 void persistent_store_hold_commissioning(void){pending=true;}bool persistent_store_publish_commission_complete(void){pending=false;return true;}void persistent_store_note_failure(void){}
 uint64_t board_commissioning_query_generation(void){return generation;}uint8_t board_recovery_floor_cached_health(void){return floor_healthy;}
-uint8_t board_recovery_floor_active(void){return 1;}uint8_t board_recovery_floor_is_healthy(void){return 1;}uint8_t board_recovery_command_time_allowed(uint64_t stamp){return stamp>100&&stamp!=UINT64_MAX;}
+uint8_t board_recovery_floor_cached_cutoff(uint64_t*c){*c=0U;return 1U;}uint8_t board_recovery_floor_active(void){return 1;}uint8_t board_recovery_floor_is_healthy(void){return 1;}uint8_t board_recovery_command_time_allowed(uint64_t stamp){return stamp>100&&stamp!=UINT64_MAX;}
 bool seds_router_sender_matches_hostname(const SedsRouter*r,const char*s,size_t n,const char*name,size_t count){assert(r&&!irq_mask);return s&&n==count&&!memcmp(s,name,n);}
 bool seds_router_sender_matches_station(const SedsRouter*r,const char*s,size_t n,const char*name,size_t len){return seds_router_sender_matches_hostname(r,s,n,name,len);}
 SedsResult seds_router_get_network_time_ms(SedsRouter*r,uint64_t*out){assert(r&&!irq_mask);*out=clock_ms;return 0;}

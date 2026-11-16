@@ -38,10 +38,34 @@ static uint8_t authorized_primary(SedsRouter *router,const SedsPacketView *packe
 #error "The station clock counts milliseconds in ThreadX ticks"
 #endif
 static uint64_t station_utc;static ULONG station_tick;
+/* Two agreeing primary packets this far behind re-anchor the station clock. */
+#define BOARD_RECOVERY_STATION_REANCHOR_MS UINT64_C(5000)
+static uint64_t back_utc;static ULONG back_tick;static uint8_t back_held;
+/* Set by a backward re-anchor until the network clock agrees again (under
+ * the telemetry router lock, like the station clock). */
+static uint8_t station_stepped_back;
 static uint64_t station_estimate(void){return station_utc?station_utc+(ULONG)(tx_time_get()-station_tick):0U;}
 static void station_store(uint64_t utc){station_utc=utc;station_tick=tx_time_get();}
+/* A GS clock step back: the first primary packet stamped more than
+ * BOARD_RECOVERY_STATION_REANCHOR_MS behind the estimate is held; a second
+ * one that agrees with it (its stamp advanced by the elapsed board time,
+ * within the same bound) re-anchors the estimate. A single late or replayed
+ * packet never lowers it. */
 void board_recovery_observe_station_time(SedsRouter*router,const SedsPacketView*packet){
- if(authorized_primary(router,packet)&&packet->timestamp!=UINT64_MAX&&packet->timestamp>station_estimate())station_store(packet->timestamp);
+ if(!router||!authorized_primary(router,packet)||packet->timestamp==0U||packet->timestamp==UINT64_MAX)return;
+ const uint64_t estimate=station_estimate(),stamp=packet->timestamp;
+ if(stamp>estimate){station_store(stamp);back_held=0U;return;}
+ if(estimate-stamp<=BOARD_RECOVERY_STATION_REANCHOR_MS)return;
+ const ULONG now=tx_time_get();
+ const uint64_t elapsed=((uint64_t)(ULONG)(now-back_tick)*1000U)/TX_TIMER_TICKS_PER_SECOND;
+ if(back_held&&elapsed<=10000U&&stamp>back_utc){
+  const uint64_t expected=back_utc+elapsed;
+  if((stamp>=expected?stamp-expected:expected-stamp)<=BOARD_RECOVERY_STATION_REANCHOR_MS){station_store(stamp);back_held=0U;station_stepped_back=1U;
+   /* The SDK keeps a managed FLIGHT_STATE stamped on the old clock and drops
+    * every older-stamped write from the same sender; forget it. */
+   (void)seds_router_invalidate_network_variable_cache(router,SEDS_DT_FLIGHT_STATE,NULL);return;}
+ }
+ back_utc=stamp;back_tick=now;back_held=1U;
 }
 /* A relayed consumer cannot complete a verified SEDSnet time exchange, so a
  * wrong first anchor is only slewed at 5%. A valid network clock more than
@@ -52,15 +76,36 @@ bool board_recovery_network_clock_resync_needed(uint64_t network_now){
  if(!station||network_now-station+60000U<=120000U)return false;
  station_store(0U);return true;
 }
-/* Freshness clock: max(valid network time, station clock); 0 when neither. */
+/* The later of the network and station clocks. After the station clock
+ * followed a GS step back, the network clock still reads the old time while
+ * it slews; until the two agree again station stamps are judged against the
+ * station clock alone. (A forward step needs nothing: the later clock is the
+ * station clock.) */
 uint64_t board_recovery_station_now(SedsRouter*router){
  uint64_t now=0U;
  if(!router||seds_router_get_network_time_ms(router,&now)!=SEDS_OK)now=0U;
- uint64_t station=station_estimate();return station>now?station:now;
+ uint64_t station=station_estimate();
+ if(station&&station_stepped_back){
+  if(!now||(now>station?now-station:station-now)>BOARD_RECOVERY_STATION_REANCHOR_MS)return station;
+  station_stepped_back=0U;
+ }
+ return station>now?station:now;
+}
+uint8_t board_recovery_station_behind(uint64_t mark,uint64_t station)
+{
+ return station!=0U&&station!=UINT64_MAX&&mark>station&&mark-station>BOARD_RECOVERY_STATION_STEP_BACK_MS;
 }
 uint8_t board_recovery_command_is_stale(const SedsPacketView *packet)
 {
- if (packet==0 || !board_recovery_command_time_allowed(packet->timestamp)) return 1U;
+ if (packet==0) return 1U;
+ uint64_t now=recovery_router?board_recovery_station_now(recovery_router):0U;
+ if (!board_recovery_command_time_allowed(packet->timestamp)) {
+  /* Below the persisted floor: refused, unless the station clock stepped
+   * back past that floor and this request is fresh on the new clock. */
+  uint64_t floor=0U;
+  if (!board_recovery_floor_cached_cutoff(&floor) || !board_recovery_station_behind(floor,now) ||
+      !(packet->timestamp!=0U && packet->timestamp!=UINT64_MAX && (now>=packet->timestamp ? now-packet->timestamp<=15000U : packet->timestamp-now<=1000U))) return 1U;
+ }
  if (board_recovery_floor_active()) {
   uint64_t now=board_recovery_station_now(recovery_router);
   if (packet->timestamp==0U || packet->timestamp==UINT64_MAX || now==0U || now==UINT64_MAX || (now>=packet->timestamp ? now-packet->timestamp>15000U : packet->timestamp-now>1000U)) return 1U;
