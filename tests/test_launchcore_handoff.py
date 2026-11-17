@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXED_LAUNCHCORE = "e2eea7d94245168dc63d31e160f4cb7bdc7688c3"
-FIXED_SEDSNET = "main"
+FIXED_SEDSNET = "dev"
 UNSAFE_HANDOFFS = {
     "1ab6cd3dcddb7acaacb9dbfc16159f36f19363a8",
     "709474c68b83d259ba8657038340577ed4e8c6e4",
@@ -17,7 +17,7 @@ class LaunchCoreHandoffContract(unittest.TestCase):
         sedsnet = (ROOT / "cmake/sedsnet_fetch.cmake").read_text()
         self.assertIn(f"GIT_TAG {FIXED_LAUNCHCORE}", launchcore)
         self.assertIn("GIT_TAG ${SEDSNET_GIT_REF}", sedsnet)
-        self.assertIn('set(SEDSNET_GIT_REF "main" CACHE STRING', (ROOT / "cmake/sedsnet_source.cmake").read_text())
+        self.assertIn('set(SEDSNET_GIT_REF "dev" CACHE STRING', (ROOT / "cmake/sedsnet_source.cmake").read_text())
 
     def test_underglow_is_restored_before_threadx_and_network_sync(self):
         main = (ROOT / "Core/Src/main.c").read_text()

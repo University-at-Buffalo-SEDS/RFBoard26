@@ -18,7 +18,7 @@ def usable(path):
     return all((path / f).is_file() for f in ('CMakeLists.txt', 'Cargo.toml', 'build.rs'))
 
 
-def select_source(cache, repository, fallbacks, offline=False, timeout=15, ref="main"):
+def select_source(cache, repository, fallbacks, offline=False, timeout=15, ref="dev"):
     if ref not in ("main", "dev"):
         raise ValueError("SEDSnet ref must be main or dev")
     cache.mkdir(parents=True, exist_ok=True)
@@ -60,7 +60,7 @@ def select_source(cache, repository, fallbacks, offline=False, timeout=15, ref="
                 revision = 'vendored source (no Git revision)'
             print(f'SEDSnet offline/local: {source} [{revision}]', file=sys.stderr)
             return source
-    raise RuntimeError('No usable SEDSnet source is available on disk. Connect once to fetch main, '
+    raise RuntimeError('No usable SEDSnet source is available on disk. Connect once to fetch the branch, '
                        'or set FETCHCONTENT_SOURCE_DIR_SEDSNET to an existing source checkout.')
 
 
@@ -70,7 +70,7 @@ def main():
     parser.add_argument('--repository', required=True)
     parser.add_argument('--fallback', action='append', default=[], type=Path)
     parser.add_argument('--offline', action='store_true')
-    parser.add_argument('--ref', choices=('main', 'dev'), default='main')
+    parser.add_argument('--ref', choices=('main', 'dev'), default='dev')
     args = parser.parse_args()
     try:
         print(select_source(args.cache.resolve(), args.repository, args.fallback, args.offline, ref=args.ref))

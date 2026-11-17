@@ -194,7 +194,7 @@ def validate_source(source):
     version = tomllib.loads((source / 'Cargo.toml').read_text())['package']['version']
     match = re.match(r'^(\d+)\.(\d+)\.(\d+)', version)
     if not match or tuple(map(int, match.groups())) < MINIMUM:
-        raise RuntimeError('Native cache tests require SEDSnet >=4.3.6; select current main or a compatible source override.')
+        raise RuntimeError('Native cache tests require SEDSnet >=4.3.6; select current dev or a compatible source override.')
     if 'seds_router_invalidate_network_variable_cache(' not in (source / 'C-Headers/sedsnet.h').read_text():
         raise RuntimeError('The selected SDK header lacks the 4.3.6 selective cache API.')
 
@@ -223,7 +223,7 @@ def select_source(root, cache, env):
     match = re.search(r'set\(SEDSNET_REPOSITORY\s+"([^"]+)"', module)
     if not match or not selector.is_file():
         raise RuntimeError('The project SDK source selector is missing; restore cmake/sedsnet_source.py.')
-    ref = configured.get('SEDSNET_GIT_REF', 'main')
+    ref = configured.get('SEDSNET_GIT_REF', 'dev')
     if ref not in ('main', 'dev'):
         raise RuntimeError('Configured SEDSNET_GIT_REF must be main or dev.')
     repository = configured.get('SEDSNET_REPOSITORY', match[1])

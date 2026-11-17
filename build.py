@@ -433,7 +433,7 @@ class BuildConfig:
     allocator: str = "tlsf"
 
     packet_store: str = "compact"
-    sedsnet_ref: str = "main"
+    sedsnet_ref: str = "dev"
     radio_mode: str = "rfd"
     rfd_profile: Optional[Path] = None
     watchdog: bool = True
@@ -1050,7 +1050,7 @@ def make_parser() -> argparse.ArgumentParser:
         sp.add_argument("--allocator", choices=["threadx", "tlsf"], default="tlsf",
                         help="Telemetry allocator (default: tlsf); scheduling always uses ThreadX.")
         sp.add_argument("--packet-store", choices=["heap", "compact"], default="compact",
-                        help="Compact packet arena (default); uses main unless --sedsnet-ref is explicit.")
+                        help="Compact packet arena (default); uses dev unless --sedsnet-ref is explicit.")
         sp.add_argument("--radio-mode", choices=["rfd", "lora"], default="rfd",
                         help="Radio mode (default: rfd); only lora enables legacy airtime windows and AUX gating.")
         sp.add_argument("--rfd-profile", type=Path,
@@ -1148,7 +1148,7 @@ def build_cfg_from_args(ui: UI, args: argparse.Namespace) -> BuildConfig:
         telemetry=not args.no_telemetry,
         watchdog=args.watchdog,
         packet_store=args.packet_store,
-        sedsnet_ref=args.sedsnet_ref or "main",
+        sedsnet_ref=args.sedsnet_ref or "dev",
         radio_mode=args.radio_mode,
         rfd_profile=args.rfd_profile,
         rfd_modem_check=getattr(args, "rfd_modem_check", "default"),
