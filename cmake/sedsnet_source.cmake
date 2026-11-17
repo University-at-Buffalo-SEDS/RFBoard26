@@ -1,7 +1,7 @@
 # Select the requested branch when reachable; preserve a usable local copy when disconnected.
 # A source override is deliberately local and never fetched/reset.
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-set(SEDSNET_GIT_REF "dev" CACHE STRING "SEDSnet development branch: main or dev")
+set(SEDSNET_GIT_REF "main" CACHE STRING "SEDSnet development branch: main or dev")
 set_property(CACHE SEDSNET_GIT_REF PROPERTY STRINGS main dev)
 if(NOT SEDSNET_GIT_REF MATCHES "^(main|dev)$")
     message(FATAL_ERROR "SEDSNET_GIT_REF must be main or dev")
@@ -44,7 +44,7 @@ if(NOT FETCHCONTENT_SOURCE_DIR_SEDSNET)
     if(NOT _sedsnet_result EQUAL 0)
         message(FATAL_ERROR "Unable to select SEDSnet ${SEDSNET_GIT_REF} or an on-disk fallback")
     endif()
-    # Normal variable, not cached: retry the branch on the next configure.
+    # Normal variable, not cached: retry main on the next configure.
     set(FETCHCONTENT_SOURCE_DIR_SEDSNET "${_sedsnet_source}")
 endif()
 set(SEDSNET_DIR "${FETCHCONTENT_SOURCE_DIR_SEDSNET}" CACHE PATH "Path to sedsnet crate root" FORCE)

@@ -18,7 +18,7 @@ class SourceSelectionTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         self.remote = self.root / 'remote'
-        source.git('init', '-b', 'dev', self.remote)
+        source.git('init', '-b', 'main', self.remote)
         source.git('-C', self.remote, 'config', 'user.email', 'test@example.invalid')
         source.git('-C', self.remote, 'config', 'user.name', 'Test')
         for name in ('CMakeLists.txt', 'Cargo.toml', 'build.rs'):
@@ -30,32 +30,32 @@ class SourceSelectionTests(unittest.TestCase):
         source.git('-C', self.remote, 'add', '.')
         source.git('-C', self.remote, '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture')
 
-    def test_updates_dev_without_destroying_prepared_old_source(self):
+    def test_updates_main_without_destroying_prepared_old_source(self):
         first = source.select_source(self.cache, str(self.remote), [])
         (first / 'Cargo.toml').write_text('board preparation\n')
-        (self.remote / 'build.rs').write_text('updated dev\n')
+        (self.remote / 'build.rs').write_text('updated main\n')
         self.commit()
         second = source.select_source(self.cache, str(self.remote), [])
         self.assertNotEqual(first, second)
-        self.assertEqual((second / 'build.rs').read_text(), 'updated dev\n')
+        self.assertEqual((second / 'build.rs').read_text(), 'updated main\n')
         self.assertEqual((first / 'Cargo.toml').read_text(), 'board preparation\n')
         self.assertEqual(source.select_source(self.cache, str(self.remote), []), second)
 
-    def test_main_updates_and_offline_fallback_preserve_prepared_source(self):
-        source.git('-C', self.remote, 'checkout', '-b', 'main')
-        (self.remote / 'build.rs').write_text('arena main initial\n')
+    def test_dev_updates_and_offline_fallback_preserve_prepared_source(self):
+        source.git('-C', self.remote, 'checkout', '-b', 'dev')
+        (self.remote / 'build.rs').write_text('arena dev initial\n')
         self.commit()
-        first = source.select_source(self.cache, str(self.remote), [], ref='main')
+        first = source.select_source(self.cache, str(self.remote), [], ref='dev')
         (first / 'Cargo.toml').write_text('prepared board schema\n')
-        (self.remote / 'build.rs').write_text('arena main updated\n')
+        (self.remote / 'build.rs').write_text('arena dev updated\n')
         self.commit()
-        second = source.select_source(self.cache, str(self.remote), [], ref='main')
+        second = source.select_source(self.cache, str(self.remote), [], ref='dev')
         self.assertNotEqual(first, second)
         self.assertEqual((first / 'Cargo.toml').read_text(), 'prepared board schema\n')
-        self.assertEqual((second / 'build.rs').read_text(), 'arena main updated\n')
-        self.assertEqual(source.select_source(self.cache, 'unavailable', [], offline=True, ref='main'), second)
+        self.assertEqual((second / 'build.rs').read_text(), 'arena dev updated\n')
+        self.assertEqual(source.select_source(self.cache, 'unavailable', [], offline=True, ref='dev'), second)
         with self.assertRaises(ValueError):
-            source.select_source(self.cache, '', [], ref='main;bad')
+            source.select_source(self.cache, '', [], ref='dev;bad')
 
     def test_network_failure_uses_last_successful_source(self):
         first = source.select_source(self.cache, str(self.remote), [])
@@ -72,7 +72,7 @@ class SourceSelectionTests(unittest.TestCase):
             shutil.copyfile(ROOT / 'cmake' / name, project / 'cmake' / name)
         (project / 'cmake/prepare_sedsnet.cmake').write_text(
             'file(WRITE "${SEDSNET_SOURCE_DIR}/prepared" "yes")\n')
-        (project / 'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.24)\nproject(source_test NONE)\ninclude(FetchContent)\ninclude(cmake/sedsnet_source.cmake)\nFetchContent_Declare(sedsnet GIT_REPOSITORY invalid GIT_TAG dev)\nFetchContent_MakeAvailable(sedsnet)\nif(NOT EXISTS "${sedsnet_SOURCE_DIR}/prepared")\n message(FATAL_ERROR "Preparation missing")\nendif()\n')
+        (project / 'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.24)\nproject(source_test NONE)\ninclude(FetchContent)\ninclude(cmake/sedsnet_source.cmake)\nFetchContent_Declare(sedsnet GIT_REPOSITORY invalid GIT_TAG main)\nFetchContent_MakeAvailable(sedsnet)\nif(NOT EXISTS "${sedsnet_SOURCE_DIR}/prepared")\n message(FATAL_ERROR "Preparation missing")\nendif()\n')
         local = project / 'SEDSnet'
         local.mkdir()
         for name in ('CMakeLists.txt', 'Cargo.toml', 'build.rs'):
@@ -83,18 +83,18 @@ class SourceSelectionTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             return result.stderr
         self.assertIn('offline/local', configure('-DSEDSNET_OFFLINE=ON'))
-        self.assertIn('dev unavailable', configure('-DSEDSNET_OFFLINE=OFF',
+        self.assertIn('main unavailable', configure('-DSEDSNET_OFFLINE=OFF',
                       f'-DSEDSNET_REPOSITORY={self.root / "missing"}'))
-        self.assertNotIn('dev unavailable', configure(f'-DFETCHCONTENT_SOURCE_DIR_SEDSNET={local}'))
+        self.assertNotIn('main unavailable', configure(f'-DFETCHCONTENT_SOURCE_DIR_SEDSNET={local}'))
 
         # Reproduce a deleted temporary override persisted in CMakeCache.txt.
         override = self.root / 'temporary-override'
         shutil.copytree(local, override)
-        self.assertNotIn('dev unavailable', configure(f'-DFETCHCONTENT_SOURCE_DIR_SEDSNET={override}'))
+        self.assertNotIn('main unavailable', configure(f'-DFETCHCONTENT_SOURCE_DIR_SEDSNET={override}'))
         shutil.rmtree(override)
         recovered = configure()
         self.assertIn('Ignoring missing or incomplete SEDSnet source override', recovered)
-        self.assertIn('dev unavailable', recovered)
+        self.assertIn('main unavailable', recovered)
         cache = (self.root / 'build/CMakeCache.txt').read_text()
         self.assertIn('FETCHCONTENT_SOURCE_DIR_SEDSNET:PATH=\n', cache)
         self.assertIn(f'SEDSNET_DIR:PATH={local}\n', cache)
@@ -109,7 +109,7 @@ class SourceSelectionTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'No usable SEDSnet source'):
             source.select_source(self.cache, 'unavailable', [], offline=True)
 
-    def test_broken_online_dev_does_not_silently_select_stale_version(self):
+    def test_broken_online_main_does_not_silently_select_stale_version(self):
         first = source.select_source(self.cache, str(self.remote), [])
         (self.remote / 'Cargo.toml').unlink()
         self.commit()

@@ -13,7 +13,7 @@ in `Core/Inc/telemetry_rate.h` (default: 1 Hz). Set a whole-number rate from
 1 to 1000 Hz and rebuild/reflash the board. Actual throughput is limited by
 sensor acquisition and link capacity; this is not a network variable.
 
-CMake fetches rolling SEDSNet `dev` and SEDS LaunchCore v1.0.0. Neither dependency is
+CMake fetches rolling SEDSNet `main` and SEDS LaunchCore v1.0.0. Neither dependency is
 a submodule. LaunchCore generates the linker scripts from
 `Bootloader/board_config.h`, packages Slot A firmware, and reserves its approved
 persistent-data and delta-update regions.
@@ -110,9 +110,9 @@ Use `--no-watchdog` only for a diagnostic build.
 
 ## SEDSnet build configuration
 
-Use `python3 build.py build --release --sedsnet-ref main` to build the current
-SEDSnet `main` commit. The same option is accepted by `test` and `flash`.
-Normal builds select `dev`. Each branch has its own source cache;
+Use `python3 build.py build --release --sedsnet-ref dev` to build the current
+SEDSnet `dev` commit. The same option is accepted by `test` and `flash`.
+Normal builds continue to select `main`. Each branch has its own source cache;
 when the network is unavailable the last usable on-disk source is retained.
 The selected revision is printed during configure. An explicit CMake source
 override remains local and is never fetched or reset.
@@ -123,7 +123,7 @@ override remains local and is never fetched or reset.
 python3 build.py build --release
 ```
 
-This selects the latest compatible SEDSnet `dev` commit and initializes a 8192-byte,
+This selects the latest compatible SEDSnet `main` commit and initializes a 8192-byte,
 64-handle arena before the router starts. It uses the existing allocator
 pool and leaves ThreadX scheduling unchanged. Compression stays disabled.
 Use `--packet-store heap` to disable the arena, including in a previously enabled build cache.

@@ -1,7 +1,7 @@
 # SEDSnet source selection
 
-All normal CMake/build.py configurations track SEDSnet `dev`. Each configure
-attempts to fetch dev (15-second network timeout), prints the exact commit,
+All normal CMake/build.py configurations track SEDSnet `main`. Each configure
+attempts to fetch main (15-second network timeout), prints the exact commit,
 and keeps a build-local source copy. Board schema and embedded preparation are
 applied before Cargo runs. Older prepared copies remain intact.
 
@@ -17,5 +17,5 @@ still applies board preparation. Keep separate prepared copies for each board.
 
 This fallback covers SEDSnet source retrieval. Offline builds also require the
 other firmware dependencies, Rust crates and toolchains already on disk.
-Reconfiguring (including through build.py) checks dev; a bare incremental
+Reconfiguring (including through build.py) checks main; a bare incremental
 `cmake --build` does not poll the network unless it triggers reconfiguration.
