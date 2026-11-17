@@ -7,6 +7,7 @@
 #endif
 
 #include "persistent_store.h"
+#include "network_stamp.h"
 
 #include <stddef.h>
 #include <string.h>
@@ -203,15 +204,17 @@ static void persist_pending(void)
     g_flight_state_cache_writes++;
 }
 
-/* Station FLIGHT_STATE writes apply in station-time order, per sender. The
+/* Station FLIGHT_STATE writes apply in (epoch, stamp) order, per sender. The
  * SDK orders them only while it still caches the newest one, and every
  * refusal below retires that cache; a late re-send of an older write (say
  * Idle sent before Aborted) would then apply after the newer one and take
  * this board out of Aborted or step it back. Remember the last applied write
  * per sender (the GS and the RRLS) and acknowledge an older one, or an exact
  * repeat, without applying it. A write to Aborted (15) always applies: it is
- * the safe direction, also if a station clock steps back. remember=true
- * records an applied write. */
+ * the safe direction. Epochs only grow and no node steps back inside one, so
+ * a write made after a station clock step in either direction orders after
+ * every earlier one, and a late copy stamped before the step never
+ * re-applies. remember=true records an applied write. */
 volatile uint32_t g_flight_state_writes_out_of_order __attribute__((used)) = 0U;
 bool flight_state_cache_order(const SedsPacketView *packet, bool remember)
 {
@@ -228,18 +231,19 @@ bool flight_state_cache_order(const SedsPacketView *packet, bool remember)
         if (!last[i].valid || (last[slot].valid && last[i].stamp < last[slot].stamp)) slot = i;
     }
     const bool known = last[slot].valid && last[slot].sender == sender;
+    const uint64_t stamp = NETWORK_STAMP_OF(packet);
     if (remember)
     {
-        if (!known || packet->timestamp >= last[slot].stamp)
+        if (!known || stamp >= last[slot].stamp)
         {
-            last[slot].stamp = packet->timestamp; last[slot].sender = sender;
+            last[slot].stamp = stamp; last[slot].sender = sender;
             last[slot].value = value; last[slot].valid = 1U;
         }
         return false;
     }
     if (value == 15U || !known) return false;
-    return packet->timestamp < last[slot].stamp ||
-           (packet->timestamp == last[slot].stamp && value == last[slot].value);
+    return stamp < last[slot].stamp ||
+           (stamp == last[slot].stamp && value == last[slot].value);
 }
 
 static SedsResult persist_update(const SedsPacketView *packet, void *user)
