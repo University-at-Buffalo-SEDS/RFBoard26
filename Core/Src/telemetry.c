@@ -15,6 +15,7 @@ extern int telemetry_router_leave(void);
 #include "telemetry.h"
 #include "telemetry_rate.h"
 #include "av_bay_underglow.h"
+#include "timesync_step_policy.h"
 #include "flight_state_cache.h"
 #include "board_recovery_transport.h"
 #include "board_recovery_floor.h"
@@ -743,6 +744,17 @@ static SedsResult telemetry_poll_timesync_locked(void) {
   bool did_queue = false;
   board_commissioning_service();
   (void)flight_state_cache_poll(g_router.r);
+  {
+    /* RF leads network time from GPS when the station is out of reach:
+     * follow the station's step policy from the flight state it holds. */
+    static int8_t steps_applied = -1;
+    const bool allowed = timesync_steps_allowed_for(flight_state_cache_has_value(),
+                                                    flight_state_cache_value());
+    if (steps_applied != (int8_t)allowed &&
+        seds_router_set_timesync_steps_allowed(g_router.r, allowed) == SEDS_OK) {
+      steps_applied = (int8_t)allowed;
+    }
+  }
   {
     const uint8_t *sent;
     size_t sent_len;
