@@ -16,13 +16,8 @@ uint8_t board_recovery_managed_report_ignorable(const SedsPacketView *packet);
 uint8_t board_recovery_automatic_is_stale(const SedsPacketView *packet);
 /* Advance the station clock from an authorized GS packet's timestamp. */
 void board_recovery_observe_station_time(SedsRouter*router,const SedsPacketView*packet);
-/* Freshness clock: max(valid network time, station clock), or the station
- * clock alone after it followed a GS step back until they agree; 0 when neither. */
+/* Freshness clock: max(valid network time, station clock); 0 when neither. */
 uint64_t board_recovery_station_now(SedsRouter*router);
-/* A mark (floor, last applied stamp) more than this far ahead of the station
- * clock predates a backward GS clock step. */
-#define BOARD_RECOVERY_STATION_STEP_BACK_MS UINT64_C(60000)
-uint8_t board_recovery_station_behind(uint64_t mark,uint64_t station);
 /* Network thread only: a valid network clock more than 60 s from the station
  * clock (which then restarts from the next GS packet). */
 bool board_recovery_network_clock_resync_needed(uint64_t network_now);

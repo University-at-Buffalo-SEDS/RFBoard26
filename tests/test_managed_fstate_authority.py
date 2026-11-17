@@ -34,8 +34,6 @@ class ManagedAuthorityTests(unittest.TestCase):
   bool persistent_store_controls_ready(void){return ready;}
   uint8_t board_recovery_floor_is_healthy(void){return healthy;}
   uint8_t board_recovery_floor_active(void){return active;}
-  uint8_t board_recovery_floor_cached_cutoff(uint64_t*c){*c=100;return 1U;}
-  uint8_t board_recovery_station_behind(uint64_t m,uint64_t s){return s&&m>s&&m-s>60000U;}
   uint8_t board_recovery_command_time_allowed(uint64_t source){return time_ok&&source>100;}
   SedsResult seds_router_get_network_time_ms(SedsRouter*r,uint64_t*out){assert(r);*out=now;return 0;}
   uint64_t board_recovery_station_now(SedsRouter*r){uint64_t t=0;return !r||seds_router_get_network_time_ms(r,&t)?0U:t;}
