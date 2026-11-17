@@ -32,11 +32,6 @@ launchcore_persist_status_t persistent_store_get(uint32_t key, void *value, size
 { (void)key; assert(*size == 1U); *(uint8_t *)value = stored; return LAUNCHCORE_PERSIST_OK; }
 launchcore_persist_status_t persistent_store_set(uint32_t key, const void *value, size_t size)
 { (void)key; assert(size == 1U); stored = *(const uint8_t *)value; ++writes; return LAUNCHCORE_PERSIST_OK; }
-/* The board's station clock and its backward-step flag, as the transport keeps them. */
-static uint64_t station_clock;static uint8_t station_stepped;
-uint64_t board_recovery_station_now(SedsRouter*r){(void)r;return station_clock;}
-uint8_t board_recovery_station_behind(uint64_t m,uint64_t s){return s&&m>s&&m-s>60000U;}
-uint8_t board_recovery_station_stepped_back(void){return station_stepped;}
 uint8_t board_recovery_managed_update_allowed(const SedsPacketView *packet)
 { assert(packet); return (uint8_t)allowed; }
 bool ota_stream_state_begin(uint8_t phase) { (void)phase; return !ota_busy; }
@@ -200,30 +195,6 @@ int main(int argc, char **argv)
     }
   }
   puts("PASS a late older FLIGHT_STATE write never applies; Aborted kept until Reset");
-
-  /* The GS clock steps back 4 h after a write: writes on the new clock apply
-   * (the re-anchor also forgets the SDK's cached write); a late copy stamped
-   * on the old clock does not. A forward step then needs nothing. */
-  {
-    const uint64_t base = 1767225600000ULL, H4 = 14400000ULL;
-    station_clock = base + 500U;
-    assert(deliver_at(2U, base, false) == SEDS_OK && flight_state_cache_value() == 2U);
-    station_clock = base - H4 + 600U; station_stepped = 1U;
-    assert(seds_router_invalidate_network_variable_cache(board, SEDS_DT_FLIGHT_STATE, NULL) == SEDS_OK);
-    const struct { uint8_t value; uint64_t ts; int late; uint8_t want; } steps[] = {
-      {1U, base - H4 + 500U, 0, 1U}, {2U, base, 1, 1U}, {7U, base - H4 + 700U, 0, 7U}, {1U, base - H4 + 500U, 1, 7U}};
-    for (unsigned i = 0U; i < sizeof steps / sizeof steps[0]; i++) {
-      const unsigned before = receipts;
-      const SedsResult a = deliver_at(steps[i].value, steps[i].ts, steps[i].late);
-      printf("step-back %u write %u%s result=%d value=%u acked=%d\n", i, steps[i].value,
-             steps[i].late ? " late copy" : "", a, flight_state_cache_value(), receipts > before);
-      assert(a == SEDS_OK && receipts > before && flight_state_cache_value() == steps[i].want);
-    }
-    station_clock = base + 1500U; station_stepped = 0U;
-    assert(deliver_at(2U, base + 1000U, false) == SEDS_OK && flight_state_cache_value() == 2U);
-    station_clock = 0U;
-  }
-  puts("PASS flight states apply again after a 4 h station clock step back; old copies do not");
 
   seds_router_free(board);
   puts("PASS refused and malformed FLIGHT_STATE acknowledged and relayed without applying; busy OTA owner still acknowledged");

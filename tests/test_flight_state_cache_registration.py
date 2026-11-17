@@ -56,9 +56,6 @@ uint32_t HAL_GetTick(void){return 1000;}
 int persistent_store_init(void){return 0;}
 int persistent_store_get(uint32_t key,void*p,size_t*n){assert(key==0x46535445U&&*n==1);*(uint8_t*)p=stored;return 0;}
 int persistent_store_set(uint32_t key,const void*p,size_t n){assert(key==0x46535445U&&n==1);writes++;stored=*(const uint8_t*)p;return 0;}
-uint64_t board_recovery_station_now(SedsRouter*r){(void)r;return 0U;}
-uint8_t board_recovery_station_behind(uint64_t m,uint64_t s){return s&&m>s&&m-s>60000U;}
-uint8_t board_recovery_station_stepped_back(void){return 0U;}
 uint8_t board_recovery_managed_update_allowed(const SedsPacketView*p){assert(p);return 1;}
 SedsResult seds_router_enable_network_variable(SedsRouter*r,unsigned ty,bool rd,bool wr){assert(r&&ty==SEDS_DT_FLIGHT_STATE&&rd&&!wr);enables++;return fail_enable?SEDS_HANDLER_ERROR:SEDS_OK;}
 SedsResult seds_router_on_network_variable_update(SedsRouter*r,unsigned ty,SedsResult(*cb)(const SedsPacketView*,void*),void*u){assert(r&&ty==SEDS_DT_FLIGHT_STATE&&cb&&!u);registrations++;return fail_callback?SEDS_HANDLER_ERROR:SEDS_OK;}

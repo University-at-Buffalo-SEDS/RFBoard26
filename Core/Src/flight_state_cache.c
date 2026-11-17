@@ -210,13 +210,7 @@ static void persist_pending(void)
  * this board out of Aborted or step it back. Remember the last applied write
  * per sender (the GS and the RRLS) and acknowledge an older one, or an exact
  * repeat, without applying it. A write to Aborted (15) always applies: it is
- * the safe direction, also if a station clock steps back. A last write
- * stamped more than a minute ahead of the station clock predates a GS clock
- * step back: it no longer orders a write that is fresh on the new clock.
- * After such a step a write stamped more than a minute ahead of the station
- * clock is a copy from before it and is refused. (Otherwise this board's
- * station clock follows GS queries only and may trail a forward GS step, so
- * a write far ahead of it is not refused for that alone.) remember=true
+ * the safe direction, also if a station clock steps back. remember=true
  * records an applied write. */
 volatile uint32_t g_flight_state_writes_out_of_order __attribute__((used)) = 0U;
 bool flight_state_cache_order(const SedsPacketView *packet, bool remember)
@@ -234,24 +228,16 @@ bool flight_state_cache_order(const SedsPacketView *packet, bool remember)
         if (!last[i].valid || (last[slot].valid && last[i].stamp < last[slot].stamp)) slot = i;
     }
     const bool known = last[slot].valid && last[slot].sender == sender;
-    const uint64_t now = board_recovery_station_now(NULL);
-    const bool stepped = known && board_recovery_station_behind(last[slot].stamp, now) &&
-        packet->timestamp != 0U && packet->timestamp != UINT64_MAX &&
-        (now >= packet->timestamp ? now - packet->timestamp <= 15000U : packet->timestamp - now <= 1000U);
     if (remember)
     {
-        if (!known || stepped || packet->timestamp >= last[slot].stamp)
+        if (!known || packet->timestamp >= last[slot].stamp)
         {
             last[slot].stamp = packet->timestamp; last[slot].sender = sender;
             last[slot].value = value; last[slot].valid = 1U;
         }
         return false;
     }
-    if (value == 15U) return false;
-    /* After a GS clock step back, a write stamped more than a minute ahead of
-     * the station clock is a copy from before the step. */
-    if (board_recovery_station_stepped_back() && board_recovery_station_behind(packet->timestamp, now)) return true;
-    if (!known || stepped) return false;
+    if (value == 15U || !known) return false;
     return packet->timestamp < last[slot].stamp ||
            (packet->timestamp == last[slot].stamp && value == last[slot].value);
 }
