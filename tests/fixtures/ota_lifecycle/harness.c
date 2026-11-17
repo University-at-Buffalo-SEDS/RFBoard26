@@ -35,6 +35,8 @@ uint8_t board_recovery_floor_active(void){return 1;}uint8_t board_recovery_floor
 bool seds_router_sender_matches_hostname(const SedsRouter*r,const char*s,size_t n,const char*name,size_t count){assert(r&&!irq_mask);return s&&n==count&&!memcmp(s,name,n);}
 bool seds_router_sender_matches_station(const SedsRouter*r,const char*s,size_t n,const char*name,size_t len){return seds_router_sender_matches_hostname(r,s,n,name,len);}
 SedsResult seds_router_get_network_time_ms(SedsRouter*r,uint64_t*out){assert(r&&!irq_mask);*out=clock_ms;return 0;}
+/* One epoch, no steps: the SDK window against the fixture clock. */
+SedsResult seds_router_network_stamp_fresh(SedsRouter*r,uint16_t e,uint64_t ts,uint64_t age,uint64_t ahead,bool*out){assert(r&&!irq_mask);*out=e==0&&(clock_ms>=ts?clock_ms-ts<=age:ts-clock_ms<=ahead);return 0;}
 SedsResult seds_router_enable_network_variable(SedsRouter*r,uint32_t ty,bool a,bool b){assert(r&&ty==SEDS_DT_FLIGHT_STATE&&a&&!b);return 0;}
 SedsResult seds_router_on_network_variable_update(SedsRouter*r,uint32_t ty,SedsResult(*fn)(const SedsPacketView*,void*),void*u){assert(r&&ty==SEDS_DT_FLIGHT_STATE&&!u);cache_callback=fn;return 0;}
 SedsResult seds_router_request_managed_variable(SedsRouter*r,uint32_t ty){(void)r;(void)ty;return 0;}

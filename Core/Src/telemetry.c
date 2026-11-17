@@ -17,6 +17,8 @@ extern int telemetry_router_leave(void);
 #include "av_bay_underglow.h"
 #include "flight_state_cache.h"
 #include "board_recovery_transport.h"
+#include "board_recovery_floor.h"
+#include "network_stamp.h"
 #include "sim_network_probe.h"
 #include "board_can_priority.h"
 #include "ota_stream.h"
@@ -161,12 +163,6 @@ volatile uint32_t g_rf_memory_snapshot_tick RF_HEALTH_PROBE;
 #endif
 volatile uint32_t g_telemetry_discovery_seen RF_HEALTH_PROBE = 0U;
 volatile uint32_t g_telemetry_timesync_valid RF_HEALTH_PROBE = 0U;
-/* Network clock restarts after it disagreed with the station clock by >60 s. */
-volatile uint32_t g_network_clock_resyncs RF_HEALTH_PROBE = 0U;
-/* A restart cannot fix a source that disagrees with the GS; repeating it on
- * every GS packet kept the clock torn down. Monotonic ticks pace it. */
-#define NETWORK_CLOCK_RESYNC_HOLDOFF_TICKS (30U * (ULONG)TX_TIMER_TICKS_PER_SECOND)
-static ULONG g_network_clock_resync_tick;
 volatile uint32_t g_telemetry_network_ready RF_HEALTH_PROBE = 0U;
 /* Optional router services that failed to start (TELEMETRY_SERVICE_* bits).
  * The CAN<->radio relay, discovery and BOARD_HEALTH keep running; failed
@@ -712,16 +708,8 @@ static void telemetry_update_network_health(SedsRouter *router) {
 #endif
 
   uint64_t network_time_ms = 0ULL;
-  const ULONG now_ticks = tx_time_get();
   if (seds_router_get_network_time_ms(router, &network_time_ms) == SEDS_OK) {
     g_telemetry_timesync_valid = 1U;
-    if ((g_network_clock_resyncs == 0U ||
-         (ULONG)(now_ticks - g_network_clock_resync_tick) >= NETWORK_CLOCK_RESYNC_HOLDOFF_TICKS) &&
-        board_recovery_network_clock_resync_needed(network_time_ms) &&
-        telemetry_configure_timesync_locked(router) == SEDS_OK) {
-      g_network_clock_resyncs++;
-      g_network_clock_resync_tick = now_ticks;
-    }
   }
   if (g_telemetry_discovery_seen != 0U && g_radio_link_seen != 0U &&
       g_telemetry_timesync_valid != 0U) {
@@ -1143,6 +1131,15 @@ static SedsResult init_telemetry_router_locked(void) {
     if (result == SEDS_OK && did_queue) g_telemetry_timesync_queued++;
   }
 
+  /* The recovery floor (the last Reset's station stamp) was cached before
+   * threads started. Its time-base epoch bounds the network's from below, so
+   * a whole-stack power cycle cannot reuse an epoch older than the floor. */
+  {
+    uint64_t floor_key = 0U;
+    if (board_recovery_floor_cached_cutoff(&floor_key) && network_stamp_epoch(floor_key) != 0U) {
+      (void)seds_router_raise_time_epoch(r, network_stamp_epoch(floor_key), NULL);
+    }
+  }
   /* Publish only a complete router. RX and lazy producers share its mutex. */
   board_recovery_transport_set_router(r);
   g_router.r = r;

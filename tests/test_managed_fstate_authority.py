@@ -29,17 +29,18 @@ class ManagedAuthorityTests(unittest.TestCase):
   #define SEDS_DT_FLIGHT_STATE 11U
   #define SEDS_DT_FLIGHT_COMMAND 12U
   #define SEDS_DT_ASCENT_BIASES 13U
-  typedef struct{uint32_t ty;const char*sender;size_t sender_len;uint64_t timestamp;}SedsPacketView;
+  typedef struct{uint32_t ty;const char*sender;size_t sender_len;uint64_t timestamp;uint16_t time_epoch;}SedsPacketView;
   static bool ready=true,healthy=true,active=false,time_ok=true;static uint64_t now=20000;
   bool persistent_store_controls_ready(void){return ready;}
   uint8_t board_recovery_floor_is_healthy(void){return healthy;}
   uint8_t board_recovery_floor_active(void){return active;}
   uint8_t board_recovery_command_time_allowed(uint64_t source){return time_ok&&source>100;}
   SedsResult seds_router_get_network_time_ms(SedsRouter*r,uint64_t*out){assert(r);*out=now;return 0;}
-  uint64_t board_recovery_station_now(SedsRouter*r){uint64_t t=0;return !r||seds_router_get_network_time_ms(r,&t)?0U:t;}
+  /* SDK window model in one epoch: age and lead against the network clock. */
+  SedsResult seds_router_network_stamp_fresh(SedsRouter*r,uint16_t e,uint64_t ts,uint64_t age,uint64_t ahead,bool*out){assert(r);*out=e==0&&(now>=ts?now-ts<=age:ts-now<=ahead);return 0;}
   #define seds_router_sender_matches_station seds_router_sender_matches_hostname
   bool seds_router_sender_matches_hostname(SedsRouter*r,const char*s,size_t len,const char*name,size_t n){assert(r);return s&&len==n&&!memcmp(s,name,n);}
-  '''+function(text,'authorized_owner')+'\n'+function(text,'authorized_primary')+'\n'+function(text,'board_recovery_command_is_stale')+'\n'+body+'''
+  '''+(ROOT/'Core/Inc/network_stamp.h').read_text()+function(text,'board_recovery_stamp_fresh')+'\n'+function(text,'authorized_owner')+'\n'+function(text,'authorized_primary')+'\n'+function(text,'board_recovery_command_is_stale')+'\n'+body+'''
   int main(int argc,char**argv){assert(argc==2);SedsPacketView p={.ty=SEDS_DT_FLIGHT_STATE,.sender="VB",.sender_len=2,.timestamp=9000};
    if(!strcmp(argv[1],"inactive_nonGS")){assert(!board_recovery_managed_update_allowed(&p));return 0;}
    const char*senders[]={"GS","RF","VB","FC","RRLS"};unsigned cases=0;

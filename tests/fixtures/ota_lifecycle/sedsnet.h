@@ -12,7 +12,7 @@ typedef int32_t SedsResult;typedef uint32_t SedsDataType;typedef struct {int mar
 #define SEDS_P2P_STREAM_DATA 3U
 #define SEDS_P2P_STREAM_CLOSED 4U
 #define SEDS_P2P_STREAM_RESET 5U
-typedef struct {uint32_t ty;const uint8_t*payload;size_t payload_len;const char*sender;size_t sender_len;uint64_t timestamp;} SedsPacketView;
+typedef struct {uint32_t ty;const uint8_t*payload;size_t payload_len;const char*sender;size_t sender_len;uint64_t timestamp;uint16_t time_epoch;} SedsPacketView;
 typedef struct {uint8_t kind;uint32_t stream_id,peer_stream_id,sequence;const char*peer_hostname;size_t peer_hostname_len;uint32_t peer_address;uint16_t local_port,peer_port;const uint8_t*payload;size_t payload_len;} SedsP2pStreamEventView;
 typedef SedsResult(*SedsP2pStreamHandlerFn)(const SedsP2pStreamEventView*,void*);
 SedsResult seds_router_bind_p2p_stream_port(SedsRouter*,uint16_t,SedsP2pStreamHandlerFn,void*);
@@ -24,3 +24,4 @@ SedsResult seds_router_invalidate_network_variable_cache(SedsRouter*,uint32_t,bo
 bool seds_router_sender_matches_hostname(const SedsRouter*,const char*,size_t,const char*,size_t);
 bool seds_router_sender_matches_station(const SedsRouter*,const char*,size_t,const char*,size_t);
 SedsResult seds_router_get_network_time_ms(SedsRouter*,uint64_t*);
+SedsResult seds_router_network_stamp_fresh(SedsRouter*,uint16_t,uint64_t,uint64_t,uint64_t,bool*);

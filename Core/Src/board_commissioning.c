@@ -73,30 +73,32 @@ uint8_t board_commissioning_query_result(void){
 }
 
 enum {JOB_FIRST=1,JOB_SECOND=2,JOB_NORMAL=3,JOB_RECONCILE=4};
-static struct {BoardRecoveryRequest request;uint64_t source;void*context;CommissionReply reply;CommissionClock clock;uint32_t applied_epoch;uint8_t kind,phase,result;bool valid,waiting,dirty,owner_started,durable,progress_sent;}job;
+static struct {BoardRecoveryRequest request;uint64_t source;void*context;CommissionReply reply;CommissionFresh fresh;uint32_t applied_epoch;uint8_t kind,phase,result;bool valid,waiting,dirty,owner_started,durable,progress_sent;}job;
 static struct {uint64_t nonce,issuer,source,generation;uint32_t epoch;bool valid;}query;
 static uint64_t attempted_time;
-static bool fresh(uint64_t source,uint64_t now){return source&&source!=UINT64_MAX&&now&&now!=UINT64_MAX&&(now>=source?now-source<=15000U:source-now<=1000U);}
+/* Sources are (epoch, stamp) keys (network_stamp.h); freshness is the
+ * transport's network-stamp window, judged across time steps. */
+static bool fresh(CommissionFresh check,void*context,uint64_t source){return check&&source&&source!=UINT64_MAX&&check(context,source);}
 static bool same_tuple(uint64_t issuer,uint64_t nonce,uint64_t other_issuer,uint64_t other_nonce){return issuer==other_issuer&&nonce==other_nonce;}
 static bool same_request(const BoardRecoveryRequest*a,const BoardRecoveryRequest*b){return a->operation==b->operation&&a->desired_state==b->desired_state&&a->nonce==b->nonce&&a->issuer_session==b->issuer_session&&a->expected_boot_generation==b->expected_boot_generation&&a->expected_abort_epoch==b->expected_abort_epoch;}
 static bool same_history(const BoardRecoveryRequest*r,uint64_t source){return r->operation==BOARD_RECOVERY_RECOVER&&r->desired_state==0&&r->expected_abort_epoch==history.epoch&&r->expected_boot_generation==history.generation&&source==history.source;}
 static uint64_t query_cutoff(void){uint64_t cutoff=0;if(!board_recovery_floor_cached_cutoff(&cutoff))return UINT64_MAX;if(history_valid&&history.source>cutoff)cutoff=history.source;if(attempted_time>cutoff)cutoff=attempted_time;return cutoff;}
-bool board_commissioning_note_query(const BoardRecoveryRequest*r,uint64_t source,uint64_t now,uint32_t epoch){
+bool board_commissioning_note_query(const BoardRecoveryRequest*r,uint64_t source,uint32_t epoch,void*context,CommissionFresh check){
  if(!board_commissioning_pending())return true;
  query.valid=false;uint64_t generation=board_recovery_boot_current();bool uncertain=board_commissioning_uncertain_first();
- if(!r||r->operation!=BOARD_RECOVERY_QUERY||!r->nonce||!r->issuer_session||!history_valid||(!uncertain&&(!known_identity||(!known_floor&&!repairable_floor&&!unverified_floor_first)||!generation||generation==UINT64_MAX))||!fresh(source,now)||source<=query_cutoff()||same_tuple(r->issuer_session,r->nonce,history.issuer,history.nonce) )return false;
+ if(!r||r->operation!=BOARD_RECOVERY_QUERY||!r->nonce||!r->issuer_session||!history_valid||(!uncertain&&(!known_identity||(!known_floor&&!repairable_floor&&!unverified_floor_first)||!generation||generation==UINT64_MAX))||!fresh(check,context,source)||source<=query_cutoff()||same_tuple(r->issuer_session,r->nonce,history.issuer,history.nonce) )return false;
  BoardRecoverySnapshot live={0};uint8_t required=BOARD_RECOVERY_SUPPORTED|BOARD_RECOVERY_ABORT_LATCHED;
  if(board_recovery_snapshot(&live)!=0||live.abort_epoch!=epoch||(live.flags&required)!=required||((live.flags&BOARD_RECOVERY_OUTPUTS_VALID)&&!(live.flags&BOARD_RECOVERY_SAFE_OUTPUTS)))return false;
  query.nonce=r->nonce;query.issuer=r->issuer_session;query.source=source;query.generation=generation;query.epoch=epoch;query.valid=true;return true;
 }
 /* -2 means metadata is unclassified/ineligible, never a legacy repair path.
  * -1 means serialized service owes a reply. Neither is a wire result. */
-int32_t board_commissioning_stage(const BoardRecoveryRequest*r,uint64_t source,uint64_t now,uint32_t epoch,void*context,CommissionReply reply,CommissionClock clock){
- if(!r||!reply||!clock||r->operation!=BOARD_RECOVERY_RECOVER||r->desired_state!=0||!r->nonce||!r->issuer_session)return BOARD_RECOVERY_RESULT_INVALID;
+int32_t board_commissioning_stage(const BoardRecoveryRequest*r,uint64_t source,uint32_t epoch,void*context,CommissionReply reply,CommissionFresh check){
+ if(!r||!reply||!check||r->operation!=BOARD_RECOVERY_RECOVER||r->desired_state!=0||!r->nonce||!r->issuer_session)return BOARD_RECOVERY_RESULT_INVALID;
  bool duplicate=job.valid&&same_tuple(r->issuer_session,r->nonce,job.request.issuer_session,job.request.nonce);
  if(duplicate&&(!same_request(r,&job.request)||source!=job.source))return BOARD_RECOVERY_RESULT_INVALID;
  if(duplicate){
-  if(!fresh(source,now))return BOARD_RECOVERY_RESULT_STALE;
+  if(!fresh(check,context,source))return BOARD_RECOVERY_RESULT_STALE;
   if(job.waiting)return job.kind==JOB_NORMAL&&job.durable?BOARD_RECOVERY_RESULT_PENDING:-1;
   if(job.result==BOARD_RECOVERY_RESULT_OK&&epoch!=job.applied_epoch)return BOARD_RECOVERY_RESULT_STALE;
   return job.result;
@@ -108,18 +110,18 @@ int32_t board_commissioning_stage(const BoardRecoveryRequest*r,uint64_t source,u
  if(!board_commissioning_pending()&&eligible==COMMISSION_NONE&&!normal_eligible)return -2;
  /* Another station's request already owns this epoch: query again. */
  if(job.waiting)return r->expected_abort_epoch==job.request.expected_abort_epoch?BOARD_RECOVERY_RESULT_STALE:BOARD_RECOVERY_RESULT_IO;
- if(!fresh(source,now)||!epoch||epoch==UINT32_MAX||r->expected_abort_epoch!=epoch||source<=query_cutoff()||(job.valid&&source<=job.source))return BOARD_RECOVERY_RESULT_STALE;
+ if(!fresh(check,context,source)||!epoch||epoch==UINT32_MAX||r->expected_abort_epoch!=epoch||source<=query_cutoff()||(job.valid&&source<=job.source))return BOARD_RECOVERY_RESULT_STALE;
  uint8_t kind=0;uint64_t generation=board_recovery_boot_current();
- if(board_commissioning_uncertain_first()&&r->expected_boot_generation==UINT64_MAX&&query.valid&&!query.generation&&query.epoch==epoch&&fresh(query.source,now)&&r->issuer_session==query.issuer&&!same_tuple(r->issuer_session,r->nonce,query.issuer,query.nonce))kind=JOB_RECONCILE;
- else if(unverified_floor_first&&history_valid&&history.kind==0&&known_identity&&generation&&generation!=UINT64_MAX&&history.generation==generation&&r->expected_boot_generation==generation&&query.valid&&query.generation==generation&&query.epoch==epoch&&fresh(query.source,now)&&r->issuer_session==query.issuer&&!same_tuple(r->issuer_session,r->nonce,query.issuer,query.nonce))kind=JOB_SECOND;
+ if(board_commissioning_uncertain_first()&&r->expected_boot_generation==UINT64_MAX&&query.valid&&!query.generation&&query.epoch==epoch&&fresh(check,context,query.source)&&r->issuer_session==query.issuer&&!same_tuple(r->issuer_session,r->nonce,query.issuer,query.nonce))kind=JOB_RECONCILE;
+ else if(unverified_floor_first&&history_valid&&history.kind==0&&known_identity&&generation&&generation!=UINT64_MAX&&history.generation==generation&&r->expected_boot_generation==generation&&query.valid&&query.generation==generation&&query.epoch==epoch&&fresh(check,context,query.source)&&r->issuer_session==query.issuer&&!same_tuple(r->issuer_session,r->nonce,query.issuer,query.nonce))kind=JOB_SECOND;
  else if(!board_commissioning_uncertain_first()&&eligible==COMMISSION_IDENTITY&&!generation&&r->expected_boot_generation==UINT64_MAX)kind=JOB_FIRST;
  else if(normal_eligible&&(!history_valid||history.state==0)&&generation&&generation!=UINT64_MAX&&r->expected_boot_generation==generation)kind=JOB_NORMAL;
- else if(board_commissioning_pending()&&known_identity&&(known_floor||repairable_floor)&&query.valid&&query.generation==generation&&query.epoch==epoch&&fresh(query.source,now)&&r->expected_boot_generation==generation&&r->issuer_session==query.issuer&&!same_tuple(r->issuer_session,r->nonce,query.issuer,query.nonce))kind=history.kind==1?JOB_NORMAL:JOB_SECOND;
+ else if(board_commissioning_pending()&&known_identity&&(known_floor||repairable_floor)&&query.valid&&query.generation==generation&&query.epoch==epoch&&fresh(check,context,query.source)&&r->expected_boot_generation==generation&&r->issuer_session==query.issuer&&!same_tuple(r->issuer_session,r->nonce,query.issuer,query.nonce))kind=history.kind==1?JOB_NORMAL:JOB_SECOND;
  else return BOARD_RECOVERY_RESULT_STALE;
  query.valid=false;
  /* Retire the exact original intent BEFORE state or media effects. Failed jobs
   * require a new explicit nonce/time, never an SDK-ID allocation/restamp. */
- job.request=*r;job.source=source;job.context=context;job.reply=reply;job.clock=clock;job.kind=kind;job.phase=0;job.result=BOARD_RECOVERY_RESULT_IO;job.valid=true;job.waiting=true;job.dirty=false;job.owner_started=false;job.applied_epoch=0;job.durable=false;job.progress_sent=false;attempted_time=source;
+ job.request=*r;job.source=source;job.context=context;job.reply=reply;job.fresh=check;job.kind=kind;job.phase=0;job.result=BOARD_RECOVERY_RESULT_IO;job.valid=true;job.waiting=true;job.dirty=false;job.owner_started=false;job.applied_epoch=0;job.durable=false;job.progress_sent=false;attempted_time=source;
  /* Immediate RAM admission exclusion does not claim cold durability before
   * the strict PENDING commit. Concrete owner performs no flash/SDK here. */
  persistent_store_hold_commissioning();job.owner_started=true;
@@ -284,8 +286,7 @@ static void finish_job(uint8_t result,bool retain){
 }
 void board_commissioning_service(void){
  if(job.valid&&job.waiting){
-  uint64_t now=job.clock(job.context);
-  if(!fresh(job.source,now)){finish_job(BOARD_RECOVERY_RESULT_STALE,true);}
+  if(!fresh(job.fresh,job.context,job.source)){finish_job(BOARD_RECOVERY_RESULT_STALE,true);}
   else{
    BoardRecoverySnapshot snapshot={0};
    if(board_recovery_snapshot(&snapshot)!=0){finish_job(BOARD_RECOVERY_RESULT_IO,true);}
@@ -301,7 +302,7 @@ void board_commissioning_service(void){
      int32_t applied=board_recovery_commission_apply(job.request.expected_abort_epoch);
      if(applied!=-14){
       if(applied!=0){finish_job(applied==-10?BOARD_RECOVERY_RESULT_STALE:BOARD_RECOVERY_RESULT_IO,true);}
-      else if(!fresh(job.source,job.clock(job.context))||!write_complete()){finish_job(BOARD_RECOVERY_RESULT_IO,true);}
+      else if(!fresh(job.fresh,job.context,job.source)||!write_complete()){finish_job(BOARD_RECOVERY_RESULT_IO,true);}
       else finish_job(BOARD_RECOVERY_RESULT_OK,false);
      }
     }

@@ -4,6 +4,7 @@
 #include "board_recovery.h"
 #include "board_recovery_boot.h"
 #include "board_recovery_transport.h"
+#include "network_stamp.h"
 #include "board_recovery_floor.h"
 #include "board_recovery_wire.h"
 #include "flight_state_cache.h"
@@ -41,6 +42,24 @@ static void sdk_unlocked(void){assert(!physical||!physical->locked);}
 bool seds_router_sender_matches_hostname(const SedsRouter*r,const char*s,size_t n,const char*name,size_t len){sdk_unlocked();assert(r&&((len==2&&!memcmp(name,"GS",2))||(len==4&&!memcmp(name,"RRLS",4))));return s&&((n==len&&!memcmp(s,name,len))||(len==2&&n==10&&!memcmp(s,"@addr:1234",10))||(len==4&&n==10&&!memcmp(s,"@addr:5678",10)));}
 bool seds_router_sender_matches_station(const SedsRouter*r,const char*s,size_t n,const char*name,size_t len){return seds_router_sender_matches_hostname(r,s,n,name,len);}
 SedsResult seds_router_get_network_time_ms(SedsRouter*r,uint64_t*out){sdk_unlocked();assert(r);*out=clock_ms;return SEDS_OK;}
+/* SEDSnet 6 network-stamp API judged against the fixture clock: its epoch
+ * (clock_epoch), one remembered step from prev_epoch that moved the clock by
+ * step_delta ms (new minus old reading), and a newer epoch first heard
+ * newer_age ms ago. No network time: kind 3. */
+static uint16_t clock_epoch,prev_epoch;static int64_t step_delta,newer_age;
+SedsResult seds_router_network_stamp_age_ms(SedsRouter*r,uint16_t e,uint64_t ts,uint8_t*kind,int64_t*age){
+ uint64_t now=0;*age=0;
+ if(seds_router_get_network_time_ms(r,&now)!=SEDS_OK){*kind=3;return SEDS_OK;}
+ if(e>clock_epoch){*kind=1;*age=newer_age;return SEDS_OK;}
+ if(e==clock_epoch){*kind=0;*age=(int64_t)now-(int64_t)ts;return SEDS_OK;}
+ if(clock_epoch&&e==prev_epoch){*kind=0;*age=(int64_t)now-((int64_t)ts+step_delta);return SEDS_OK;}
+ *kind=2;return SEDS_OK;
+}
+SedsResult seds_router_network_stamp_fresh(SedsRouter*r,uint16_t e,uint64_t ts,uint64_t max_age,uint64_t max_ahead,bool*out){
+ uint8_t kind=3;int64_t age=0;(void)seds_router_network_stamp_age_ms(r,e,ts,&kind,&age);
+ *out=(kind==0U&&(age>=0?(uint64_t)age<=max_age:(uint64_t)(-age)<=max_ahead))||(kind==1U&&(uint64_t)age<=max_age);
+ return SEDS_OK;
+}
 SedsResult seds_router_log_queue_typed(SedsRouter*r,SedsDataType type,const void*p,size_t count,size_t width,SedsElemKind kind){sdk_unlocked();assert(r&&type==201&&count==40&&width==1&&kind==SEDS_EK_UNSIGNED);memcpy(response,p,40);assert((response[3]&32U)==EXPECTED_CAP);app_replies++;return SEDS_OK;}
 /* No older status is pending here: the Abort push's supersede pass finds none. */
 int32_t seds_router_copy_reliable_pending(SedsRouter*r,size_t first,SedsReliablePendingRow*rows,size_t capacity){sdk_unlocked();assert(r&&rows&&capacity);(void)first;memset(rows,0,capacity*sizeof *rows);return 0;}

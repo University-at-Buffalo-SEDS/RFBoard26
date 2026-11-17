@@ -6,6 +6,7 @@
 #include "board_recovery_boot.h"
 #include "board_recovery_floor.h"
 #include "board_recovery.h"
+#include "network_stamp.h"
 #include <string.h>
 static SedsRouter *recovery_router;
 /* Delivered reliable packets refused for good and acknowledged (SEDS_OK). */
@@ -27,44 +28,22 @@ static uint8_t authorized_primary(SedsRouter *router,const SedsPacketView *packe
 {
  return authorized_owner(router,packet,"GS",2U) || authorized_owner(router,packet,"RRLS",4U);
 }
-/* Station clock: the newest GS-issued timestamp (the GS QUERY; RF hosts no
- * heartbeat endpoint), advanced by the board tick since its receipt. Transit
- * only delays it, so it is a lower bound of GS time and never makes an old
- * request look fresher than the GS clock would. It only moves forward (a
- * network clock resync restarts it from the next GS packet) and is used
- * beside, never instead of, a valid SEDSnet network clock. Its writers and
- * readers all run under the telemetry router lock. */
-#if TX_TIMER_TICKS_PER_SECOND != 1000
-#error "The station clock counts milliseconds in ThreadX ticks"
-#endif
-static uint64_t station_utc;static ULONG station_tick;
-static uint64_t station_estimate(void){return station_utc?station_utc+(ULONG)(tx_time_get()-station_tick):0U;}
-static void station_store(uint64_t utc){station_utc=utc;station_tick=tx_time_get();}
-void board_recovery_observe_station_time(SedsRouter*router,const SedsPacketView*packet){
- if(authorized_primary(router,packet)&&packet->timestamp!=UINT64_MAX&&packet->timestamp>station_estimate())station_store(packet->timestamp);
-}
-/* A relayed consumer cannot complete a verified SEDSnet time exchange, so a
- * wrong first anchor is only slewed at 5%. A valid network clock more than
- * 60 s from the station clock restarts timesync; the station clock restarts
- * from the next GS packet, so a GS clock step cannot repeat it every poll. */
-bool board_recovery_network_clock_resync_needed(uint64_t network_now){
- uint64_t station=station_estimate();
- if(!station||network_now-station+60000U<=120000U)return false;
- station_store(0U);return true;
-}
-/* Freshness clock: max(valid network time, station clock); 0 when neither. */
-uint64_t board_recovery_station_now(SedsRouter*router){
- uint64_t now=0U;
- if(!router||seds_router_get_network_time_ms(router,&now)!=SEDS_OK)now=0U;
- uint64_t station=station_estimate();return station>now?station:now;
+/* Station request validity window: at most 15 s old and 1 s ahead of this
+ * board's network time, judged by SEDSnet across the time steps it remembers
+ * (a newer-epoch stamp passes while this board re-anchors onto it). A stamp
+ * from before a forgotten step, or no network time, is never fresh. */
+uint8_t board_recovery_stamp_fresh(SedsRouter*router,uint64_t key){
+ bool fresh=false;if(!router)router=recovery_router;
+ return router!=NULL&&key!=0U&&seds_router_network_stamp_fresh(router,network_stamp_epoch(key),network_stamp_ms(key),15000U,1000U,&fresh)==SEDS_OK&&fresh;
 }
 uint8_t board_recovery_command_is_stale(const SedsPacketView *packet)
 {
- if (packet==0 || !board_recovery_command_time_allowed(packet->timestamp)) return 1U;
- if (board_recovery_floor_active()) {
-  uint64_t now=board_recovery_station_now(recovery_router);
-  if (packet->timestamp==0U || packet->timestamp==UINT64_MAX || now==0U || now==UINT64_MAX || (now>=packet->timestamp ? now-packet->timestamp>15000U : packet->timestamp-now>1000U)) return 1U;
- }
+ if (packet==0) return 1U;
+ const uint64_t key=NETWORK_STAMP_OF(packet);
+ /* Ordered by (epoch, stamp): a request after a backward step is newer than
+  * a floor set before it; a copy stamped before the floor never is. */
+ if (!board_recovery_command_time_allowed(key)) return 1U;
+ if (board_recovery_floor_active() && !board_recovery_stamp_fresh(recovery_router,key)) return 1U;
  return 0U;
 }
 uint8_t board_recovery_managed_update_allowed(const SedsPacketView *packet)
@@ -99,7 +78,7 @@ static SedsResult commissioning_status(SedsRouter*router,uint8_t result,const Bo
  board_recovery_encode_status(wire,result,snapshot.actual_state,(uint8_t)(snapshot.flags|extra_flags|BOARD_RECOVERY_VERIFIED_IMPLEMENTATION),request,generation,snapshot.abort_epoch,uptime,snapshot.actual_outputs_mask);
  return seds_router_log_queue_typed(router,SEDS_DT_BOARD_STATE_STATUS,wire,sizeof wire,1,SEDS_EK_UNSIGNED);
 }
-static uint64_t commissioning_now(void*context){return board_recovery_station_now((SedsRouter*)context);}
+static bool commissioning_fresh(void*context,uint64_t key){return board_recovery_stamp_fresh((SedsRouter*)context,key)!=0U;}
 static bool commissioning_reply(void*context,const BoardRecoveryRequest*request,uint8_t result){uint32_t uptime=(uint32_t)(((uint64_t)tx_time_get()*1000U)/TX_TIMER_TICKS_PER_SECOND);return commissioning_status((SedsRouter*)context,result,request,uptime,0U)==SEDS_OK;}
 /* BOARD_STATE_STATUS is an ordered reliable stream: a status goes on air only
  * once every older one has its station receipt. The Abort push carries the
@@ -159,18 +138,15 @@ SedsResult board_recovery_handle(SedsRouter *router,const SedsPacketView *packet
   * caches/registers and never provisions or refreshes storage. */
  if(request.operation==BOARD_RECOVERY_QUERY){
   last_query_issuer=request.issuer_session;
-  /* The station's own QUERY time may advance the station clock: the station
-   * acts only on a reply to its nonce within its query deadline. */
-  board_recovery_observe_station_time(router,packet);
   if(result==BOARD_RECOVERY_RESULT_OK){
    result=board_commissioning_query_result();
-   if(board_commissioning_pending()&&!board_commissioning_note_query(&request,packet->timestamp,commissioning_now(router),snapshot.abort_epoch))result=BOARD_RECOVERY_RESULT_IO;
+   if(board_commissioning_pending()&&!board_commissioning_note_query(&request,NETWORK_STAMP_OF(packet),snapshot.abort_epoch,router,commissioning_fresh))result=BOARD_RECOVERY_RESULT_IO;
   }
   
   return commissioning_status(router,result,&request,uptime_ms,0U);
  }
  if(result==BOARD_RECOVERY_RESULT_OK){
-  int32_t staged=board_commissioning_stage(&request,packet->timestamp,commissioning_now(router),snapshot.abort_epoch,router,commissioning_reply,commissioning_now);
+  int32_t staged=board_commissioning_stage(&request,NETWORK_STAMP_OF(packet),snapshot.abort_epoch,router,commissioning_reply,commissioning_fresh);
   if(staged!=-2){if(staged==-1)return SEDS_OK;return commissioning_status(router,(uint8_t)staged,&request,uptime_ms,0U);}
  }
  /* No ordinary fallback may bypass the durable transaction service. Strict

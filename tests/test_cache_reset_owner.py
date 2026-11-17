@@ -12,7 +12,7 @@ HEADERS = {
 #include <stdbool.h>
 typedef int SedsResult;
 typedef int SedsRouter;
-typedef struct { unsigned ty; const uint8_t *payload; size_t payload_len; uint64_t timestamp; const char *sender; size_t sender_len; } SedsPacketView;
+typedef struct { unsigned ty; const uint8_t *payload; size_t payload_len; uint64_t timestamp; const char *sender; size_t sender_len; uint16_t time_epoch; } SedsPacketView;
 #define SEDS_OK 0
 #define SEDS_BAD_ARG -10
 #define SEDS_HANDLER_ERROR -9

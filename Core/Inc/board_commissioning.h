@@ -4,7 +4,8 @@
 #include <stdint.h>
 #include "board_recovery_wire.h"
 typedef bool(*CommissionReply)(void*,const BoardRecoveryRequest*,uint8_t);
-typedef uint64_t(*CommissionClock)(void*);
+/* Whether an (epoch, stamp) key is within the station request window. */
+typedef bool(*CommissionFresh)(void*,uint64_t);
 /* Prethreads, checked exclusive storage phase; no writes or output changes. */
 void board_commissioning_probe_boot(void);
 bool board_commissioning_pending(void);
@@ -14,8 +15,8 @@ uint64_t board_commissioning_query_generation(void);
 uint8_t board_commissioning_query_result(void);
 /* Exactly one existing SDK/router owner calls stage/query/service at runtime.
  * The FC priority0 owner shares only its own IRQ mailbox, never these jobs. */
-bool board_commissioning_note_query(const BoardRecoveryRequest*,uint64_t,uint64_t,uint32_t);
-int32_t board_commissioning_stage(const BoardRecoveryRequest*,uint64_t,uint64_t,uint32_t,void*,CommissionReply,CommissionClock);
+bool board_commissioning_note_query(const BoardRecoveryRequest*,uint64_t,uint32_t,void*,CommissionFresh);
+int32_t board_commissioning_stage(const BoardRecoveryRequest*,uint64_t,uint32_t,void*,CommissionReply,CommissionFresh);
 void board_commissioning_service(void);
 /* Fixed concrete domain owner. No state/IRQ lock crosses storage or SDK. */
 int32_t board_recovery_commission_prepare(uint32_t expected_epoch);
