@@ -153,6 +153,58 @@ int main(void){
   for(unsigned n=0;n<70;n++)assert(got[n]==(uint8_t)(200+n));
   assert(!can_tx_queue_take_watched_sent(&got,&got_len,&sent));   /* taken once */
   can_tx_queue_service();assert(allocations==frees);}
+ // The watch recovers from every path that loses the watched packet, so
+ // time sync keeps its transmit stamps without a reboot.
+ {const uint8_t *got=NULL;size_t got_len=0;uint64_t sent=0;unsigned first;
+  extern volatile uint32_t g_can_tx_watch_abandoned;
+#define STAMPED(n) do{first=count;can_tx_queue_watch_next();free_slots=3;latest_buffer=1U<<0;\
+  assert(can_tx_queue_submit(data,(n),0x101)==HAL_OK);assert(count>first);now_us=4242;\
+  can_tx_queue_note_complete(1U<<0);assert(can_tx_queue_take_watched_sent(&got,&got_len,&sent));\
+  assert(sent==4242&&got_len==(n));can_tx_queue_service();}while(0)
+  STAMPED(20);
+  // 1. Watched packet expires at the queue head (never reached hardware).
+  tick=10000;free_slots=0;can_tx_queue_watch_next();
+  assert(can_tx_queue_submit(data,20,0x101)==HAL_OK);
+  tick+=1000;free_slots=3;first=count;interrupt();assert(count==first);
+  can_tx_queue_service();assert(g_can_tx_watch_abandoned==1);
+  assert(!can_tx_queue_take_watched_sent(&got,&got_len,&sent));
+  STAMPED(21);
+  // 2. Bus-off recovery drops the queued watched packet.
+  free_slots=0;can_tx_queue_watch_next();assert(can_tx_queue_submit(data,20,0x101)==HAL_OK);
+  can_tx_queue_reset();assert(g_can_tx_watch_abandoned==2);
+  STAMPED(22);
+  // 3. Bus-off recovery aborts the hardware buffer holding the last fragment.
+  can_tx_queue_watch_next();free_slots=3;latest_buffer=1U<<1;
+  assert(can_tx_queue_submit(data,20,0x101)==HAL_OK);
+  can_tx_queue_reset();assert(g_can_tx_watch_abandoned==3);
+  now_us=1;can_tx_queue_note_complete(1U<<1);           /* late, aborted buffer */
+  assert(!can_tx_queue_take_watched_sent(&got,&got_len,&sent));
+  STAMPED(23);
+  // 4. A completion that never arrives is abandoned after the queue age.
+  can_tx_queue_watch_next();free_slots=3;latest_buffer=1U<<2;
+  assert(can_tx_queue_submit(data,20,0x101)==HAL_OK);
+  tick+=999;can_tx_queue_watch_next();                   /* still in flight */
+  free_slots=3;latest_buffer=1U<<0;assert(can_tx_queue_submit(data,19,0x101)==HAL_OK);
+  now_us=5;can_tx_queue_note_complete(1U<<0);           /* unrelated buffer */
+  assert(!can_tx_queue_take_watched_sent(&got,&got_len,&sent));
+  can_tx_queue_watch_disarm();tick+=1;
+  STAMPED(24);assert(g_can_tx_watch_abandoned==4);
+  // 5. A refused submit consumes the request; the next packet is not watched.
+  can_tx_queue_watch_next();failed_alloc=1;free_slots=3;
+  assert(can_tx_queue_submit(data,20,0x101)==HAL_BUSY);failed_alloc=0;
+  latest_buffer=1U<<0;assert(can_tx_queue_submit(data,20,0x101)==HAL_OK);
+  can_tx_queue_note_complete(1U<<0);assert(!can_tx_queue_take_watched_sent(&got,&got_len,&sent));
+  STAMPED(25);
+  // 6. An oversize packet is not watched and does not pass the watch on.
+  can_tx_queue_watch_next();free_slots=3;assert(can_tx_queue_submit(data,100,0x101)==HAL_OK);
+  assert(can_tx_queue_submit(data,20,0x101)==HAL_OK);
+  can_tx_queue_note_complete(7U);assert(!can_tx_queue_take_watched_sent(&got,&got_len,&sent));
+  // 7. A send refused before the queue: disarm keeps the next packet unwatched.
+  can_tx_queue_watch_next();can_tx_queue_watch_disarm();
+  free_slots=3;assert(can_tx_queue_submit(data,20,0x101)==HAL_OK);
+  can_tx_queue_note_complete(7U);assert(!can_tx_queue_take_watched_sent(&got,&got_len,&sent));
+  STAMPED(26);
+  can_tx_queue_service();assert(allocations==frees&&!g_can_tx_queue_bytes);}
 }
 ''')
             subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined',

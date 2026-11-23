@@ -24,7 +24,9 @@ enum{SEDS_OK=0,SEDS_IO=8,HAL_OK=0,HAL_BUSY=2};
 #define TELEMETRY_FLIGHT_HEARTBEAT_CAN_ID 0x001U
 static uint32_t dtype,observed;static unsigned calls;static int result;
 static uint32_t sim_probe_packed_data_type(const uint8_t *p,size_t n){(void)p;(void)n;return dtype;}
-static unsigned watched;static void can_tx_queue_watch_next(void){++watched;}
+typedef int HAL_StatusTypeDef;
+static unsigned watched,disarmed;static void can_tx_queue_watch_next(void){assert(watched==disarmed);++watched;}
+static void can_tx_queue_watch_disarm(void){++disarmed;assert(watched==disarmed);}
 static int can_bus_send_large(const uint8_t *p,size_t n,uint32_t id){assert(p&&n);calls++;observed=id;return result;}
 '''+function(source,'telemetry_flight_can_id')+function(source,'telemetry_send_can_packet')+r'''
 int main(void){
@@ -36,6 +38,9 @@ int main(void){
  dtype=0;result=HAL_BUSY;
  assert(telemetry_send_can_packet(opaque[2],8,255)==SEDS_IO&&calls==1&&observed==1);
  result=HAL_OK;assert(telemetry_send_can_packet(opaque[2],8,0)==SEDS_OK&&calls==2&&observed==0x101);
+ /* Time sync (254): the watch is disarmed after the send, refused or not. */
+ result=HAL_BUSY;assert(telemetry_send_can_packet(opaque[2],8,254)==SEDS_IO&&watched==1&&disarmed==1);
+ result=HAL_OK;assert(telemetry_send_can_packet(opaque[2],8,254)==SEDS_OK&&watched==2&&disarmed==2);
 }
 '''
         with tempfile.TemporaryDirectory() as tmp:

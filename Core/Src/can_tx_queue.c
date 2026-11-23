@@ -26,15 +26,41 @@ typedef struct can_tx_packet {
 } can_tx_packet;
 static can_tx_packet *head, *tail, *retired;
 /* One watched time sync packet: 1 next submit is watched, 2 queued, 3 last
- * fragment in hardware buffer `watch_buf`, 4 sent at `watch_us`. */
+ * fragment in hardware buffer `watch_buf`, 4 sent at `watch_us`.
+ * Every path that loses the watched packet returns the state to 0, so a
+ * later exchange can arm again: expiry or reset of the queued packet (2),
+ * a bus-off reset that aborts the hardware buffer (3), a refused or
+ * oversize submit (1), and a send that never reached submit (disarm). A
+ * hardware-buffer watch (3) whose completion never arrives is abandoned
+ * after CAN_TX_MAX_AGE_MS so it cannot hold the watch until reboot. */
 #define CAN_TX_WATCH_MAX 72U
 static volatile uint8_t watch_state;
 static uint8_t watch_len;
 static uint32_t watch_buf;
+static uint32_t watch_buffered_ms;
 static uint64_t watch_us;
 static uint8_t watch_bytes[CAN_TX_WATCH_MAX];
+volatile uint32_t g_can_tx_watch_abandoned;
 
-void can_tx_queue_watch_next(void) { if (watch_state != 2U && watch_state != 3U) watch_state = 1U; }
+static uint32_t lock(void);
+static void unlock(uint32_t saved);
+
+void can_tx_queue_watch_next(void) {
+    const uint32_t saved = lock();
+    if (watch_state == 3U &&
+        (uint32_t)(HAL_GetTick() - watch_buffered_ms) >= CAN_TX_MAX_AGE_MS) {
+        ++g_can_tx_watch_abandoned;
+        watch_state = 0U;
+    }
+    if (watch_state != 2U && watch_state != 3U) watch_state = 1U;
+    unlock(saved);
+}
+
+void can_tx_queue_watch_disarm(void) {
+    const uint32_t saved = lock();
+    if (watch_state == 1U) watch_state = 0U;
+    unlock(saved);
+}
 
 void can_tx_queue_note_complete(uint32_t buffers) {
     if (watch_state == 3U && (buffers & watch_buf) != 0U) {
@@ -77,6 +103,12 @@ static int queue_full(size_t cost, uint32_t id) {
 }
 static void retire_head(void) {
     can_tx_packet *done = head;
+    /* A watched packet leaving the queue unsent (expiry, reset) ends the
+     * watch; a sent one has already advanced it to 3. */
+    if (done->watched && watch_state == 2U) {
+        ++g_can_tx_watch_abandoned;
+        watch_state = 0U;
+    }
     head = done->next;
     if (!head) tail = NULL;
     done->next = retired;
@@ -126,7 +158,9 @@ void can_tx_queue_pump(void) {
         if (head->offset == head->len) {
             if (head->watched && watch_state == 2U) {
                 watch_buf = can_bus_latest_tx_buffer();
+                watch_buffered_ms = HAL_GetTick();
                 watch_state = 3U;
+                head->watched = 0U;
             }
             ++g_can_tx_submitted;
             retire_head();
@@ -142,11 +176,16 @@ void can_tx_queue_service(void) {
 }
 
 HAL_StatusTypeDef can_tx_queue_submit(const uint8_t *data, size_t len, uint32_t id) {
+    /* A watch request applies to this submit only, accepted or not. */
+    uint32_t saved = lock();
+    const uint8_t watch = watch_state == 1U && data && len && len <= CAN_TX_WATCH_MAX;
+    if (watch_state == 1U) watch_state = 0U;
+    unlock(saved);
     if (!data || !len || len > CAN_TX_MAX_PACKET) return HAL_ERROR;
     id &= 0x7ffU;
     can_tx_queue_service();
     const size_t cost = charge(len);
-    uint32_t saved = lock();
+    saved = lock();
     int full = queue_full(cost, id);
     if (full) ++g_can_tx_rejected;
     unlock(saved);
@@ -173,7 +212,7 @@ HAL_StatusTypeDef can_tx_queue_submit(const uint8_t *data, size_t len, uint32_t 
         return HAL_BUSY;
     }
     packet->seq = next_seq++;
-    if (watch_state == 1U && len <= CAN_TX_WATCH_MAX) {
+    if (watch && watch_state == 0U) {
         memcpy(watch_bytes, data, len);
         watch_len = (uint8_t)len;
         packet->watched = 1U;
@@ -200,6 +239,12 @@ HAL_StatusTypeDef can_tx_queue_submit(const uint8_t *data, size_t len, uint32_t 
 void can_tx_queue_reset(void) {
     const uint32_t saved = lock();
     while (head) retire_head();
+    /* Reset follows HAL_FDCAN_AbortTxRequest or controller init: a watched
+     * last fragment in a hardware buffer will never complete. */
+    if (watch_state == 3U) {
+        ++g_can_tx_watch_abandoned;
+        watch_state = 0U;
+    }
     unlock(saved);
     reap();
 }

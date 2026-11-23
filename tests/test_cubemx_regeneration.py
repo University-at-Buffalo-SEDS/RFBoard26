@@ -23,12 +23,11 @@ class CubeMxRegenerationContracts(unittest.TestCase):
     def test_ioc_is_source_of_truth_for_generated_rtos_pools(self):
         for macro in ("TX_APP_MEM_POOL_SIZE", "UX_DEVICE_APP_MEM_POOL_SIZE"):
             generated = re.search(
-                rf"^#define\\s+{macro}\\s+(\\d+)", self.rtos, re.MULTILINE
+                rf"^#define\s+{macro}\s+(\d+)", self.rtos, re.MULTILINE
             )
-            if generated is None:
-                continue
+            self.assertIsNotNone(generated, f"{macro} is absent from the header")
             configured = re.search(
-                rf"^[^=]*\\.{macro}=(\\d+)$", self.ioc, re.MULTILINE
+                rf"^[^=]*\.{macro}=(\d+)$", self.ioc, re.MULTILINE
             )
             self.assertIsNotNone(configured, f"{macro} is absent from the .ioc")
             self.assertEqual(

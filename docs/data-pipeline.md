@@ -240,15 +240,21 @@ snapshot `backend/tests/board-schemas/RFBoard26.json` matches the RF
 
 | Doc | Says | Code |
 | --- | --- | --- |
-| `docs/rfd900-air-budget.md` | usable envelope 32000 bit/s, RF share 35% (1400 B/s) | profile `usable_air_bps = 30000`, `rf_share_percent = 100` (`config/rfd-profile.json`) |
-| `docs/rfd900-air-budget.md` | `RADIO_PACKET_BURST_MS=100`, `RADIO_PACKET_GAP_MS=55` | profile 250 / 15; C defaults also 250 / 15 (`radio.c:107-110`) |
-| `docs/rfd900-air-budget.md` | "adds no AUX, radio turn, GRANT or receive window" | profile `turn_period_ms = 200` enables RF air turns (`radio.c:388-462`) |
+| `docs/rfd900-air-budget.md` (before board-bugfix-20261123; now corrected) | envelope 32000 bit/s, RF share 35%; burst/gap 100/55 ms; no radio turns | profile 30000 bit/s, 100%; burst/gap 250/15 ms; `turn_period_ms = 200` enables turns, which replace the limiter |
 | `telemetry.c:125-127` comment | 64 kbit/s with 40% share | only true for the LoRa build (`RFBOARD_LORA_SCHEDULER`) |
 | `radio.c:2739-2740` comment, README word 21 | queued frames "age out"; stale-drop count | the 1500 ms age-out (`RADIO_UART_TX_MAX_AGE_MS`) runs only in `radio_uart_enqueue_frame` (`radio.c:873`), used for profile replies; router traffic is never aged out, so word 21 stays 0 in practice |
 
 ## 7. Known gaps / bugs found
 
-1. **CAN time-sync TX-stamp watch can latch until reboot.**
+1. **Fixed (board-bugfix-20261123): CAN time-sync TX-stamp watch could latch
+   until reboot.** Every path that loses the watched packet now returns
+   `watch_state` to 0: expiry or reset while queued, a bus-off reset that
+   aborts the hardware buffer, a refused or oversize submit (the request
+   applies to one submit only), a send refused before the queue
+   (`can_tx_queue_watch_disarm()` after `can_bus_send_large`), and a
+   completion that never arrives (abandoned after `CAN_TX_MAX_AGE_MS`).
+   `g_can_tx_watch_abandoned` counts them; `tests/test_can_tx_queue.py`
+   covers each path. Original finding:
    `can_tx_queue_watch_next()` arms only when `watch_state` is not 2 or 3
    (`can_tx_queue.c:37`). State 2 is cleared only when the watched packet's
    last fragment is submitted (`can_tx_queue.c:127-129`), state 3 only by
@@ -271,11 +277,15 @@ snapshot `backend/tests/board-schemas/RFBoard26.json` matches the RF
 3. **Radio stale-drop counter does not cover router traffic.** See section 6:
    BOARD_HEALTH word 21 cannot show backlog age for SEDSnet frames. Use words
    17..20 and the GS receive time instead.
-4. **Air-time pacing is inactive in the shipped profile.** With
-   `RADIO_TURN_PERIOD_MS > 0`, the 30000 bit/s budget, the S5 correction and
-   heard-air charging are computed but not applied
-   (`radio.c:1662-1674`). This is by design per the comment, but it means
-   `docs/rfd900-air-budget.md` describes a limiter that is not running.
+4. **Resolved (board-bugfix-20261123): air-time pacing is inactive in the
+   shipped profile, by decision.** With `RADIO_TURN_PERIOD_MS > 0` the
+   turns alone limit RF egress; the 30000 bit/s budget, the S5 correction and
+   heard-air charging apply only to profiles without turns
+   (`radio.c:1662-1674`). Layering the limiter on the turns was evaluated and
+   rejected: it limits each turn to one write, the AV-bay backlog grows
+   without bound at 1.5 KB/s, and control latency rises. Turn shares are
+   unchanged. `docs/rfd900-air-budget.md` now describes this, with the
+   evidence, and `tests/test_radio_turn_cadence.py` pins it.
 5. **No on-board record.** RF has no SD card; anything not delivered over the
    radio (link loss, latest-value replacement under backlog) is not recorded
    anywhere by RF.

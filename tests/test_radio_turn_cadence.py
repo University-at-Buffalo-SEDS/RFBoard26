@@ -87,6 +87,22 @@ int main(void) {
         self.assertIn('return radio_uart_turn_remaining_for(now, critical);', quiet,
                       'the turn replaces burst/gap and airtime pacing')
 
+    def test_shipped_profile_uses_turns_without_the_air_time_limiter(self):
+        # docs/rfd900-air-budget.md: layering the per-frame air-time limiter
+        # on the turns limited each turn to one write and let the AV-bay
+        # backlog grow without bound, so the shipped profile relies on turns
+        # alone. A profile change here must revisit that evaluation.
+        import json
+        profile = json.loads((ROOT / 'config/rfd-profile.json').read_text())
+        self.assertEqual(profile['transport']['turn_period_ms'], 200)
+        source = (ROOT / 'Core/Src/radio.c').read_text()
+        quiet = block(source, 'static uint32_t radio_uart_quiet_remaining_ms(void)', '\n}\n')
+        turn = quiet.index('return radio_uart_turn_remaining_for(now, critical);')
+        self.assertLess(turn, quiet.index('g_tx_air_budget_active'),
+                        'the turn result returns before the air-time reservation')
+        self.assertIn('#define RADIO_TURN_BURST_MS ((RADIO_TURN_PERIOD_MS * 30U) / 100U)', source,
+                      'turn shares are unchanged')
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -216,8 +216,12 @@ static uint32_t telemetry_timesync_role(void) {
 
 static SedsResult telemetry_send_can_packet(const uint8_t *bytes, size_t len, uint8_t priority) {
   if (priority == 254U) can_tx_queue_watch_next();
-  return can_bus_send_large(bytes, len, telemetry_flight_can_id(bytes, len, priority)) == HAL_OK
-      ? SEDS_OK : SEDS_IO;
+  const HAL_StatusTypeDef status =
+      can_bus_send_large(bytes, len, telemetry_flight_can_id(bytes, len, priority));
+  /* A send refused before the queue (recovery) must not leave the watch
+   * armed for the next unrelated packet. */
+  if (priority == 254U) can_tx_queue_watch_disarm();
+  return status == HAL_OK ? SEDS_OK : SEDS_IO;
 }
 
 static bool telemetry_unix_ms_to_utc(uint64_t unix_ms, int32_t *year, uint8_t *month,

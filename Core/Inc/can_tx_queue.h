@@ -15,6 +15,9 @@ void can_tx_queue_reset(void);
 /* Time sync transmit stamps: watch the next submitted packet; the FDCAN TX
  * buffer complete interrupt stamps its last fragment (board_now_us). */
 void can_tx_queue_watch_next(void);
+/* Cancels a watch request that no submit consumed (send refused before
+ * reaching the queue). Has no effect on an accepted watched packet. */
+void can_tx_queue_watch_disarm(void);
 void can_tx_queue_note_complete(uint32_t buffers);
 uint8_t can_tx_queue_take_watched_sent(const uint8_t **bytes, size_t *len, uint64_t *sent_us);
 uint32_t can_bus_latest_tx_buffer(void);
