@@ -12,8 +12,15 @@ def frame(body, command=False):
     return (b"\xa6\x5b" if command else b"\xa5\x5a") + len(body).to_bytes(2, "little") + body
 
 
-def relay(body, kind):
-    encoded = b"RR\x01" + bytes([kind]) + body
+SELF_CHECKED = {5: 0xFA, 6: 0xFC}
+
+
+def relay(body, kind, crc_form=False):
+    """RR v2: an SDK frame (own trailing CRC) takes the 1 B self-checked
+    marker; the CRC form adds a CRC32 over marker and payload."""
+    if not crc_form:
+        return bytes([SELF_CHECKED[kind]]) + body
+    encoded = bytes([0xE0 + kind]) + body
     return encoded + zlib.crc32(encoded).to_bytes(4, "little")
 
 
@@ -39,6 +46,8 @@ class RadioIntegrityRecovery(unittest.TestCase):
             ("relay_data", frame(relay(canonical, 5), True), canonical, 0),
             ("relay_command", frame(relay(canonical, 6), True), canonical, 1),
             ("relay_sdt", frame(relay(sdt, 5), True), sdt, 0),
+            ("relay_crc_data", frame(relay(canonical, 5, True), True), canonical, 0),
+            ("relay_crc_command", frame(relay(sdt, 6, True), True), sdt, 1),
         ]
         if not relayed:
             vectors = [("canonical", frame(canonical), canonical, 0)]
@@ -70,7 +79,7 @@ static uint8_t g_frame_buf[1028],g_current_rx_is_command_frame,g_last_frame_kind
 static uint8_t g_last_frame_preview[16],g_last_frame_preview_len,g_partial_frame_waiting;
 static size_t g_frame_len,g_last_frame_payload_len,expected_length;
 static uint32_t g_partial_frame_started_ms,g_rx_sync_loss,g_rx_bad_len,g_radio_rx_frames_ok;
-static uint32_t received,unexpected,mock_now;
+static uint32_t received,unexpected,mock_now,g_rx_appended_bytes,g_rx_frame_end_bytes;
 static const uint8_t *expected;
 static uint8_t expected_command;
 static uint32_t radio_now_ms(void){return mock_now;}

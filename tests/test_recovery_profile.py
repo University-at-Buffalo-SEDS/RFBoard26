@@ -22,7 +22,7 @@ def function(source, signature):
 
 
 def envelope(body):
-    data = b"RR\x01\x0e" + body
+    data = b"\xee" + body
     return data + zlib.crc32(data).to_bytes(4, "little")
 
 
@@ -38,7 +38,7 @@ class RecoveryProfile(unittest.TestCase):
                          + (32000).to_bytes(4, "little") + b"\x23"
                          + (16).to_bytes(2, "little") + (100).to_bytes(2, "little")
                          + (55).to_bytes(2, "little") + b"\x00")
-        self.assertEqual((len(query), len(reply)), (26, 42))
+        self.assertEqual((len(query), len(reply)), (23, 39))
         source = (ROOT / "Core/Src/radio.c").read_text()
         start = source.index("/* Profile control never")
         driver = source[start:source.index("HAL_StatusTypeDef radio_uart_send_bytes", start)]
@@ -74,12 +74,12 @@ typedef unsigned HAL_StatusTypeDef;
 typedef struct { struct {uint32_t BaudRate,HwFlowCtl,WordLength,StopBits,Parity;} Init; } UART_HandleTypeDef;
 static UART_HandleTypeDef uart={{115200,0,8,1,0}}, *g_huart=&uart;
 static uint32_t now, offered, accepted, ready=1, enqueue_status=HAL_OK;
-static uint8_t captured[46];
+static uint8_t captured[43];
 static uint32_t HAL_GetTick(void) {return now;}
 static uint8_t radio_uart_tx_ready(void) {return (uint8_t)ready;}
 static HAL_StatusTypeDef radio_uart_enqueue_frame(const uint8_t *p,uint16_t n,int16_t priority) {
   ++offered; assert(n==sizeof(captured) && priority==253);
-  assert(p[0]==0xa6 && p[1]==0x5b && p[2]==42 && p[3]==0);
+  assert(p[0]==0xa6 && p[1]==0x5b && p[2]==39 && p[3]==0);
   if(enqueue_status==HAL_OK) {memcpy(captured,p,n);++accepted;}
   return enqueue_status;
 }
@@ -106,36 +106,36 @@ static int seds_router_receive_packed_from_side_at(void *r,uint32_t s,const uint
         code += r'''
 int main(void) {
   const recovery_profile_config_t config={115200,32000,35,16,100,55,0};
-  uint8_t out[42],bad[27],zero[26];
+  uint8_t out[39],bad[24],zero[23];
   assert(recovery_profile_build_reply(query,sizeof(query),1,&config,out));
   assert(!memcmp(out,expected,sizeof(out)));
-  assert(!recovery_profile_build_reply(NULL,26,1,&config,out));
-  assert(!recovery_profile_build_reply(query,26,0,&config,out));
-  assert(!recovery_profile_build_reply(query,26,1,NULL,out));
-  assert(!recovery_profile_build_reply(query,26,1,&config,NULL));
-  for(size_t n=0;n<26;++n) assert(!recovery_profile_is_query(query,n,1));
-  memcpy(bad,query,26);bad[26]=0;assert(!recovery_profile_is_query(bad,27,1));
-  for(size_t i=0;i<26;++i) for(unsigned b=0;b<8;++b) {
-    memcpy(bad,query,26);bad[i]^=(uint8_t)(1U<<b);
-    memset(out,0xcc,sizeof(out));assert(!recovery_profile_build_reply(bad,26,1,&config,out));
+  assert(!recovery_profile_build_reply(NULL,23,1,&config,out));
+  assert(!recovery_profile_build_reply(query,23,0,&config,out));
+  assert(!recovery_profile_build_reply(query,23,1,NULL,out));
+  assert(!recovery_profile_build_reply(query,23,1,&config,NULL));
+  for(size_t n=0;n<23;++n) assert(!recovery_profile_is_query(query,n,1));
+  memcpy(bad,query,23);bad[23]=0;assert(!recovery_profile_is_query(bad,24,1));
+  for(size_t i=0;i<23;++i) for(unsigned b=0;b<8;++b) {
+    memcpy(bad,query,23);bad[i]^=(uint8_t)(1U<<b);
+    memset(out,0xcc,sizeof(out));assert(!recovery_profile_build_reply(bad,23,1,&config,out));
     for(size_t j=0;j<sizeof(out);++j) assert(out[j]==0xcc);
   }
-  memcpy(zero,query,26);memset(zero+6,0,16);
-  recovery_profile_write_u32(zero+22,recovery_profile_crc32(zero,22));
-  assert(!recovery_profile_is_query(zero,26,1));
+  memcpy(zero,query,23);memset(zero+3,0,16);
+  recovery_profile_write_u32(zero+19,recovery_profile_crc32(zero,19));
+  assert(!recovery_profile_is_query(zero,23,1));
   assert(!recovery_profile_is_query(expected,sizeof(expected),1));
   const uint8_t *p=query;size_t n=sizeof(query);uint8_t command=1;
   assert(recovery_mesh_uplink(&p,&n,&command));
-  assert(p==query && n==26 && command==1);
+  assert(p==query && n==23 && command==1);
   recovery_profile_config_t mismatch=config;mismatch.rf_share_percent=40;
-  assert(recovery_profile_build_reply(query,26,1,&mismatch,out) && out[30]==40);
+  assert(recovery_profile_build_reply(query,23,1,&mismatch,out) && out[27]==40);
   mismatch=config;mismatch.flags=4;
-  assert(recovery_profile_build_reply(query,26,1,&mismatch,out) && out[37]==4);
+  assert(recovery_profile_build_reply(query,23,1,&mismatch,out) && out[34]==4);
   /* Bit 3 declares the air turn cadence; higher bits stay unknown. */
-  mismatch.flags=8;assert(recovery_profile_build_reply(query,26,1,&mismatch,out) && out[37]==8);
-  mismatch.flags=16;assert(!recovery_profile_build_reply(query,26,1,&mismatch,out));
+  mismatch.flags=8;assert(recovery_profile_build_reply(query,23,1,&mismatch,out) && out[34]==8);
+  mismatch.flags=16;assert(!recovery_profile_build_reply(query,23,1,&mismatch,out));
   telemetry_radio_rx(query,sizeof(query),NULL);
-  assert(accepted==1 && !memcmp(captured+4,expected,42));
+  assert(accepted==1 && !memcmp(captured+4,expected,39));
   assert(!observed && !routed && !initialized && !g_radio_link_seen && !g_telemetry_discovery_seen);
   now=499;telemetry_radio_rx(query,sizeof(query),NULL);assert(offered==1);
   now=500;enqueue_status=HAL_BUSY;telemetry_radio_rx(query,sizeof(query),NULL);assert(offered==2 && accepted==1);

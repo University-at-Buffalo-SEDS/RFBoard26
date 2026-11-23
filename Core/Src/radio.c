@@ -1862,8 +1862,7 @@ static uint8_t g_radio_profile_replied;
 uint8_t radio_uart_handle_profile_request(const uint8_t *data, size_t len,
                                           uint8_t command)
 {
-  if (!command || !data || len < 4U || data[0] != 'R' || data[1] != 'R' ||
-      data[2] != 1U || data[3] != RECOVERY_PROFILE_KIND)
+  if (!command || !data || len < 1U || data[0] != RECOVERY_PROFILE_MARKER)
     return 0U;
   if (!g_huart) return 1U;
   uint8_t flags = RFBOARD_LORA_SCHEDULER ? RECOVERY_PROFILE_LORA_SCHEDULER : 0U;
@@ -2321,7 +2320,9 @@ static size_t radio_rejected_anchor(unsigned *steps, size_t *crc_bytes)
       const uint32_t expected = (uint32_t)crc[0] | ((uint32_t)crc[1] << 8U) |
           ((uint32_t)crc[2] << 16U) | ((uint32_t)crc[3] << 24U);
       ++g_rejected_frame.cursor;
-      if (launchcore_crc32(body, length - 4U) == expected) return at;
+      const size_t skip = command && length >= 5U &&
+          recovery_mesh_self_checked(body[0]); /* RR v2 self-checked */
+      if (launchcore_crc32(body + skip, length - 4U - skip) == expected) return at;
     }
     /* A single trailing byte may become a sync after append. */
     if (g_rejected_frame.cursor <= g_rejected_frame.remaining &&
@@ -2441,9 +2442,13 @@ static void radio_process_buffered_frames(void)
     /* Every SDK data representation and every RR envelope has a trailing
      * CRC32. Validate it before consuming the claimed UART length: an
      * interrupted write can otherwise absorb an intact following retry.
-     * Native scheduler commands and ASCII retain their separate framing. */
-    const uint8_t is_recovery_envelope = is_command_frame && payload_len >= 2U &&
-        body[0] == 'R' && body[1] == 'R';
+     * A self-checked RR marker is outside its SDK frame's CRC; any other
+     * body's CRC covers all of it. Native scheduler commands and ASCII
+     * retain their separate framing. */
+    const uint8_t is_recovery_envelope = is_command_frame && payload_len >= 1U &&
+        body[0] >= RECOVERY_MESH_MARKER_MIN;
+    const size_t crc_skip = is_recovery_envelope &&
+        recovery_mesh_self_checked(body[0]);
     const uint8_t is_scheduler_command = is_command_frame &&
         (payload_len == 7U || payload_len == 9U) &&
         body[0] == 'R' && body[1] == 'S' && body[2] == 1U && body[3] <= 1U;
@@ -2454,8 +2459,9 @@ static void radio_process_buffered_frames(void)
         expected = (uint32_t)crc[0] | ((uint32_t)crc[1] << 8U) |
                    ((uint32_t)crc[2] << 16U) | ((uint32_t)crc[3] << 24U);
       }
-      if (payload_len < (is_recovery_envelope ? 8U : 4U) ||
-          launchcore_crc32(body, payload_len - 4U) != expected) {
+      if (payload_len < (is_recovery_envelope ? 5U : 4U) ||
+          launchcore_crc32(body + crc_skip, payload_len - 4U - crc_skip) !=
+              expected) {
         /* A truncated frame can absorb the next frame's sync. Check integrity
          * before consuming the claimed length, then retain bytes for resync. */
         ++g_rx_crc_errors;

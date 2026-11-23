@@ -1,11 +1,13 @@
 #include "recovery_mesh.h"
 #include "radio_crc_reference.h"
-static const uint8_t read0[]={166,91,17,0,82,82,1,0,42,0,0,0,0,0,0,0,1,64,231,180,23};
-static const uint8_t read1[]={166,91,95,0,82,82,1};
-static const uint8_t read2[]={166,91,35,0,82,82,1,5,202,1,228,226,173,106,1,0,243,133,2,151,215,142,162,13,132,154,150,127,132,0,0,154,122,231,80,121,153,23,218};
-static const uint8_t read3[]={166,91,95,0,82,82,1,5,136,1,233,238,158,90,64,0,181,53,151,215,142,162,13,249,140,173,91,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,191,15,226,135,31,221,116,198};
-static const uint8_t read4[]={166,91,34,0,82,82,1,13,1,3,42,0,0,0,0,0,0,0,235,202,61,113,185,127,150,78,71,144,89,38,87,181,227,172,60,197,186,162};
-static const uint8_t damaged[]={166,91,128,0,82,82,1,6,51,51,51,51,51,51,51,51,166,91,0,4,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,135,55,212,181,166,91,35,0,82,82,1,5,202,1,228,226,173,106,1,0,243,133,2,151,215,142,162,13,132,154,150,127,132,0,0,154,122,231,80,121,153,23,218};
+/* Captured RR v1 reads, re-encoded as RR v2 (HEALTH and BUDGET_CONTROL in the
+ * CRC form, relayed SDK frames self-checked); bytes otherwise unchanged. */
+static const uint8_t read0[]={166,91,14,0,224,42,0,0,0,0,0,0,0,1,172,93,176,180};
+static const uint8_t read1[]={166,91,88,0,250,136,1};
+static const uint8_t read2[]={166,91,28,0,250,202,1,228,226,173,106,1,0,243,133,2,151,215,142,162,13,132,154,150,127,132,0,0,154,122,231,80};
+static const uint8_t read3[]={166,91,88,0,250,136,1,233,238,158,90,64,0,181,53,151,215,142,162,13,249,140,173,91,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,119,191,15,226,135};
+static const uint8_t read4[]={166,91,31,0,237,1,3,42,0,0,0,0,0,0,0,235,202,61,113,185,127,150,78,71,144,89,38,87,181,227,172,50,244,151,31};
+static const uint8_t damaged[]={166,91,125,0,230,51,51,51,51,51,51,51,51,166,91,0,4,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,135,55,212,181,166,91,28,0,250,202,1,228,226,173,106,1,0,243,133,2,151,215,142,162,13,132,154,150,127,132,0,0,154,122,231,80};
 
 #include <stdint.h>
 #include <stddef.h>
@@ -38,7 +40,7 @@ static uint32_t g_rx_appended_bytes __attribute__((unused)), g_rx_frame_end_byte
 static void reset(void){memset(&g_rejected_frame,0,sizeof(g_rejected_frame));g_frame_len=0;g_partial_frame_waiting=0;mock_now=0;received=0;g_rx_crc_errors=0;g_rx_bad_len=0;}
 static void additional_regressions(void);
 int main(void){
- expected[0]=read2+8;expected_len[0]=sizeof(read2)-12;expected[1]=read3+8;expected_len[1]=sizeof(read3)-12;
+ expected[0]=read2+5;expected_len[0]=sizeof(read2)-5;expected[1]=read3+5;expected_len[1]=sizeof(read3)-5;
  for(unsigned chunk=1;chunk<=204;++chunk){
   reset();const uint8_t*reads[]={read0,read1,read2,read3,read4};const size_t sizes[]={sizeof(read0),sizeof(read1),sizeof(read2),sizeof(read3),sizeof(read4)};const uint32_t times[]={0,65,90,200,395};
   for(unsigned r=0;r<5;++r){
@@ -49,13 +51,13 @@ int main(void){
   assert(received==2&&g_rx_crc_errors==1&&g_frame_len==0);
  }
  puts("actual_7B_prefix_distinct_command_retry: exact2 callbacks, expected1CRCfailure, tail0, chunks1..204");
- reset();expected[0]=read2+8;expected_len[0]=sizeof(read2)-12;
+ reset();expected[0]=read2+5;expected_len[0]=sizeof(read2)-5;
  radio_process_framed_bytes(damaged,sizeof(damaged));
  assert(g_rx_crc_errors==1); /* Real CRC failure established before false sync. */
 #ifndef CHARACTERIZE_ORIGINAL_TIMEOUT
  for(unsigned poll=1;poll<=8&&received==0;++poll){mock_now=poll;radio_process_buffered_frames();}
  assert(mock_now<=8);
- if(received!=1){fprintf(stderr,"EXPECTED_OLD_NEGATIVE: provenCRCfailed parent, complete distinctRR command buffered but callback=%u pending=%zu\n",received,g_frame_len);return 23;}
+ if(received!=1){fprintf(stderr,"EXPECTED_OLD_NEGATIVE: provenCRCfailed parent, complete distinct RR command buffered but callback=%u pending=%zu\n",received,g_frame_len);return 23;}
 #else
  assert(received==0);mock_now=1999;radio_process_buffered_frames();assert(received==0);
  mock_now=2000;radio_process_buffered_frames();assert(received==1&&g_frame_len==0);
@@ -67,7 +69,7 @@ int main(void){
 
 static void additional_regressions(void){
  /* Unknown incomplete parent MUST retain original timeout, including wrap. */
- reset();expected_command=0;expected[0]=read2+8;expected_len[0]=sizeof(read2)-12;
+ reset();expected_command=0;expected[0]=read2+5;expected_len[0]=sizeof(read2)-5;
  const uint8_t unknown[]={0xa6,0x5b,0,4};
  mock_now=UINT32_MAX-500U;radio_process_framed_bytes(unknown,sizeof(unknown));radio_process_framed_bytes(read2,sizeof(read2));
  assert(received==0&&g_rejected_frame.remaining==0);
@@ -83,15 +85,15 @@ static void additional_regressions(void){
  radio_process_framed_bytes(maximum+400,sizeof(maximum)-400);assert(received==1&&g_frame_len==0);
  /* Admission permission ends after a validated frame. The next unrelated
   * incomplete parent cannot inherit scanning privilege. */
- reset();expected[0]=read2+8;expected_len[0]=sizeof(read2)-12;
+ reset();expected[0]=read2+5;expected_len[0]=sizeof(read2)-5;
  radio_process_framed_bytes(damaged,sizeof(damaged));
  for(unsigned n=0;n<8&&received==0;++n)radio_process_buffered_frames();
  assert(received==1&&g_rejected_frame.remaining==0);
  radio_process_framed_bytes(unknown,sizeof(unknown));radio_process_framed_bytes(read2,sizeof(read2));assert(received==1);
  mock_now=1999;radio_process_buffered_frames();assert(received==1);
- mock_now=2000;expected[1]=read2+8;expected_len[1]=sizeof(read2)-12;radio_process_buffered_frames();assert(received==2);
+ mock_now=2000;expected[1]=read2+5;expected_len[1]=sizeof(read2)-5;radio_process_buffered_frames();assert(received==2);
  /* An unfinished scan keeps progressing even while new bytes arrive. */
- reset();expected[0]=read2+8;expected_len[0]=sizeof(read2)-12;
+ reset();expected[0]=read2+5;expected_len[0]=sizeof(read2)-5;
  radio_process_framed_bytes(damaged,sizeof(damaged)-sizeof(read2));
  for(size_t n=0;n<sizeof(read2);++n){radio_process_framed_bytes(read2+n,1);radio_process_buffered_frames();}
  for(unsigned n=0;n<16&&received==0;++n)radio_process_buffered_frames();

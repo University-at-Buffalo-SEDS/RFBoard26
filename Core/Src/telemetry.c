@@ -1069,9 +1069,9 @@ static SedsResult init_telemetry_router_locked(void) {
   } else {
     /* RFD time sync path: after the TX-complete and RX stamps each frame byte
      * costs 64 kbit/s air (125 us) plus the receiving 115200 UART (86.8 us).
-     * The GS's responses carry an 8 B mesh wrapper its requests lack:
-     * +8 x 211.8 / 2 us of fixed asymmetry. */
-    (void)seds_router_set_side_timesync_path(r, (uint32_t)g_radio_side_id, 211800U, 847200);
+     * The GS's responses carry a 1 B mesh wrapper (RR v2 self-checked
+     * marker) its requests lack: +1 x 211.8 / 2 us of fixed asymmetry. */
+    (void)seds_router_set_side_timesync_path(r, (uint32_t)g_radio_side_id, 211800U, 105900);
     /* Physical minimum one-way delay after the stamps, besides the per-byte
      * part: the modem closes a packet S6 (serial break) after the last byte,
      * then TX setup (4 ms + 0-3 ms) and air framing, whose sum the bench

@@ -9,8 +9,10 @@
  * A profile response reports application/UART configuration, not live modem
  * AT settings. It cannot change any configuration or operate an output. */
 #define RECOVERY_PROFILE_KIND 14U
-#define RECOVERY_PROFILE_QUERY_SIZE 26U
-#define RECOVERY_PROFILE_REPLY_SIZE 42U
+/* RR v2 CRC-form marker of kind14 (recovery_mesh.h). */
+#define RECOVERY_PROFILE_MARKER (0xE0U + RECOVERY_PROFILE_KIND)
+#define RECOVERY_PROFILE_QUERY_SIZE 23U
+#define RECOVERY_PROFILE_REPLY_SIZE 39U
 #define RECOVERY_PROFILE_NONCE_SIZE 16U
 #define RECOVERY_PROFILE_FLOW_CONTROL 1U
 #define RECOVERY_PROFILE_LORA_SCHEDULER 2U
@@ -62,19 +64,19 @@ static inline int recovery_profile_is_query(
     const uint8_t *query, size_t size, uint8_t command)
 {
   if (!query || !command || size != RECOVERY_PROFILE_QUERY_SIZE ||
-      query[0] != 'R' || query[1] != 'R' || query[2] != 1U ||
-      query[3] != RECOVERY_PROFILE_KIND || query[4] != 1U || query[5] != 0U)
+      query[0] != RECOVERY_PROFILE_MARKER || query[1] != 1U || query[2] != 0U)
     return 0;
   if (recovery_profile_crc32(query, size - 4U) !=
       recovery_profile_read_u32(query + size - 4U))
     return 0;
   uint8_t nonce_nonzero = 0U;
   for (size_t i = 0U; i < RECOVERY_PROFILE_NONCE_SIZE; ++i)
-    nonce_nonzero |= query[6U + i];
+    nonce_nonzero |= query[3U + i];
   return nonce_nonzero != 0U;
 }
 
-/* RR v1 kind14, body v1/query0/nonzero128-bit challenge, then CRC32.
+/* RR v2 CRC-form kind14 (marker 0xEE), body v1/query0/nonzero128-bit
+ * challenge, then CRC32 of marker+body.
  * Reply body: v1/reply1/challenge/baud:u32/usable_bps:u32/share:u8/
  * overhead:u16/burst_ms:u16/gap_ms:u16/flags:u8, all little endian.
  * Exact sizes and reserved-bit validation prevent a reply or another control
@@ -97,18 +99,17 @@ static inline int recovery_profile_build_reply(
                          RECOVERY_PROFILE_UART_FORMAT_MISMATCH |
                          RECOVERY_PROFILE_TURN_CADENCE)) != 0U)
     return 0;
-  reply[0] = 'R'; reply[1] = 'R'; reply[2] = 1U;
-  reply[3] = RECOVERY_PROFILE_KIND; reply[4] = 1U; reply[5] = 1U;
+  reply[0] = RECOVERY_PROFILE_MARKER; reply[1] = 1U; reply[2] = 1U;
   for (size_t i = 0U; i < RECOVERY_PROFILE_NONCE_SIZE; ++i)
-    reply[6U + i] = query[6U + i];
-  recovery_profile_write_u32(reply + 22U, config->serial_baud);
-  recovery_profile_write_u32(reply + 26U, config->usable_air_bps);
-  reply[30] = config->rf_share_percent;
-  recovery_profile_write_u16(reply + 31U, config->frame_overhead_bytes);
-  recovery_profile_write_u16(reply + 33U, config->packet_burst_ms);
-  recovery_profile_write_u16(reply + 35U, config->packet_gap_ms);
-  reply[37] = config->flags;
-  recovery_profile_write_u32(reply + 38U, recovery_profile_crc32(reply, 38U));
+    reply[3U + i] = query[3U + i];
+  recovery_profile_write_u32(reply + 19U, config->serial_baud);
+  recovery_profile_write_u32(reply + 23U, config->usable_air_bps);
+  reply[27] = config->rf_share_percent;
+  recovery_profile_write_u16(reply + 28U, config->frame_overhead_bytes);
+  recovery_profile_write_u16(reply + 30U, config->packet_burst_ms);
+  recovery_profile_write_u16(reply + 32U, config->packet_gap_ms);
+  reply[34] = config->flags;
+  recovery_profile_write_u32(reply + 35U, recovery_profile_crc32(reply, 35U));
   return 1;
 }
 
