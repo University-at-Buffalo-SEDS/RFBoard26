@@ -115,9 +115,9 @@ static int32_t pack(uint32_t ty,uint8_t value,uint8_t *wire,size_t capacity){
 #define TX_WAIT_FOREVER (~0U)
 #define TX_NULL NULL
 #define TX_MUTEX_ID 0x4D555445U
-#define BOARD_CAN_MAX_FRAME_BYTES (2U*55U)
+#define BOARD_CAN_MAX_FRAME_BYTES (2U*64U)
 #define BOARD_SIDE_TRANSPORT_TEMPLATES 32U
-#define FC_CAN_MAX_FRAME_BYTES (2U*55U)
+#define FC_CAN_MAX_FRAME_BYTES (2U*64U)
 #define FC_SIDE_TRANSPORT_TEMPLATES 4U
 #define conditional
 #define telemetry_mu g_telemetry_mutex
@@ -126,12 +126,12 @@ static int32_t pack(uint32_t ty,uint8_t value,uint8_t *wire,size_t capacity){
 #define TELEMETRY_ROUTER_RETRY_MS 500U
 #define TELEMETRY_CAN_BUS 1
 #define SEDS_ENABLE_COMPACT_PACKET_STORE 1
-#define CAN_TX_ALIGNED_FRAME_BYTES (2U*55U)
+#define CAN_TX_ALIGNED_FRAME_BYTES (2U*64U)
 #define RF_SEDSNET_QUEUE_BUDGET 9984U
 #define RF_SEDSNET_MAX_RECENT_RX_IDS 16U
 #define RF_SEDSNET_STARTING_ALLOCATION 1024U
 #define RF_RFD_SERIAL_BREAK_MS 10U
-#define RF_CAN_MAX_FRAME_BYTES (2U*55U)
+#define RF_CAN_MAX_FRAME_BYTES (2U*64U)
 #define RF_RADIO_MAX_FRAME_BYTES 192U
 #define RF_CAN_SIDE_TRANSPORT_TEMPLATES 16U
 #define RF_RADIO_SIDE_TRANSPORT_TEMPLATES 16U

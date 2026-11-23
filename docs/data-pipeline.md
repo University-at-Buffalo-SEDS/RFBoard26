@@ -49,6 +49,19 @@ learned subscriptions route each packet to the side(s) that need it
 radio to CAN; rocket telemetry and the board's own packets go CAN/local to
 radio.
 
+
+**CAN link format v2** (`Core/Inc/can_link.h`, identical on every board): frames
+carry no payload header. The 11-bit identifier is band (bits 8..7: `0x000`
+controls/ACKs/heartbeat, `0x080` metadata, `0x100` data) | board token (bits
+6..3) | frame kind (bits 2..0: SINGLE, FIRST, MIDDLE, LAST, plus a PAD bit whose
+frame ends in its pad length). A side frame of up to 64 B is one frame; up to
+128 B (`CAN_LINK_MAX_PACKET`, the SDK CAN side frame cap) is FIRST + LAST of 64
+B each. Band and board order arbitration exactly as the version 1 identifiers
+`band | board` did. Reassembly keeps one 128-byte slot per (board, band) stream
+(`CAN_BUS_REASM_SLOTS`); a lost fragment leaves an orphan or a packet that
+fails its SEDSnet CRC32. Version 1 sent a 9-byte `'S' 'D'` header in every
+frame (55 B per fragment).
+
 ## 2. Schedule
 
 There is one service loop (telemetry thread) that does all relay work. The
@@ -155,8 +168,8 @@ timing of radio egress:
 
 | Direction | Ingress buffer and drop | Egress buffer and drop | Priority / egress policy | Source |
 | --- | --- | --- | --- | --- |
-| CAN to radio (rocket to ground) | HW FIFO to 64-frame ring, **drop oldest** when full (counted in BOARD_HEALTH word 12); thread drains <= 32 frames/pass; 4 reassembly slots, 2048 B, 64 fragments, 1000 ms timeout | Radio TX queue, see 4.3. Ordinary frames refused with `HAL_BUSY` stay in SEDSnet's own queue (queue budget 16384 B, `RF_SEDSNET_QUEUE_BUDGET`) | Latest-value egress on the radio side: pending telemetry of the same flow is replaced before encoding (`SEDSNET_LATEST_VALUE_EGRESS=ON`). Compact bundles on the radio side | `can_bus.c:55,359,458-467,564-572,335`; `CMakeLists.txt:32-34,262`; `telemetry.c:1094-1119` |
-| Radio to CAN (ground to rocket) | 256 B circular DMA, 1024 B ring; a chunk that does not fit is **rejected whole** (word 14); thread drains <= 8 chunks/pass; frame buffer 1028 B, damaged partial frame dropped after 2000 ms | `can_tx_queue`: 48 packets, 6144 B, packets older than 1000 ms are dropped at the head; IDs < 0x80 (ACKs, small controls, discovery schema) jump ahead of data; data keeps 12 slots / 1536 B in reserve for controls | CAN ID bands from `board_can_arbitration_id`: 0x001 controls/heartbeat, 0x081 schema/SDT control, 0x101 data | `radio.c:15,45,60,207,2510-2530,2559-2585`; `can_tx_queue.c:6-12,70-77,102-109,182-191`; `board_can_priority.h` |
+| CAN to radio (rocket to ground) | HW FIFO to 64-frame ring, **drop oldest** when full (counted in BOARD_HEALTH word 12); thread drains <= 32 frames/pass; 2 reassembly slots of 128 B (one packet of two frames each, link v2), 1000 ms timeout | Radio TX queue, see 4.3. Ordinary frames refused with `HAL_BUSY` stay in SEDSnet's own queue (queue budget 16384 B, `RF_SEDSNET_QUEUE_BUDGET`) | Latest-value egress on the radio side: pending telemetry of the same flow is replaced before encoding (`SEDSNET_LATEST_VALUE_EGRESS=ON`). Compact bundles on the radio side | `can_bus.c:55,359,458-467,564-572,335`; `CMakeLists.txt:32-34,262`; `telemetry.c:1094-1119` |
+| Radio to CAN (ground to rocket) | 256 B circular DMA, 1024 B ring; a chunk that does not fit is **rejected whole** (word 14); thread drains <= 8 chunks/pass; frame buffer 1028 B, damaged partial frame dropped after 2000 ms | `can_tx_queue`: 48 packets, 6144 B, packets older than 1000 ms are dropped at the head; IDs < 0x80 (ACKs, small controls, discovery schema) jump ahead of data; data keeps 12 slots / 1536 B in reserve for controls | CAN ID bands from `board_can_arbitration_id`: 0x001 controls/heartbeat, 0x081 schema/SDT control, 0x101 data (base IDs; on the wire, link v2: band, board 1 in bits 6..3, frame kind in bits 2..0) | `radio.c:15,45,60,207,2510-2530,2559-2585`; `can_tx_queue.c:6-12,70-77,102-109,182-191`; `board_can_priority.h` |
 
 Reliable SEDSnet traffic is retransmitted after 550 ms, up to 8 times
 (`telemetry.c:1010-1011`). SEDSnet hop ACKs are disabled on the radio side

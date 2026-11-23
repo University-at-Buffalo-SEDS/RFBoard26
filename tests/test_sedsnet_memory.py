@@ -228,7 +228,8 @@ class SedsnetMemoryTests(unittest.TestCase):
         )
         self.assertIn("#define RF_SEDSNET_QUEUE_BUDGET 9984U", telemetry)
         self.assertNotIn("TELEMETRY_PENDING_CAN_DEPTH", telemetry)
-        self.assertIn("CAN_TX_MAX_PACKET 128U", (ROOT / "Core/Src/can_tx_queue.c").read_text())
+        self.assertIn("CAN_TX_MAX_PACKET CAN_LINK_MAX_PACKET", (ROOT / "Core/Src/can_tx_queue.c").read_text())
+        self.assertIn("#define CAN_LINK_MAX_PACKET 128U", (ROOT / "Core/Inc/can_link.h").read_text())
         init = radio.split("UINT radio_uart_init_tx_queue", 1)[1]
         init = init.split("/* Arm RX-to-idle", 1)[0]
         self.assertNotIn("tx_byte_allocate", init)

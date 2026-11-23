@@ -19,6 +19,7 @@ typedef int HAL_StatusTypeDef;
 HAL_StatusTypeDef can_bus_send_bytes(const uint8_t*,size_t,uint32_t);
 ''')
             (p/'can_tx_queue.h').write_text((ROOT/'Core/Inc/can_tx_queue.h').read_text())
+            (p/'can_link.h').write_text((ROOT/'Core/Inc/can_link.h').read_text())
             (p/'board_clock_us.h').write_text('''#pragma once
 #include <stdint.h>
 extern uint64_t now_us;
@@ -39,7 +40,7 @@ uint32_t HAL_GetTick(void);
 uint32_t irq;
 static uint32_t tick;
 static unsigned free_slots,allocations,frees,failed_alloc,hal_error,count,last_protected;
-static uint8_t wire[4096][64];static uint32_t ids[4096];
+static uint8_t wire[4096][64];static uint32_t ids[4096];static unsigned lens[4096];
 extern volatile uint32_t g_can_tx_queue_bytes,g_can_tx_pending,g_can_tx_rejected,g_can_tx_expired,g_can_tx_submitted;
 uint32_t HAL_GetTick(void){return tick;}
 uint64_t now_us;static uint32_t latest_buffer=1U;
@@ -47,12 +48,26 @@ uint32_t can_bus_latest_tx_buffer(void){assert(irq);return latest_buffer;}
 void *telemetry_can_tx_allocate_priority(size_t n,uint8_t protected_control){assert(protected_control<=1);last_protected=protected_control;assert(!irq);if(failed_alloc)return NULL;allocations++;return malloc(n);}
 void telemetryFree(void *p){assert(!irq);frees++;free(p);}
 HAL_StatusTypeDef can_bus_send_bytes(const uint8_t *p,size_t n,uint32_t id){
- assert(irq && n>=9 && n<=64);
- assert(p[5]==1 ? n==(size_t)(9+p[7]+((unsigned)p[8]<<8)) : n==64);
+ /* Link format v2: exact CAN FD lengths, no payload header, kind in the id. */
+ assert(irq && n>=1 && n<=64 && can_link_dlc_len(n)==n && id<0x200);
+ assert(can_link_payload_len(id,p,n)>0);
  if(hal_error)return HAL_ERROR;
  if(!free_slots)return HAL_BUSY;
- free_slots--;assert(count<4096);memset(wire[count],0,64);memcpy(wire[count],p,n);ids[count++]=id;return HAL_OK;
+ free_slots--;assert(count<4096);memset(wire[count],0,64);memcpy(wire[count],p,n);lens[count]=(unsigned)n;ids[count++]=id;return HAL_OK;
 }
+static can_link_slot_t rx_slots[2];
+/* Reassemble wire frames [from,to) (one packet) through the receive path. */
+static size_t reassemble(unsigned from,unsigned to,uint8_t *out){
+ size_t got=0;
+ for(unsigned f=from;f<to;f++){
+  const uint8_t *pkt=NULL;size_t n=0;
+  int r=can_link_rx(rx_slots,2,ids[f],wire[f],lens[f],0,&pkt,&n);
+  if(f+1<to){assert(r==CAN_LINK_RX_PARTIAL);continue;}
+  assert(r==CAN_LINK_RX_COMPLETE);memcpy(out,pkt,n);got=n;
+ }
+ return got;
+}
+static unsigned kind(unsigned f){return ids[f]&CAN_LINK_KIND_MASK;}
 static void interrupt(void){unsigned a=allocations,f=frees;irq=1;can_tx_queue_pump();assert(irq && allocations==a && frees==f);irq=0;}
 static void drain(void){while(g_can_tx_pending){free_slots=3;interrupt();can_tx_queue_service();}}
 int main(void){
@@ -64,23 +79,20 @@ int main(void){
  assert(!last_protected);assert(g_can_tx_pending==1 && count==0);memset(data,99,sizeof(data));
  free_slots=1;interrupt();assert(count==1 && frees==0 && g_can_tx_pending==1);
  hal_error=1;free_slots=3;interrupt();assert(count==1);
- hal_error=0;interrupt();assert(count==3 && g_can_tx_pending==0 && frees==0);
- for(unsigned f=0;f<3;f++){
-  assert(wire[f][0]=='S' && wire[f][1]=='D' && wire[f][2]==1 && wire[f][3]==0);
-  assert(wire[f][4]==f && wire[f][5]==3 && wire[f][7]==128 && wire[f][8]==0 && ids[f]==0x105);
-  unsigned n=f==2?18:55;for(unsigned i=0;i<n;i++)assert(wire[f][9+i]==f*55+i);
- }
- assert(wire[0][6]==1 && wire[1][6]==0 && wire[2][6]==2);
+ hal_error=0;interrupt();assert(count==2 && g_can_tx_pending==0 && frees==0);
+ /* Two whole 64-byte frames: FIRST then LAST, band and board unchanged. */
+ assert(ids[0]==can_link_id(0x105,CAN_LINK_FIRST) && ids[0]==0x12AU && lens[0]==64);
+ assert(ids[1]==can_link_id(0x105,CAN_LINK_LAST) && ids[1]==0x12CU && lens[1]==64);
+ for(unsigned f=0;f<2;f++)for(unsigned i=0;i<64;i++)assert(wire[f][i]==f*64+i);
+ {uint8_t out[128];assert(reassemble(0,2,out)==128);for(unsigned i=0;i<128;i++)assert(out[i]==i);}
  can_tx_queue_service();assert(frees==1 && !g_can_tx_queue_bytes);
- // The SDK's outbound chunk cap fills exactly two physical frames. Keep
- // the preceding legacy128-byte case and the full1..128 receive sweep.
- assert(CAN_TX_ALIGNED_FRAME_BYTES==110 && CAN_TX_FRAGMENT_PAYLOAD_BYTES==55);
+ // The SDK's outbound side-frame cap fills exactly two physical frames.
+ assert(CAN_TX_ALIGNED_FRAME_BYTES==128 && CAN_TX_FRAGMENT_PAYLOAD_BYTES==64);
  unsigned aligned_first=count;free_slots=3;
  assert(can_tx_queue_submit(data,CAN_TX_ALIGNED_FRAME_BYTES,0x105)==HAL_OK);
  assert(count==aligned_first+2 && !g_can_tx_pending);
  for(unsigned f=aligned_first;f<count;f++){
-  assert(wire[f][5]==2 && wire[f][7]==110 && wire[f][8]==0);
-  for(unsigned j=0;j<55;j++)assert(wire[f][9+j]==99);
+  assert(lens[f]==64);for(unsigned j=0;j<64;j++)assert(wire[f][j]==99);
  }
  can_tx_queue_service();assert(allocations==frees && !g_can_tx_queue_bytes);
  // Hard byte/count limit: repeated refusal cannot leak an allocation.
@@ -93,7 +105,8 @@ int main(void){
  drain();assert(!g_can_tx_queue_bytes && allocations==frees);
  // Ordered messages keep each packet's fragments consecutive.
  for(unsigned i=4;i<count;i++){
-  if(wire[i][4])assert(wire[i][3]==wire[i-1][3] && wire[i][4]==wire[i-1][4]+1);
+  if(kind(i)==CAN_LINK_LAST||kind(i)==(CAN_LINK_LAST|CAN_LINK_PAD))
+   assert(kind(i-1)==CAN_LINK_FIRST && (ids[i]&CAN_LINK_STREAM_MASK)==(ids[i-1]&CAN_LINK_STREAM_MASK));
  }
  failed_alloc=1;free_slots=0;assert(can_tx_queue_submit(data,1,0)==HAL_BUSY);failed_alloc=0;
  // Expire a partly emitted packet across timer wrap; no stale remainder sent.
@@ -108,33 +121,41 @@ int main(void){
  // Saturated ordinary traffic must retain metadata and receipt capacity.
  // A canonical receipt may interrupt a partially sent bulk packet; the
  // original packet then resumes at the same fragment/sequence, once only.
- unsigned source=wire[0][2], data_id=0x100|source, meta_id=0x80|source;
+ unsigned source=can_link_board(ids[0]), data_id=0x100|source, meta_id=0x80|source;
  unsigned first=count;free_slots=1;
  assert(can_tx_queue_submit(data,128,data_id)==HAL_OK);
- assert(count==first+1 && wire[first][4]==0);
+ assert(count==first+1 && kind(first)==CAN_LINK_FIRST);
  free_slots=0;unsigned bulk=0,metadata=0;
  while(can_tx_queue_submit(data,128,data_id)==HAL_OK)bulk++;
  while(can_tx_queue_submit(data,128,meta_id)==HAL_OK)metadata++;
  assert(bulk>0 && metadata>0);
  assert(can_tx_queue_submit(data,20,source)==HAL_OK);
  free_slots=1;interrupt();
- assert(count==first+2 && ids[first+1]==source && wire[first+1][5]==1);
+ /* The receipt is one SINGLE frame in the control band, above the data band. */
+ assert(count==first+2 && ids[first+1]==can_link_id(source,CAN_LINK_SINGLE) && ids[first+1]<ids[first]);
  free_slots=3;interrupt();
- assert(ids[first+2]==data_id && wire[first+2][3]==wire[first][3] && wire[first+2][4]==1);
- assert(ids[first+3]==data_id && wire[first+3][3]==wire[first][3] && wire[first+3][4]==2);
+ assert(ids[first+2]==can_link_id(data_id,CAN_LINK_LAST));
+ {uint8_t out[128];const unsigned order[3]={first,first+1,first+2};
+  /* Interleaved streams reassemble independently: data FIRST, control, data LAST. */
+  const uint8_t *pkt;size_t n;
+  assert(can_link_rx(rx_slots,2,ids[order[0]],wire[order[0]],lens[order[0]],0,&pkt,&n)==CAN_LINK_RX_PARTIAL);
+  assert(can_link_rx(rx_slots,2,ids[order[1]],wire[order[1]],lens[order[1]],0,&pkt,&n)==CAN_LINK_RX_COMPLETE && n==20);
+  assert(can_link_rx(rx_slots,2,ids[order[2]],wire[order[2]],lens[order[2]],0,&pkt,&n)==CAN_LINK_RX_COMPLETE && n==128);
+  memcpy(out,pkt,n);for(unsigned i=0;i<128;i++)assert(out[i]==data[i]);}
  drain();assert(!g_can_tx_queue_bytes && allocations==frees);
  // Repeated small packets exercise sequence and queue reuse/wrap.
  for(unsigned i=0;i<300;i++){free_slots=3;assert(can_tx_queue_submit(data,1,0)==HAL_OK);}
- // Every supported wire size preserves reassembly stride and payload bytes.
+ // Every supported size round-trips through the receive path; padding is
+ // marked in the id and the last padding byte, never in a payload header.
  for(unsigned len=1;len<=128;len++){
   unsigned first=count;for(unsigned n=0;n<len;n++)data[n]=(uint8_t)(n*7+len);
   free_slots=3;assert(can_tx_queue_submit(data,len,0x101)==HAL_OK);
-  assert(count-first==(len+54)/55);
-  for(unsigned f=first;f<count;f++){
-   assert(wire[f][2]==1 && wire[f][4]==f-first && ids[f]==0x101);
-   unsigned offset=(f-first)*55,take=len-offset;if(take>55)take=55;
-   assert(wire[f][7]==len && !memcmp(wire[f]+9,data+offset,take));
-  }
+  assert(count-first==(len+63)/64);
+  for(unsigned f=first;f<count;f++)assert(can_link_board(ids[f])==1 && (ids[f]&CAN_LINK_BAND_MASK)==0x100);
+  const unsigned tail=len-(count-first-1)*64;
+  assert(lens[count-1]==can_link_dlc_len(tail));
+  assert(((ids[count-1]&CAN_LINK_PAD)!=0)==(can_link_dlc_len(tail)!=tail));
+  uint8_t out[128];assert(reassemble(first,count,out)==len && !memcmp(out,data,len));
  }
  assert(allocations==frees);
  // Time sync TX stamp: the watched packet's last fragment is stamped at its

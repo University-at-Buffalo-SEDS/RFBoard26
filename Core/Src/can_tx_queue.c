@@ -6,11 +6,10 @@
 #ifndef CAN_TX_QUEUE_BUDGET
 #define CAN_TX_QUEUE_BUDGET 6144U
 #endif
-#define CAN_TX_MAX_PACKET 128U
+#define CAN_TX_MAX_PACKET CAN_LINK_MAX_PACKET
 #define CAN_TX_MAX_PENDING 48U
 #define CAN_TX_MAX_AGE_MS 1000U
 #define CAN_TX_PUMP_FRAMES 3U
-#define CAN_TX_FRAGMENT_BYTES CAN_TX_FRAGMENT_PAYLOAD_BYTES
 
 /* These hooks are foreground-only and preserve allocator emergency headroom. */
 extern void *telemetry_can_tx_allocate_priority(size_t bytes, uint8_t protected_control);
@@ -20,7 +19,6 @@ typedef struct can_tx_packet {
     struct can_tx_packet *next;
     uint32_t queued_ms;
     uint16_t id, len, offset;
-    uint8_t seq;
     uint8_t watched;
     uint8_t data[];
 } can_tx_packet;
@@ -75,7 +73,6 @@ uint8_t can_tx_queue_take_watched_sent(const uint8_t **bytes, size_t *len, uint6
     watch_state = 0U;
     return 1U;
 }
-static uint8_t next_seq;
 volatile uint32_t g_can_tx_queue_bytes;
 volatile uint32_t g_can_tx_pending;
 volatile uint32_t g_can_tx_high_water;
@@ -139,21 +136,16 @@ void can_tx_queue_pump(void) {
             retire_head();
             continue;
         }
-        const unsigned index = head->offset / CAN_TX_FRAGMENT_BYTES;
-        const unsigned count = (head->len + CAN_TX_FRAGMENT_BYTES - 1U) / CAN_TX_FRAGMENT_BYTES;
-        uint8_t frame[64] = {'S', 'D', 1U, head->seq, (uint8_t)index, (uint8_t)count,
-            (uint8_t)((index == 0U ? 1U : 0U) | (index + 1U == count ? 2U : 0U)),
-            (uint8_t)head->len, (uint8_t)(head->len >> 8U)};
-        size_t take = head->len - head->offset;
-        if (take > CAN_TX_FRAGMENT_BYTES) take = CAN_TX_FRAGMENT_BYTES;
-        memcpy(frame + 9U, head->data + head->offset, take);
+        /* Link format v2 (can_link.h): no payload header; the frame kind
+         * and padding ride in the identifier and the padding bytes. */
+        uint8_t frame[CAN_LINK_FRAME_BYTES];
+        uint32_t wire_id;
+        size_t take;
+        const size_t used = can_link_frame(head->data, head->len, head->offset,
+                                           head->id, frame, &wire_id, &take);
         /* HAL copies into message RAM synchronously, but never waits for wire
          * completion. BUSY/error retains this exact fragment for later service. */
-        /* Single-fragment packets need no fixed reassembly stride. HAL
-         * rounds the used bytes to a legal DLC; retain 64-byte multi-frame
-         * packets for compatibility with existing receivers. */
-        const size_t used = count == 1U ? 9U + take : sizeof(frame);
-        if (can_bus_send_bytes(frame, used, head->id) != HAL_OK) break;
+        if (can_bus_send_bytes(frame, used, wire_id) != HAL_OK) break;
         head->offset += take;
         if (head->offset == head->len) {
             if (head->watched && watch_state == 2U) {
@@ -211,7 +203,6 @@ HAL_StatusTypeDef can_tx_queue_submit(const uint8_t *data, size_t len, uint32_t 
         telemetryFree(packet);
         return HAL_BUSY;
     }
-    packet->seq = next_seq++;
     if (watch && watch_state == 0U) {
         memcpy(watch_bytes, data, len);
         watch_len = (uint8_t)len;

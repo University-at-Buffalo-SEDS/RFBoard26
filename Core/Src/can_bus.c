@@ -329,27 +329,8 @@ static inline void can_bus_notify_rx(const uint8_t *data, size_t len)
 // Fragmentation protocol
 // =========================
 
-#define CAN_BUS_FRAG_MAGIC ((uint16_t)('S') | ((uint16_t)('D') << 8)) /* 'S''D' in little-endian byte order */
-#define CAN_BUS_NODE_ID 1U
-#define CAN_BUS_FRAG_WIRE_LEN 64                                      // fixed stride for multi-fragment packets
-#define CAN_BUS_REASM_TIMEOUT_MS 1000u                                // tolerate interleaved multi-sender packets
-
-typedef struct __attribute__((packed))
-{
-  uint16_t magic;     // CAN_BUS_FRAG_MAGIC
-  uint8_t source;     // stable sender token
-  uint8_t seq;        // message sequence (wrap OK)
-  uint8_t frag_idx;   // 0..frag_cnt-1
-  uint8_t frag_cnt;   // total fragments
-  uint8_t flags;      // bit0=first, bit1=last (optional)
-  uint16_t total_len; // total bytes of reassembled message
-} can_bus_frag_hdr_t;
-
-enum
-{
-  CAN_BUS_FRAG_F_FIRST = 1u << 0,
-  CAN_BUS_FRAG_F_LAST = 1u << 1
-};
+#include "can_link.h"
+#define CAN_BUS_REASM_TIMEOUT_MS 1000u // tolerate interleaved multi-sender packets
 
 // =========================
 // RX ring buffer (ISR -> thread)
@@ -564,214 +545,39 @@ static UNUSED_FUNCTION void can_bus_drain_hw_to_ring_thread(void)
 #define CAN_BUS_REASM_SLOTS 4
 #endif
 
-#ifndef CAN_BUS_REASM_MAX_BYTES
-#define CAN_BUS_REASM_MAX_BYTES 2048
+/* Link packets are at most CAN_LINK_MAX_PACKET bytes (two frames); larger
+ * messages travel as SDK side-transport chunks. */
+#if defined(CAN_BUS_REASM_MAX_BYTES) && CAN_BUS_REASM_MAX_BYTES < CAN_LINK_MAX_PACKET
+#error "CAN reassembly must hold a whole link packet"
 #endif
 
-#ifndef CAN_BUS_REASM_MAX_FRAGS
-#define CAN_BUS_REASM_MAX_FRAGS 64
-#endif
+static can_link_slot_t g_reasm[CAN_BUS_REASM_SLOTS];
 
-typedef struct
+static void reasm_reset(can_link_slot_t *s)
 {
-  uint8_t active;
-  uint32_t std_id; // which CAN ID this slot is for
-  uint8_t source;
-  uint8_t seq;
-  uint8_t frag_cnt;
-  uint16_t total_len;
-  uint8_t data_cap; // payload bytes per frag (wire_len - hdr)
-  uint32_t last_tick_ms;
-  uint64_t got_mask[(CAN_BUS_REASM_MAX_FRAGS + 63) / 64];
-  uint16_t got_count;
-  uint8_t buf[CAN_BUS_REASM_MAX_BYTES];
-} can_bus_reasm_slot_t;
-
-static can_bus_reasm_slot_t g_reasm[CAN_BUS_REASM_SLOTS];
-
-static void reasm_reset(can_bus_reasm_slot_t *s)
-{
-  s->active = 0;
-  s->std_id = 0;
-  s->source = 0;
-  s->seq = 0;
-  s->frag_cnt = 0;
-  s->total_len = 0;
-  s->data_cap = 0;
-  s->last_tick_ms = 0;
-  s->got_count = 0;
-  memset(s->got_mask, 0, sizeof(s->got_mask));
-}
-
-static can_bus_reasm_slot_t *reasm_get_slot(uint32_t std_id, uint8_t source, uint8_t seq, uint32_t now_ms)
-{
-  // First try to find existing active slot for std_id
-  for (unsigned i = 0; i < CAN_BUS_REASM_SLOTS; i++)
-  {
-    if (g_reasm[i].active && g_reasm[i].std_id == std_id && g_reasm[i].source == source)
-    {
-      // If sequence changed, drop partial and reuse slot
-      if (g_reasm[i].seq != seq)
-      {
-        reasm_reset(&g_reasm[i]);
-        g_reasm[i].active = 1;
-        g_reasm[i].std_id = std_id;
-        g_reasm[i].source = source;
-        g_reasm[i].seq = seq;
-      }
-      g_reasm[i].last_tick_ms = now_ms;
-      return &g_reasm[i];
-    }
-  }
-
-  // Find a free slot
-  for (unsigned i = 0; i < CAN_BUS_REASM_SLOTS; i++)
-  {
-    if (!g_reasm[i].active)
-    {
-      reasm_reset(&g_reasm[i]);
-      g_reasm[i].active = 1;
-      g_reasm[i].std_id = std_id;
-      g_reasm[i].source = source;
-      g_reasm[i].seq = seq;
-      g_reasm[i].last_tick_ms = now_ms;
-      return &g_reasm[i];
-    }
-  }
-
-  // No free slot: drop the stalest slot (oldest last_tick_ms)
-  unsigned stalest = 0;
-  uint32_t best_age = 0;
-  for (unsigned i = 0; i < CAN_BUS_REASM_SLOTS; i++)
-  {
-    uint32_t age = (uint32_t)(now_ms - g_reasm[i].last_tick_ms);
-    if (age >= best_age)
-    {
-      best_age = age;
-      stalest = i;
-    }
-  }
-  reasm_reset(&g_reasm[stalest]);
-  g_reasm[stalest].active = 1;
-  g_reasm[stalest].std_id = std_id;
-  g_reasm[stalest].source = source;
-  g_reasm[stalest].seq = seq;
-  g_reasm[stalest].last_tick_ms = now_ms;
-  return &g_reasm[stalest];
-}
-
-static inline int bit_test(uint64_t *mask, uint16_t idx)
-{
-  uint16_t w = (uint16_t)(idx / 64);
-  uint16_t b = (uint16_t)(idx % 64);
-  return (mask[w] >> b) & 1u;
-}
-
-static inline void bit_set(uint64_t *mask, uint16_t idx)
-{
-  uint16_t w = (uint16_t)(idx / 64);
-  uint16_t b = (uint16_t)(idx % 64);
-  mask[w] |= (1ull << b);
+  s->active = 0U;
+  s->len = 0U;
 }
 
 static void reasm_expire_old(uint32_t now_ms)
 {
-  for (unsigned i = 0; i < CAN_BUS_REASM_SLOTS; i++)
-  {
-    if (!g_reasm[i].active)
-      continue;
-    if ((uint32_t)(now_ms - g_reasm[i].last_tick_ms) > CAN_BUS_REASM_TIMEOUT_MS)
-    {
-      reasm_reset(&g_reasm[i]);
-    }
-  }
+  const unsigned expired =
+      can_link_expire(g_reasm, CAN_BUS_REASM_SLOTS, now_ms, CAN_BUS_REASM_TIMEOUT_MS);
+  (void)expired;
 }
 
 // Handle one RX frame (thread context)
 static void handle_rx_frame(const can_bus_rx_frame_t *f, uint32_t now_ms)
 {
-  // Check if this is a fragment frame
-  if (f->len >= sizeof(can_bus_frag_hdr_t))
-  {
-    can_bus_frag_hdr_t hdr;
-    memcpy(&hdr, f->data, sizeof(hdr));
+  /* Link format v2: the identifier carries the frame kind; see can_link.h. */
+  const uint8_t *packet = NULL;
+  size_t len = 0U;
+  const int result = can_link_rx(g_reasm, CAN_BUS_REASM_SLOTS, f->std_id, f->data,
+                                 f->len, now_ms, &packet, &len);
+  if (result != CAN_LINK_RX_COMPLETE) return;
 
-    if (hdr.magic == CAN_BUS_FRAG_MAGIC)
-    {
-      // Validate header fields
-      if (hdr.frag_cnt == 0)
-        return;
-      if (hdr.frag_idx >= hdr.frag_cnt)
-        return;
-      if (hdr.frag_cnt > CAN_BUS_REASM_MAX_FRAGS)
-        return;
-      if (hdr.total_len == 0)
-        return;
-      if (hdr.total_len > CAN_BUS_REASM_MAX_BYTES)
-        return;
-
-      const uint8_t *payload = f->data + sizeof(hdr);
-      const uint8_t payload_len = (uint8_t)(f->len - sizeof(hdr));
-
-      can_bus_reasm_slot_t *s = reasm_get_slot(f->std_id, hdr.source, hdr.seq, now_ms);
-
-      // If slot was newly created (or reset), initialize message params
-      if (s->frag_cnt == 0)
-      {
-        s->frag_cnt = hdr.frag_cnt;
-        s->total_len = hdr.total_len;
-        s->data_cap = payload_len; // bytes per fragment (as seen on first frag)
-        s->got_count = 0;
-        memset(s->got_mask, 0, sizeof(s->got_mask));
-      }
-      else
-      {
-        // Must match the in-flight message properties
-        if (s->frag_cnt != hdr.frag_cnt || s->total_len != hdr.total_len)
-        {
-          reasm_reset(s);
-          return;
-        }
-      }
-
-      // Compute where this fragment’s payload should land
-      uint32_t off = (uint32_t)hdr.frag_idx * (uint32_t)s->data_cap;
-      if (off >= s->total_len)
-        return;
-
-      uint32_t take = payload_len;
-      if (off + take > s->total_len)
-        take = (uint32_t)s->total_len - off;
-
-      // Mark + copy if not already received
-      if (!bit_test(s->got_mask, hdr.frag_idx))
-      {
-        bit_set(s->got_mask, hdr.frag_idx);
-        s->got_count++;
-        memcpy(&s->buf[off], payload, take);
-      }
-
-      s->last_tick_ms = now_ms;
-
-      // Complete?
-      if (s->got_count == s->frag_cnt)
-      {
-        CAN_BUS_DBG("CAN REASM DONE: id=0x%03lx len=%u\r\n",
-                    (unsigned long)f->std_id, (unsigned)s->total_len);
-        g_can_rx_us = can_bus_frame_rx_us(f);
-        can_bus_notify_rx(s->buf, s->total_len);
-        g_can_rx_us = 0U;
-        reasm_reset(s);
-      }
-
-      return;
-    }
-  }
-
-  // Not a fragment frame: deliver raw CAN payload
-  CAN_BUS_DBG("CAN RX: id=0x%03lx len=%u\r\n", (unsigned long)f->std_id, (unsigned)f->len);
   g_can_rx_us = can_bus_frame_rx_us(f);
-  can_bus_notify_rx(f->data, f->len);
+  can_bus_notify_rx(packet, len);
   g_can_rx_us = 0U;
 }
 
