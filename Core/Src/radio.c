@@ -536,26 +536,14 @@ static uint32_t radio_uart_flow_id_from_payload(const uint8_t *payload, size_t l
     return RADIO_UART_SCHED_FALLBACK_FLOW;
   }
 
-  const uint8_t flags = payload[offset++];
-  offset++; /* selected endpoint count */
-
-  if (!radio_read_uleb128(payload, len, &offset, &data_type) ||
-      !radio_read_uleb128(payload, len, &offset, &ignored) ||
-      !radio_read_uleb128(payload, len, &offset, &ignored)) {
+  /* SEDSnet 7 canonical prelude: flags, type, source address (side-transport
+   * frames, first byte with both 0x60 bits set, carry no visible header). */
+  if ((payload[offset++] & 0x60U) == 0x60U ||
+      !radio_read_uleb128(payload, len, &offset, &data_type)) {
     return RADIO_UART_SCHED_FALLBACK_FLOW;
   }
   if (data_type_out != NULL) {
     *data_type_out = data_type;
-  }
-
-  /* SEDSNet v4 optionally carries a nonce before the compact 32-bit source
-   * address. Older RF firmware interpreted this area as a sender-string
-   * length, assigning every v4 packet to flow zero and coalescing unrelated
-   * boards in the one-entry radio queue. */
-  if ((flags & 0x08U) != 0U) {
-    if (!radio_read_uleb128(payload, len, &offset, &ignored)) {
-      return RADIO_UART_SCHED_FALLBACK_FLOW;
-    }
   }
   if (!radio_read_uleb128(payload, len, &offset, &source_address) ||
       source_address == 0ULL || source_address > UINT32_MAX) {
@@ -861,7 +849,8 @@ static HAL_StatusTypeDef radio_uart_enqueue_frame(const uint8_t *data, uint16_t 
             : ((incoming_priority == RADIO_UART_PRIORITY_NETWORK_CONTROL)
                    ? RADIO_UART_CLASS_NETWORK_CONTROL
                    : RADIO_UART_CLASS_APPLICATION);
-    /* Side-transport frames begin with SDT, not a canonical packet envelope.
+    /* Side-transport frames (first byte with both 0x60 bits set) carry no
+     * canonical packet envelope.
      * Keep distinct compact/chunk frames distinct if the legacy flow parser
      * cannot identify them; coalescing all fallback frames corrupts discovery. */
     if (flow_id == RADIO_UART_SCHED_FALLBACK_FLOW) {
@@ -1067,8 +1056,9 @@ static uint8_t radio_uart_independent_control(const uint8_t *data, uint16_t len,
       ((uint32_t)data[2] | ((uint32_t)data[3] << 8U)) !=
           len - RADIO_UART_FRAME_HEADER_SIZE) return 0U;
   const uint8_t *payload = data + RADIO_UART_FRAME_HEADER_SIZE;
-  if (memcmp(payload, "SDT", 3U) == 0) return 0U;
-  size_t offset = RADIO_UART_FRAME_HEADER_SIZE + 2U;
+  /* SEDSnet 7 side-transport kinds have both 0x60 bits set in byte 0. */
+  if ((payload[0] & 0x60U) == 0x60U) return 0U;
+  size_t offset = RADIO_UART_FRAME_HEADER_SIZE + 1U;
   uint64_t type = 0U;
   if (!radio_read_uleb128(data, len, &offset, &type)) return 0U;
   return !((type >= 7U && type <= 12U) || (type >= 15U && type <= 17U));
@@ -1521,7 +1511,8 @@ static void radio_uart_mark_tx_quiet(uint16_t len)
 #if !RFBOARD_LORA_SCHEDULER
 /* Inspect only an owned SDK canonical plaintext ACK. Its last eight payload
  * bytes are the stable acknowledged logical ID, independent of ACK retries
- * and owner address. This never reconstructs SDT or allocates in the ISR. */
+ * and owner address. This never rebuilds template frames or allocates in the
+ * ISR. */
 static uint8_t radio_uart_ack_contract(const uint8_t *data, uint16_t len, uint8_t priority, uint64_t *id)
 {
   if (!data || !id || len > RADIO_UART_FRAME_BUF_SIZE || priority < RADIO_UART_PRIORITY_NETWORK_CONTROL ||
@@ -1529,16 +1520,15 @@ static uint8_t radio_uart_ack_contract(const uint8_t *data, uint16_t len, uint8_
       !radio_uart_independent_control(data, len, priority)) return 0U;
   const uint8_t *body = data + RADIO_UART_FRAME_HEADER_SIZE;
   const size_t size = len - RADIO_UART_FRAME_HEADER_SIZE;
-  if ((body[0] & 0x11U) != 0U || (body[0] & 0xA0U) == 0xA0U) return 0U;
+  /* SEDSnet 7 canonical frame: flags (not compressed or sealed, not a
+   * side-transport kind), type, source address; the 8-byte ACK payload ends
+   * the frame before its CRC32 (an uncompressed payload has no size field). */
+  if ((body[0] & 0x11U) != 0U || (body[0] & 0x60U) == 0x60U) return 0U;
   const size_t payload_end = size - 4U;
   const size_t payload_start = payload_end - 8U;
-  size_t offset = 2U;
-  uint64_t type, data_size, ignored, source;
-  if (!radio_read_uleb128(body, payload_start, &offset, &type) || type != 1U ||
-      !radio_read_uleb128(body, payload_start, &offset, &data_size) || data_size != 8U ||
-      !radio_read_uleb128(body, payload_start, &offset, &ignored)) return 0U;
-  if ((body[0] & 0x08U) &&
-      !radio_read_uleb128(body, payload_start, &offset, &ignored)) return 0U;
+  size_t offset = 1U;
+  uint64_t type, source;
+  if (!radio_read_uleb128(body, payload_start, &offset, &type) || type != 1U) return 0U;
   if (!radio_read_uleb128(body, payload_start, &offset, &source) ||
       source == 0U || source > UINT32_MAX) return 0U;
   const uint32_t crc = (uint32_t)body[payload_end] |
@@ -1552,7 +1542,7 @@ static uint8_t radio_uart_ack_contract(const uint8_t *data, uint16_t len, uint8_
   return 1U;
 }
 
-/* Complete canonical ACK spans only: no allocation or SDT reconstruction.
+/* Complete canonical ACK spans only: no allocation or template rebuild.
  * A malformed/non-ACK suffix cannot borrow a receipt's close permit. */
 static uint8_t radio_uart_ack_ids_are_new(const uint64_t ids[4], uint8_t count)
 {

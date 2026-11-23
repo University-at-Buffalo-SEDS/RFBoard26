@@ -93,7 +93,7 @@ static void setup(unsigned priority, int sdt, unsigned len){
  memset(&candidate,0,sizeof(candidate));candidate.len=len;candidate.priority=priority;
  candidate.data[0]=0xa5;candidate.data[1]=0x5a;
  candidate.data[2]=(len-4)&255;candidate.data[3]=(len-4)>>8;
- if(sdt)memcpy(candidate.data+4,"SDT",3);else candidate.data[6]=1;
+ if(sdt)candidate.data[4]=0x61;else candidate.data[5]=1;
  offered=1;hal_status=HAL_OK;
 }
 static void reset(void){g_tx_packet_active=0;g_tx_air_budget_active=0;g_tx_dma_busy=0;g_tx_last_forced_boundary_ms=0;}
@@ -123,7 +123,7 @@ int main(void){
  assert(radio_uart_process_tx_with_budget(2000)==1);drained(9416);
  assert(g_tx_last_forced_boundary_ms==9412);
  clock_ms=9431;assert(radio_uart_air_busy());clock_ms=9471;assert(!radio_uart_air_busy());
- /* A forged high-priority SDT remains dependent and cannot close a batch. */
+ /* A forged high-priority side-transport frame remains dependent and cannot close a batch. */
  reset();clock_ms=1000;setup(255,1,42);assert(radio_uart_process_tx_with_budget(2000)==1);
  drained(1004);clock_ms=1019;assert(!radio_uart_air_busy());assert(g_tx_last_forced_boundary_ms==0);
  /* Refused DMA never spends the bounded close opportunity. */

@@ -119,7 +119,7 @@ static uint32_t radio_uart_air_ms(uint16_t n){return n;}
  assert(out.len==sizeof(fc) && memcmp(out.data,fc,sizeof(fc))==0);
  assert(radio_uart_dequeue_frame_with_budget(&out,sizeof(und)));
  assert(out.len==sizeof(und) && memcmp(out.data,und,sizeof(und))==0);
- uint8_t schema[16]={165,90,12,0,'S','D','T',3};
+ uint8_t schema[16]={165,90,12,0,0x61,0,0,3};
  assert(radio_uart_enqueue_sedsnet_parts(schema,sizeof(schema),NULL,0U,254)==HAL_OK);
  assert(radio_uart_enqueue_sedsnet_parts(schema,sizeof(schema),NULL,0U,254)==HAL_OK);
  assert(g_tx_count==2 && g_tx_queue_bytes_used==2*sizeof(schema));
@@ -130,8 +130,8 @@ static uint32_t radio_uart_air_ms(uint16_t n){return n;}
         frames = '\n'.join(re.search(r'static const uint8_t ' + name + r'\[\]=\{[^;]+;', ACK_FIXTURES).group() for name in ['und', 'fc'])
         self._run_case(frames + r'''int main(void){
  radio_uart_drop_stale_locked(0);
- uint8_t schema[196]={165,90,192,0,'S','D','T',3};
- uint8_t next[16]={165,90,12,0,'S','D','T',3};
+ uint8_t schema[196]={165,90,192,0,0x61,0,0,3};
+ uint8_t next[16]={165,90,12,0,0x61,0,0,3};
  radio_tx_item_t out;
  assert(radio_uart_enqueue_sedsnet_parts(schema,sizeof(schema),NULL,0U,254)==HAL_OK);
  assert(radio_uart_enqueue_sedsnet_parts(next,sizeof(next),NULL,0U,254)==HAL_BUSY);
@@ -147,7 +147,7 @@ static uint32_t radio_uart_air_ms(uint16_t n){return n;}
  assert(g_tx_count==2 && g_tx_drops==0);
  assert(radio_uart_dequeue_frame_with_budget(&out,2000));
  assert(radio_uart_dequeue_frame_with_budget(&out,2000));
- uint8_t large[520]={165,90,4,2,'S','D','T',3};
+ uint8_t large[520]={165,90,4,2,0x61,0,0,3};
  assert(radio_uart_enqueue_sedsnet_parts(large,sizeof(large),NULL,0U,254)==HAL_OK);
  assert(radio_uart_enqueue_sedsnet_parts(next,sizeof(next),NULL,0U,254)==HAL_BUSY);
  assert(g_tx_count==1 && g_tx_queue_bytes_used==sizeof(large));
@@ -158,7 +158,7 @@ static uint32_t radio_uart_air_ms(uint16_t n){return n;}
         frames = '\n'.join(re.search(r'static const uint8_t ' + name + r'\[\]=\{[^;]+;', ACK_FIXTURES).group() for name in ['und', 'fc'])
         self._run_case(frames + r'''int main(void){
  radio_uart_drop_stale_locked(0);
- uint8_t schema[16]={165,90,12,0,'S','D','T',3};radio_tx_item_t out;
+ uint8_t schema[16]={165,90,12,0,0x61,0,0,3};radio_tx_item_t out;
  assert(radio_uart_enqueue_sedsnet_parts(schema,sizeof(schema),NULL,0U,254)==HAL_OK);
  assert(radio_uart_enqueue_sedsnet_parts(und,sizeof(und),NULL,0U,255)==HAL_OK);
  unsigned count=g_tx_count,bytes=g_tx_queue_bytes_used;
@@ -188,8 +188,8 @@ static uint32_t radio_uart_air_ms(uint16_t n){return n;}
         test = r'''
 static void frame(uint8_t *p,unsigned n,unsigned marker,int sdt) {
  memset(p,0,n);p[0]=0xa5;p[1]=0x5a;p[2]=(n-4)&255;p[3]=(n-4)>>8;
- if(sdt){memcpy(p+4,"SDT",3);p[7]=marker;}
- else {p[4]=0xca;p[5]=1;p[6]=1;p[7]=marker;}
+ if(sdt){p[4]=0x61;p[5]=0;p[6]=0;p[7]=marker;}
+ else {p[4]=0x0a;p[5]=1;p[6]=1;p[7]=marker;}
 }
 static void reset(void){g_tx_count=0;g_tx_queue_bytes_used=0;g_radio_tx_ok=0;g_tx_independent_streak=0;}
 int main(void) {
@@ -219,7 +219,7 @@ int main(void) {
  for(unsigned i=0;i<2;i++)assert(radio_uart_enqueue_sedsnet_parts(ack,sizeof(ack),NULL,0U,255)==HAL_OK);
  assert(radio_uart_enqueue_sedsnet_parts(ack,sizeof(ack),NULL,0U,255)==HAL_BUSY);
  g_radio_tx_ok=7;g_tx_independent_streak=7;
- assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&memcmp(out.data+4,"SDT",3)==0);
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.data[4]==0x61);
  g_radio_tx_ok=8;g_tx_independent_streak=0;
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.data[6]==1);
  assert(g_tx_count==10);
@@ -294,8 +294,8 @@ int main(void) {
         self._run_case(r'''
 static void frame(uint8_t *p,unsigned n,unsigned marker,int sdt) {
  memset(p,0,n);p[0]=0xa5;p[1]=0x5a;p[2]=(n-4)&255;p[3]=(n-4)>>8;
- if(sdt){memcpy(p+4,"SDT",3);p[7]=marker;}
- else {p[4]=0xca;p[5]=1;p[6]=1;p[7]=marker;}
+ if(sdt){p[4]=0x61;p[5]=0;p[6]=0;p[7]=marker;}
+ else {p[4]=0x0a;p[5]=1;p[6]=1;p[7]=marker;}
 }
 static void reset(void){g_tx_count=0;g_tx_queue_bytes_used=0;g_radio_tx_ok=0;g_tx_independent_streak=0;}
 int main(void) {

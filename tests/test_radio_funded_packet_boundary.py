@@ -84,8 +84,11 @@ static unsigned radio_uart_start_rx(void){return HAL_OK;}
 
 '''
 ACK_FIXTURES = r'''
-static const uint8_t und[]={165,90,51,0,12,1,1,8,247,186,236,182,183,51,183,155,3,164,134,212,212,6,20,3,68,2,2,100,66,44,90,241,216,214,133,95,67,146,158,18,187,252,167,50,46,211,58,171,32,98,131,104,4,79,26};
-static const uint8_t fc[]={165,90,50,0,12,1,1,8,149,183,236,182,183,51,185,45,225,206,200,143,10,20,3,68,2,2,40,235,83,222,98,111,66,65,95,67,146,158,18,187,252,167,223,175,42,232,164,105,163,239,132,210,156,77};
+/* Captured SEDSnet 6 ACK frames re-encoded in the SEDSnet 7 layout (SEDSnet
+ * tools/wire_v6_to_v7.py) with time-base epoch 200, which keeps each frame's
+ * captured length and so every airtime figure below. */
+static const uint8_t und[]={165,90,51,0,140,1,164,134,212,212,6,200,1,20,3,68,2,2,100,66,44,90,241,216,214,133,95,67,146,158,18,187,252,167,247,186,236,182,183,51,183,155,3,50,46,211,58,171,32,98,131,223,77,22,101};
+static const uint8_t fc[]={165,90,50,0,140,1,225,206,200,143,10,200,1,20,3,68,2,2,40,235,83,222,98,111,66,65,95,67,146,158,18,187,252,167,149,183,236,182,183,51,185,45,223,175,42,232,164,105,163,239,216,181,127,158};
 static const uint8_t health_a[]={165,90,120,0,83,68,84,2,136,185,182,227,151,10,96,130,186,236,182,183,51,217,216,3,1,0,0,0,11,0,0,0,53,117,0,0,0,0,0,0,232,3,0,0,0,0,0,0,0,0,0,0,164,144,0,0,104,181,0,0,44,253,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,83,235,26,126};
 static const uint8_t health_b[]={165,90,120,0,83,68,84,2,136,229,150,244,231,15,96,233,181,236,182,183,51,179,155,3,1,0,0,0,3,0,0,0,48,117,0,0,0,0,0,0,232,3,0,0,0,0,0,0,8,0,0,0,172,72,0,0,220,90,0,0,60,11,1,0,0,0,0,0,0,0,0,0,9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,80,231,199,107};
 static const uint8_t baro[]={165,90,36,0,83,68,84,2,136,224,226,162,135,3,12,187,180,236,182,183,51,229,169,2,0,0,0,0,0,80,195,71,0,248,64,194,2,6,52,227};
@@ -130,9 +133,8 @@ int main(void){
  queue(fc,sizeof(fc),255);start(30378);assert(g_tx_last_forced_boundary_ms==30255&&g_tx_completed_service_credit_ms==95);done(30383);
 
  /* A different owner's new ACK packet still names the same logical contract. */
- queue(fc,sizeof(fc),255);size_t header=6;uint64_t field;
- radio_read_uleb128(candidate.data,candidate.len,&header,&field);radio_read_uleb128(candidate.data,candidate.len,&header,&field);radio_read_uleb128(candidate.data,candidate.len,&header,&field);
- if(candidate.data[4]&8)radio_read_uleb128(candidate.data,candidate.len,&header,&field);
+ queue(fc,sizeof(fc),255);size_t header=5;uint64_t field;
+ radio_read_uleb128(candidate.data,candidate.len,&header,&field);
  candidate.data[header]^=1;unsigned ownercrc=launchcore_crc32(candidate.data+4,candidate.len-8);for(unsigned i=0;i<4;++i)candidate.data[candidate.len-4+i]=(ownercrc>>(8*i))&255;
  assert(radio_uart_ack_contract(candidate.data,candidate.len,candidate.priority,&id)&&id==UINT64_C(17267761553259278303));clock_ms=30384;radio_uart_close_packet_batch(&candidate);assert(g_tx_last_forced_boundary_ms==30255&&g_tx_completed_service_credit_ms==95);
  /* Independent controls and failed HAL admission/lateIRQ earn no service. */
@@ -140,7 +142,7 @@ int main(void){
  reset();normal(124);clock_ms=2000;hal_status=HAL_BUSY;assert(!radio_uart_process_tx_with_budget(2000));assert(g_tx_pending_service_ms==0&&g_tx_completed_service_credit_ms==0);done(2010);assert(g_tx_completed_service_credit_ms==0);
  reset();normal(124);start(3000);clock_ms=4000;offered=0;radio_uart_process_tx_with_budget(2000);assert(!g_tx_dma_busy&&g_tx_pending_service_ms==0&&g_tx_completed_service_credit_ms==0);done(4001);assert(g_tx_completed_service_credit_ms==0);
  reset();normal(124);start(5000);HAL_UART_ErrorCallback(g_huart);assert(g_tx_pending_service_ms==0);done(5012);assert(g_tx_completed_service_credit_ms==0);
- /* CRC, encrypted/compressed, SDT and incompletebounds never grant a key. */
+ /* CRC, encrypted/compressed, side-transport and incomplete bounds never grant a key. */
  queue(fc,sizeof(fc),255);candidate.data[candidate.len-1]^=1;assert(!radio_uart_ack_contract(candidate.data,candidate.len,candidate.priority,&id));
  for(unsigned flag=1;flag<=16;flag*=16){queue(fc,sizeof(fc),255);candidate.data[4]|=flag;assert(!radio_uart_ack_contract(candidate.data,candidate.len,candidate.priority,&id));}
  normal(124);candidate.priority=255;assert(!radio_uart_ack_contract(candidate.data,candidate.len,candidate.priority,&id));
@@ -198,7 +200,7 @@ class FundedAckBoundaryTests(unittest.TestCase):
 
     def test_completed_discovery_airtime_funds_the_same_bounded_ack_close(self):
         captured = (ROOT / 'tests/fixtures/radio-startup-discovery-frame.bin').read_bytes()
-        assert len(captured) == 196 and captured[4:7] == b'SDT'
+        assert len(captured) == 196 and captured[4] == 0x61
         code = 'static const uint8_t discovery[]={' + ','.join(map(str, captured)) + '};\n'
         self._run(CHECKS[:CHECKS.index('int main(void)')] + code + r'''int main(void){
  reset();queue(discovery,sizeof(discovery),254);start(1000);

@@ -12,7 +12,7 @@ class CorruptRadioFrameTests(unittest.TestCase):
         parser=source[source.index('/* Bounded resync state:'):source.index('/* Push one RX chunk')]
         # Use the existing real SDK frame rather than an unchecked byte pattern.
         good=(ROOT/'tests/fixtures/radio-startup-discovery-frame.bin').read_bytes()[4:]
-        valid_body=b'SDT\x03'+b'1'*184
+        valid_body=b'\x61\x01\x00\x01'+b'1'*184
         valid=valid_body+binascii.crc32(valid_body).to_bytes(4,'little')
         damaged=b'\xa5\x5a\xc0\x00'+valid[:162]+b'\xa5\x5a'+len(good).to_bytes(2,'little')+good
         intact=b'\xa5\x5a\xc0\x00'+valid

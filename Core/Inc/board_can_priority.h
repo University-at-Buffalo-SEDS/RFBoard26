@@ -11,10 +11,11 @@ static inline uint32_t board_can_arbitration_id(const uint8_t *bytes, size_t len
         uint8_t priority, uint32_t data_type, uint32_t heartbeat_type,
         uint32_t control_id) {
     if (bytes == NULL || len == 0U) return control_id | 0x100U;
-    const unsigned side_transport = len >= 3U && bytes[0] == 'S' &&
-                                     bytes[1] == 'D' && bytes[2] == 'T';
+    /* SEDSnet 7 side-transport frames (FULL, chunk, compact, bundle) start
+     * with a byte whose 0x60 bits are both set; canonical frames never do. */
+    const unsigned side_transport = (bytes[0] & 0x60U) == 0x60U;
     /* DiscoverySchema is the stable built-in wire type10. ACKs and small
-     * frozen controls are canonical; bulk reliable transfers may use SDT. */
+     * frozen controls are canonical; bulk reliable transfers may be chunked. */
     if (data_type == 10U || (priority >= 200U && side_transport))
         return control_id | 0x80U;
     if (priority >= 200U || data_type == heartbeat_type) return control_id;

@@ -30,7 +30,7 @@ static void can_tx_queue_watch_disarm(void){++disarmed;assert(watched==disarmed)
 static int can_bus_send_large(const uint8_t *p,size_t n,uint32_t id){assert(p&&n);calls++;observed=id;return result;}
 '''+function(source,'telemetry_flight_can_id')+function(source,'telemetry_send_can_packet')+r'''
 int main(void){
- uint8_t opaque[3][8]={{'S','D','T',1},{'S','D','T',2},{'S','D',7,1}};
+ uint8_t opaque[3][8]={{0x60,8,0,1},{0x70,8,0,2},{0x0b,68,7,1}}; /* SEDSnet 7 FULL, COMPACT, canonical */
  for(unsigned i=0;i<3;i++)for(unsigned p=0;p<256;p++)
   assert(telemetry_flight_can_id(opaque[i],8,p)==((i<2&&p>=200)?0x81:(p>=200?1:0x101)));
  dtype=120;assert(telemetry_flight_can_id(opaque[2],8,0)==1);

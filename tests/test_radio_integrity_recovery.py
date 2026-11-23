@@ -32,12 +32,13 @@ class RadioIntegrityRecovery(unittest.TestCase):
         self._exercise_interrupted_writes(True)
 
     def _exercise_interrupted_writes(self, relayed):
-        # Canonical DiscoveryAddress from the actual SDK-decoded radio fixture;
+        # Canonical DiscoveryAddress from the actual SDK-decoded radio fixture
+        # (re-encoded in the SEDSnet 7 layout by SEDSnet tools/wire_v6_to_v7.py);
         # its public RF identity contains no credentials or application outputs.
         canonical = bytes.fromhex(
-            "4a01115104b10bdbfcacf20e8400020000959afadf000000000100000000000000"
-            "65422c5af1d8d68502000000524601000000f81ab10a020000006cab1104b82b4d0f"
-            "01000000020000005246011300000002c000000028000000100000003cad6ee6"
+            "0a11dbfcacf20e04b10b80020000959afadf00000000010000000000000065422c"
+            "5af1d8d68502000000524601000000f81ab10a020000006cab1104b82b4d0f0100"
+            "0000020000005246011300000002c00000002800000010000000f3c90304"
         )
         sdt = (ROOT / "tests/fixtures/radio-startup-discovery-frame.bin").read_bytes()[4:]
         for body in (canonical, sdt):

@@ -10,7 +10,7 @@ class CanArbitrationPriorityTests(unittest.TestCase):
 #include <assert.h>
 #include <stdio.h>
 static unsigned run(int legacy) {
- const uint8_t schema[]={'S','D','T',3,0,1};
+ const uint8_t schema[]={0x61,0,0,3,0,1};
  const uint8_t ack[]={12,0,1,2,0,1};
  unsigned metadata_id=legacy?1:board_can_arbitration_id(schema,sizeof(schema),254,0,120,1);
  unsigned receipt_id=board_can_arbitration_id(ack,sizeof(ack),255,1,120,3);

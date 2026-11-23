@@ -22,7 +22,7 @@ static uint32_t w[6];
 static void complete(const radio_tx_item_t *item, uint32_t at){g_tx_dma_item=*item;clock_ms=at;radio_uart_note_ack_completion();}
 int main(void){
  radio_tx_item_t out;
- uint8_t sdt[16]={165,90,12,0,'S','D','T',3,0x11};
+ uint8_t sdt[16]={165,90,12,0,0x61,0,0,3,0x11};
  /* Two canonical ACKs enqueued 20 ms apart leave in one DMA 100 ms after the first. */
  clock_ms=10;assert(radio_uart_enqueue_sedsnet_parts(und,sizeof(und),NULL,0U,255)==HAL_OK);
  clock_ms=30;assert(radio_uart_enqueue_sedsnet_parts(fc,sizeof(fc),NULL,0U,255)==HAL_OK);
@@ -42,7 +42,7 @@ int main(void){
  sdt[8]=0x22;assert(radio_uart_enqueue_sedsnet_parts(sdt,sizeof(sdt),NULL,0U,253)==HAL_OK);
  assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.len==sizeof(und)&&g_tx_dma_ack_frames==1&&!g_tx_dma_ack_offset_ms);
  complete(&out,207);
- assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&memcmp(out.data+4,"SDT",3)==0&&!g_tx_dma_ack_frames);
+ assert(radio_uart_dequeue_frame_with_budget(&out,2000)&&out.data[4]==0x61&&!g_tx_dma_ack_frames);
  assert(out.uart_frames==2&&!g_tx_count); /* ordinary SDT batch */
  complete(&out,300);
  board_health_radio_tx_timing(w);
