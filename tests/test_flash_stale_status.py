@@ -94,9 +94,9 @@ int main(void)
 
 class FlashStaleStatusTests(unittest.TestCase):
     def test_stale_flash_status_does_not_fail_provisioning(self):
-        launchcore = sorted((ROOT / "build").glob("*/_deps/sedslaunchcore-src/bootloader/include"))
-        if not launchcore:
-            self.skipTest("LaunchCore headers are fetched by a firmware build")
+        from native_sdk import configured_dependency_source
+        launchcore = [configured_dependency_source(
+            ROOT, "sedslaunchcore", "SDK_FREE_LAUNCHCORE_SOURCE") / "bootloader/include"]
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
             (path / "stm32g4xx_hal.h").write_text(HAL)

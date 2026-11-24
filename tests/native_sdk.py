@@ -365,10 +365,13 @@ def prepare_native_sdk(root, original=None):
 
 
 def configured_dependency_source(root, name, override_env):
-    """Find a dependency selected by a real firmware configure, without writes.
+    """Find a dependency selected by a real firmware configure.
 
     Explicit test overrides remain optional. A shared FetchContent base is as
-    valid as build/<profile>/_deps; no private workspace path is assumed.
+    valid as build/<profile>/_deps; no private workspace path is assumed. With
+    no configure, the exact commit the firmware's FetchContent_Declare pins is
+    materialized once under build/host-deps (from a sibling checkout when it
+    holds that commit, otherwise from the pinned repository).
     """
     root = Path(root).resolve()
     explicit = os.environ.get(override_env)
@@ -395,4 +398,69 @@ def configured_dependency_source(root, name, override_env):
             if not header.is_file() or 'launchcore_persist_get_strict' not in header.read_text():
                 continue
         return candidate.resolve()
+    pinned = materialize_pinned_dependency(root, name)
+    if pinned is not None:
+        return pinned
     raise RuntimeError('Configure the current firmware once to cache ' + name)
+
+
+def pinned_dependency(root, name):
+    """(repository, commit) pinned by the firmware's FetchContent_Declare(name)."""
+    root = Path(root)
+    for path in [root / 'CMakeLists.txt', *sorted((root / 'cmake').glob('*.cmake'))]:
+        if not path.is_file():
+            continue
+        match = re.search(r'FetchContent_Declare\(\s*' + re.escape(name) + r'\s(.*?)\)',
+                          path.read_text(), re.S | re.I)
+        if not match:
+            continue
+        repository = re.search(r'GIT_REPOSITORY\s+(\S+)', match[1])
+        commit = re.search(r'GIT_TAG\s+([0-9a-fA-F]{40})\b', match[1])
+        if repository and commit:
+            return repository[1], commit[1].lower()
+    return None
+
+
+def materialize_pinned_dependency(root, name):
+    """Export the pinned commit of a dependency into build/host-deps once."""
+    pin = pinned_dependency(root, name)
+    if pin is None:
+        return None
+    repository, commit = pin
+    base = Path(root) / 'build/host-deps'
+    destination = base / (name + '-' + commit[:12])
+    if (destination / 'CMakeLists.txt').is_file():
+        return destination.resolve()
+    with cache_lock(base / (name + '.lock')):
+        if (destination / 'CMakeLists.txt').is_file():
+            return destination.resolve()
+        stage = Path(tempfile.mkdtemp(prefix='.' + name + '-', dir=base))
+        try:
+            repo_name = repository.rstrip('/').rsplit('/', 1)[-1].removesuffix('.git')
+            local = None
+            for parent in Path(root).resolve().parents:
+                sibling = parent / repo_name
+                if (sibling / '.git').exists() and subprocess.run(
+                        ['git', '-C', str(sibling), 'cat-file', '-e', commit + '^{commit}'],
+                        capture_output=True).returncode == 0:
+                    local = sibling
+                    break
+            if local is not None:
+                archive = subprocess.run(['git', '-C', str(local), 'archive', '--format=tar', commit],
+                                         capture_output=True, check=True).stdout
+                import io
+                import tarfile
+                with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+                    tar.extractall(stage, filter='data')
+            else:
+                run(['git', 'init', '--quiet', str(stage)])
+                run(['git', '-C', str(stage), 'fetch', '--quiet', '--depth', '1', repository, commit])
+                run(['git', '-C', str(stage), 'checkout', '--quiet', '--detach', 'FETCH_HEAD'])
+                shutil.rmtree(stage / '.git')
+            if not (stage / 'CMakeLists.txt').is_file():
+                raise RuntimeError('Pinned ' + name + ' ' + commit + ' has no CMakeLists.txt')
+            stage.rename(destination)
+        except (OSError, subprocess.CalledProcessError, RuntimeError):
+            shutil.rmtree(stage, ignore_errors=True)
+            return None
+    return destination.resolve()
